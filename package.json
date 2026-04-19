@@ -17,6 +17,10 @@
     "sf:login": "tsx --env-file=.env scripts/sf-login.ts",
     "smoke:api": "tsx --env-file=.env scripts/smoke-api.ts"
   },
+  "cacheDirectories": [
+    "node_modules",
+    ".next/cache"
+  ],
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
