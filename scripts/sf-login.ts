@@ -15,7 +15,7 @@
  *      SF_ACCESS_TOKEN / SF_INSTANCE_URL so verify:mcp can pick them up.
  *
  * This intentionally does NOT depend on the Next.js dev server. It's the
- * CLI equivalent of visiting /api/auth/salesforce/login in a browser.
+ * CLI equivalent of visiting /api/connect in a browser.
  */
 
 export {};

@@ -37,7 +37,7 @@ npm run dev  # http://localhost:3000
 - [x] Heroku app `headless-jdo` provisioned with Node buildpack + Postgres + Key-Value Store
 - [x] Salesforce Connected App credentials loaded into both Heroku config vars and `.env`
 - [x] Next.js scaffold in place, boots + builds
-- [x] `/api/auth/salesforce/{login,callback}` wired to Salesforce OAuth
+- [x] `/api/connect` + `/callback` wired to PKCE OAuth
 - [ ] `npm run verify:mcp` prints PASS — requires `ANTHROPIC_API_KEY` and a Connected App with Client Credentials (or `SF_ACCESS_TOKEN`)
 
 ## Deploy to Heroku

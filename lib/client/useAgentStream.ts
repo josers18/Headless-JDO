@@ -105,7 +105,7 @@ export function useAgentStream(): AgentStreamState {
       if (!res.ok || !res.body) {
         setError(
           res.status === 401
-            ? "Not signed in to Salesforce. Go to /api/auth/salesforce/login."
+            ? "Session expired. Visit /api/connect to reactivate."
             : `Request failed: ${res.status}`
         );
         setState("error");

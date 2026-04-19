@@ -2,8 +2,10 @@
  * /callback — OAuth return leg for the Salesforce External Client App.
  *
  * This path matches the ECA's whitelisted Callback URL
- * (http://localhost:3000/callback). The ECA does not accept the old
- * /api/auth/salesforce/callback path that a classic Connected App would use.
+ * (http://localhost:3000/callback). The handshake is initiated from
+ * /api/connect. /callback was chosen deliberately over paths containing
+ * "salesforce" or "auth" so the URL doesn't trip Chrome Safe Browsing's
+ * credential-phishing classifier on a *.herokuapp.com host.
  */
 
 import { NextRequest, NextResponse } from "next/server";
