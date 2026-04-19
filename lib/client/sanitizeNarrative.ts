@@ -46,9 +46,21 @@ const PREFIXED_ERROR_DUMP =
 // Stray HTML tags that slipped through (open/close pairs or singletons).
 const STRAY_TAGS = /<\/?[A-Z][A-Z0-9]*(?:\s+[^>]*)?>/g;
 
+// Chain-of-thought leakage. Claude 4.5 via Heroku Inference occasionally
+// emits its internal reasoning wrapped in <think>…</think> or <thinking>…
+// </thinking> tags into the text_delta stream. Those must never render.
+// We handle both closed blocks and unclosed blocks (mid-stream, before the
+// closing tag has arrived) — the unclosed form strips everything from the
+// opening tag to end-of-buffer; when the closer eventually arrives we'll
+// re-run this pass and get the clean block form.
+const THINK_BLOCK = /<think(?:ing)?\b[^>]*>[\s\S]*?<\/think(?:ing)?>/gi;
+const THINK_OPEN_UNTERMINATED = /<think(?:ing)?\b[^>]*>[\s\S]*$/i;
+
 export function sanitizeNarrative(raw: string): string {
   if (!raw) return raw;
   let s = raw;
+  s = s.replace(THINK_BLOCK, "");
+  s = s.replace(THINK_OPEN_UNTERMINATED, "");
   s = s.replace(HTML_DOCUMENT, "");
   s = s.replace(HTML_HEAD_ONLY, "");
   s = s.replace(HTML_BODY_ONLY, "");
