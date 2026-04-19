@@ -45,20 +45,40 @@ interface StreamCounts {
   error: number;
 }
 
+async function streamSseGet(
+  path: string,
+  cookie: string
+): Promise<{ status: number; counts: StreamCounts; firstText: string }> {
+  return streamResponse(
+    fetch(`${BASE}${path}`, {
+      method: "GET",
+      headers: { Accept: "text/event-stream", Cookie: cookie },
+    })
+  );
+}
+
 async function streamSse(
   path: string,
   body: unknown,
   cookie: string
 ): Promise<{ status: number; counts: StreamCounts; firstText: string }> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      Cookie: cookie,
-    },
-    body: JSON.stringify(body),
-  });
+  return streamResponse(
+    fetch(`${BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Cookie: cookie,
+      },
+      body: JSON.stringify(body),
+    })
+  );
+}
+
+async function streamResponse(
+  pending: Promise<Response>
+): Promise<{ status: number; counts: StreamCounts; firstText: string }> {
+  const res = await pending;
 
   const counts: StreamCounts = {
     text_delta: 0,
@@ -140,22 +160,28 @@ async function main() {
   );
   if (ask.firstText) console.log(`                         snippet: "${ask.firstText}..."`);
 
-  // Priority (non-streaming).
-  console.log(`\nGET  /api/priority       (non-streaming)`);
+  // Priority — now streaming SSE like brief/ask.
+  console.log(`\nGET  /api/priority       streaming...`);
   const t2 = Date.now();
-  const pr = await fetch(`${BASE}/api/priority`, { headers: { Cookie: cookie } });
-  console.log(`                         status=${pr.status} (${Date.now() - t2}ms)`);
-  if (pr.status !== 200) {
-    const body = await pr.text();
-    console.log(`                         body: ${body.slice(0, 200)}`);
-  }
+  const priority = await streamSseGet("/api/priority", cookie);
+  console.log(
+    `                         status=${priority.status} ` +
+      `text_deltas=${priority.counts.text_delta} ` +
+      `tool_use=${priority.counts.tool_use} ` +
+      `tool_result=${priority.counts.tool_result} ` +
+      `errors=${priority.counts.error} ` +
+      `(${Date.now() - t2}ms)`
+  );
+  if (priority.firstText)
+    console.log(`                         snippet: "${priority.firstText}..."`);
 
   const pass =
     h.status === 200 &&
     brief.status === 200 &&
     brief.counts.text_delta > 0 &&
     ask.status === 200 &&
-    ask.counts.tool_use > 0;
+    ask.counts.tool_use > 0 &&
+    priority.status === 200;
   console.log(`\n${pass ? "PASS" : "FAIL"} — end-to-end ${pass ? "OK" : "issues above"}`);
   process.exit(pass ? 0 : 1);
 }

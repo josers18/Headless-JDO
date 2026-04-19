@@ -1,25 +1,32 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { ensureFreshToken } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { priorityQueuePrompt } from "@/lib/prompts/priority-queue";
+import { makeSseStream } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/priority — returns the top N clients ranked by composite score.
-// Runs an MCP-capable agent loop via the current provider (Heroku Inference
-// by default). Non-streaming; the UI shows a skeleton while we wait.
+// GET /api/priority — streams the top-N priority clients as SSE.
+//
+// why streaming: the MCP tool loop against three Salesforce MCPs typically
+// runs 40–60s end-to-end, which blows past Heroku's 30s H12 timeout for
+// non-streaming HTTP. By emitting text_delta / tool_use / tool_result frames
+// over SSE the connection stays warm indefinitely, the UI gets live
+// progress, and the router never times us out. The client parses the final
+// accumulated text as JSON when the stream closes.
 export async function GET(_req: NextRequest) {
   const cid = correlationId();
   const token = await ensureFreshToken();
-  if (!token)
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!token) return new Response("unauthenticated", { status: 401 });
 
-  try {
-    const res = await runAgentWithMcp({
+  log.info("priority.start", { cid });
+
+  return makeSseStream(async (send) => {
+    const result = await runAgentWithMcp({
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -32,35 +39,32 @@ export async function GET(_req: NextRequest) {
         },
       ],
       salesforceToken: token.access_token,
-      // Priority-queue prompt returns JSON only; small cap keeps latency tight.
-      maxIterations: 6,
+      maxIterations: 14,
+      onEvent: (e) => {
+        if (e.type === "text_delta" && e.text) {
+          send({ type: "text_delta", text: e.text });
+        } else if (e.type === "tool_use" && e.server && e.tool) {
+          send({
+            type: "tool_use",
+            server: e.server,
+            tool: e.tool,
+            input: e.input,
+          });
+        } else if (e.type === "tool_result" && e.server && e.tool) {
+          send({
+            type: "tool_result",
+            server: e.server,
+            tool: e.tool,
+            is_error: e.is_error,
+            preview: e.preview ?? "",
+          });
+        }
+      },
     });
-
-    const text = res.text.trim();
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(extractJson(text));
-    } catch {
-      parsed = { raw: text, note: "model did not return parseable JSON" };
-    }
-    log.info("priority.ok", {
+    log.info("priority.done", {
       cid,
-      iters: res.iterations,
-      tools: res.toolCalls.length,
+      iterations: result.iterations,
+      tools: result.toolCalls.length,
     });
-    return NextResponse.json(parsed);
-  } catch (e) {
-    log.error("priority.failed", { cid, err: String(e) });
-    return NextResponse.json(
-      { error: "priority failed", detail: String(e) },
-      { status: 500 }
-    );
-  }
-}
-
-// Strip any fenced code blocks (```json ... ```) before JSON.parse. Claude
-// 4.5 Sonnet usually returns bare JSON when asked, but we guard anyway.
-function extractJson(text: string): string {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  return (fence?.[1] ?? text).trim();
+  });
 }
