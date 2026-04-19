@@ -76,12 +76,13 @@ export function herokuModel(): string {
   return process.env.INFERENCE_MODEL_ID ?? "claude-4-5-sonnet";
 }
 
-// Schema-mismatch signature. We trip a circuit breaker on these because
-// (a) they mean the model fabricated a column/table, and (b) letting it
-// retry produces an identical failure — a waste of Flex credits and a
-// demo-ruining cascade of red rows in the reasoning trail. See user
-// feedback 2026-04-19: the hygiene prompt alone wasn't enough.
-const SCHEMA_ERROR_PATTERNS = [
+// Trip-worthy error signatures. We trip a circuit breaker on these because
+// (a) for schema mismatches the model fabricated a column/table, and (b)
+// for transport errors (CloudFront 403 / 503 / "request blocked") the
+// endpoint is not reachable and retrying wastes Flex credits and floods
+// the reasoning trail with noise. See iterative feedback 2026-04-18/19.
+const TRIP_ERROR_PATTERNS = [
+  // Schema mismatches
   /invalid_argument/i,
   /unknown column/i,
   /unknown table/i,
@@ -89,18 +90,80 @@ const SCHEMA_ERROR_PATTERNS = [
   /no such column/i,
   /malformed_query/i,
   /unexpected token/i,
+  // Transport / CloudFront / auth / throttle
+  /cloudfront/i,
+  /request blocked/i,
+  /request could not be satisfied/i,
+  /\b403\b/,
+  /\b401\b/,
+  /\b429\b/,
+  /\b502\b/,
+  /\b503\b/,
+  /\b504\b/,
+  /forbidden/i,
+  /unauthorized/i,
+  /rate.?limit/i,
+  /<!doctype/i,
+  /<html/i,
 ] as const;
 
-function isSchemaMismatchError(preview: string | undefined | null): boolean {
+function isTrippedError(preview: string | undefined | null): boolean {
   if (!preview) return false;
-  return SCHEMA_ERROR_PATTERNS.some((re) => re.test(preview));
+  return TRIP_ERROR_PATTERNS.some((re) => re.test(preview));
 }
 
-// Threshold for the breaker. We trip on the very FIRST schema-mismatch
-// error from a tool. Rationale: the model almost never self-corrects an
-// INVALID_ARGUMENT/unknown-column mistake — if it guessed a column name
-// wrong once, its next guess is usually wrong too. Tripping immediately
-// keeps the reasoning trail clean for the demo and saves Flex credits.
+// Pre-flight guardrail for Data Cloud SQL. The hygiene prompt forbids
+// these patterns, but the model occasionally ignores the rule. We
+// intercept the arguments before dispatch and return a synthetic "rejected"
+// tool result so the model never actually fires a bad query. Catches the
+// two biggest demo-killers: information_schema introspection and SELECT *.
+const FORBIDDEN_DC_SQL_PATTERNS: Array<{ re: RegExp; reason: string }> = [
+  {
+    re: /\binformation_schema\b/i,
+    reason:
+      "INFORMATION_SCHEMA does not exist in Data Cloud SQL. Use getDcMetadata to enumerate objects instead.",
+  },
+  {
+    re: /\bpg_catalog\b/i,
+    reason:
+      "pg_catalog does not exist in Data Cloud SQL. Use getDcMetadata to enumerate objects instead.",
+  },
+  {
+    re: /\bselect\s+\*/i,
+    reason:
+      "SELECT * is not allowed — pick specific columns by name from the metadata response.",
+  },
+];
+
+function preflightRejection(
+  server: string,
+  tool: string,
+  args: Record<string, unknown>
+): string | null {
+  if (server !== "data_360") return null;
+  if (tool !== "postDcQuerySql") return null;
+  const sql = typeof args.sql === "string" ? args.sql : "";
+  if (!sql) return null;
+  for (const { re, reason } of FORBIDDEN_DC_SQL_PATTERNS) {
+    if (re.test(sql)) {
+      return JSON.stringify({
+        rejected: true,
+        server,
+        tool,
+        reason,
+        instruction:
+          "Do NOT retry this query. Either call getDcMetadata first and reference only columns from its response, or skip data_360 and finish your answer with the other tools.",
+      });
+    }
+  }
+  return null;
+}
+
+// Threshold for the breaker. We trip on the very FIRST error matching a
+// known-bad signature. Rationale: the model almost never self-corrects an
+// INVALID_ARGUMENT/unknown-column mistake, and a CloudFront 403 won't
+// disappear on retry either. Tripping on strike one keeps the reasoning
+// trail clean for the demo and saves Flex credits.
 const SCHEMA_BREAKER_THRESHOLD = 1;
 
 // Synthetic response injected in place of a blocked tool call. Phrased
@@ -112,9 +175,9 @@ function blockedToolPayload(server: string, tool: string): string {
     server,
     tool,
     reason:
-      "Circuit breaker tripped: this tool returned repeated schema-mismatch errors in this turn. Further calls are disabled.",
+      "Circuit breaker tripped: this tool returned an error in this turn. Further calls are disabled.",
     instruction:
-      "Do NOT retry this tool for the rest of this turn. Stop invoking it and proceed with whatever data you already have from other tools. If you have no data, return a concise summary saying the source was unavailable — do not fabricate numbers.",
+      "Do NOT retry this tool for the rest of this turn. Do NOT quote the prior error message in your response. Proceed with whatever data you already have from other tools. If you have no data for this request, write a single short sentence saying the source was unavailable and stop — do not fabricate numbers.",
   });
 }
 
@@ -265,7 +328,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           };
         }
 
-        // Circuit breaker — short-circuit repeated schema mismatches.
+        // Circuit breaker — short-circuit repeated errors.
         // We still emit tool_use/tool_result events so the reasoning trail
         // shows that the call was attempted and silenced.
         if (blockedTools.has(key)) {
@@ -293,6 +356,37 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           };
         }
 
+        // Pre-flight guardrail — intercept obviously-wrong Data Cloud
+        // queries before they hit the network. Cheaper than a round-trip
+        // and keeps forbidden patterns out of the trail.
+        const rejection = preflightRejection(server, tool, argObj);
+        if (rejection) {
+          onEvent({ type: "tool_use", server, tool, input: argObj });
+          onEvent({
+            type: "tool_result",
+            server,
+            tool,
+            preview: rejection,
+            is_error: true,
+          });
+          // Also trip the breaker so a retry with a different-but-still-bad
+          // query doesn't slip through.
+          blockedTools.add(key);
+          return {
+            c,
+            server,
+            tool,
+            argObj,
+            result: {
+              server: server as McpServerName,
+              tool,
+              isError: true,
+              content: null,
+              textPreview: rejection,
+            },
+          };
+        }
+
         onEvent({
           type: "tool_use",
           server,
@@ -308,11 +402,8 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           is_error: result.isError,
         });
 
-        // Trip the breaker on schema-mismatch errors.
-        if (
-          result.isError &&
-          isSchemaMismatchError(result.textPreview)
-        ) {
+        // Trip the breaker on any recognized error signature.
+        if (result.isError && isTrippedError(result.textPreview)) {
           const n = (schemaErrorCount.get(key) ?? 0) + 1;
           schemaErrorCount.set(key, n);
           if (n >= SCHEMA_BREAKER_THRESHOLD) {

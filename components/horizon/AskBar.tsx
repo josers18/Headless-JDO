@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Mic, Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { useSpeechInput } from "@/lib/client/useSpeechInput";
 import { ReasoningTrail } from "./ReasoningTrail";
+import { sanitizeNarrative } from "@/lib/client/sanitizeNarrative";
 
 // The Ask bar is pinned to the bottom of every page. It has two jobs:
 //  1) Receive banker questions and stream the answer back inline above the
@@ -63,8 +64,13 @@ export function AskBar() {
     else speech.start();
   }
 
+  // Defense-in-depth: even though the system prompt tells the model not
+  // to echo raw tool output, occasionally it streams HTML 403 bodies or
+  // stack traces into its prose. We scrub those before display.
+  const cleanNarrative = useMemo(() => sanitizeNarrative(narrative), [narrative]);
+
   const showPanel = Boolean(
-    lastQuestion && (narrative || steps.length > 0 || error || state === "streaming")
+    lastQuestion && (cleanNarrative || steps.length > 0 || error || state === "streaming")
   );
 
   return (
@@ -100,15 +106,15 @@ export function AskBar() {
                   {error}
                 </div>
               )}
-              {narrative && (
+              {cleanNarrative && (
                 <div className="mt-3 whitespace-pre-wrap text-[14px] leading-relaxed text-text">
-                  {narrative}
+                  {cleanNarrative}
                   {state === "streaming" && (
                     <span className="ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] animate-pulse bg-accent" />
                   )}
                 </div>
               )}
-              {!narrative && state === "streaming" && steps.length === 0 && (
+              {!cleanNarrative && state === "streaming" && steps.length === 0 && (
                 <div className="mt-3 h-4 w-32 rounded shimmer" />
               )}
               {steps.length > 0 && (
