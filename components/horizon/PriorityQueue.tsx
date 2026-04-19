@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ChevronRight } from "lucide-react";
 import type { PriorityClient } from "@/types/horizon";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
+import { cn } from "@/lib/utils";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ClientDetailSheet } from "./ClientDetailSheet";
 
@@ -37,24 +39,30 @@ export function PriorityQueue() {
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <h2 className="text-xs uppercase tracking-[0.18em] text-text-muted">
+        <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+          <span
+            className={cn(
+              "inline-block h-[6px] w-[6px] rounded-full bg-accent-2/80",
+              isLoading && "animate-glow-pulse"
+            )}
+          />
           Priority queue
         </h2>
         {isLoading && (
-          <span className="text-[10px] font-mono text-text-muted/70">
+          <span className="font-mono text-[10px] text-text-muted/70">
             {steps.length > 0
-              ? `scanning · ${steps.length} MCP call${steps.length === 1 ? "" : "s"}`
+              ? `${steps.length} MCP call${steps.length === 1 ? "" : "s"}`
               : "reasoning…"}
           </span>
         )}
       </div>
 
-      <ul className="mt-6 divide-y divide-border/60">
+      <ul className="mt-6 space-y-1">
         {isLoading && clients.length === 0 && (
           <>
-            <li className="h-12 rounded-md shimmer" aria-hidden />
-            <li className="h-12 rounded-md shimmer" aria-hidden />
-            <li className="h-12 rounded-md shimmer" aria-hidden />
+            <li className="h-[72px] rounded-lg shimmer" aria-hidden />
+            <li className="h-[72px] rounded-lg shimmer" aria-hidden />
+            <li className="h-[72px] rounded-lg shimmer" aria-hidden />
           </>
         )}
         {!isLoading && clients.length === 0 && (
@@ -62,24 +70,37 @@ export function PriorityQueue() {
             {emptyMessage ?? "No priorities available yet."}
           </li>
         )}
-        {clients.map((c) => (
-          <li key={c.client_id}>
+        {clients.map((c, idx) => (
+          <li key={c.client_id} className="animate-fade-rise">
             <button
               type="button"
               onClick={() => setSelectedClient(c)}
-              className="group flex w-full items-start justify-between gap-6 py-5 text-left transition-colors duration-fast ease-out hover:bg-surface2/40 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+              className="group relative grid w-full grid-cols-[56px_1fr_auto] items-center gap-5 rounded-lg border border-transparent px-4 py-4 text-left transition-colors duration-med ease-out hover:border-border-soft hover:bg-surface/60 focus:outline-none focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/30"
             >
-              <div>
-                <div className="font-medium text-text group-hover:text-accent">
-                  {c.name}
+              {/* Row index — set in a soft disk so it reads as a badge. */}
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
+                {String(idx + 1).padStart(2, "0")}
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[15px] font-medium text-text group-hover:text-text">
+                    {c.name}
+                  </span>
+                  <ChevronRight
+                    size={13}
+                    className="shrink-0 text-text-muted/40 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:text-accent/80"
+                  />
                 </div>
-                <div className="mt-1 text-sm text-text-muted">{c.reason}</div>
+                <div className="mt-1 truncate text-[13px] leading-relaxed text-text-muted">
+                  {c.reason}
+                </div>
                 {c.sources && c.sources.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
                     {c.sources.map((s) => (
                       <span
                         key={s}
-                        className="rounded border border-border/50 px-1.5 py-0.5"
+                        className="rounded border border-border-soft px-1.5 py-0.5"
                       >
                         {s}
                       </span>
@@ -87,16 +108,15 @@ export function PriorityQueue() {
                   </div>
                 )}
               </div>
-              <div className="shrink-0 font-mono text-xs text-accent">
-                {c.score.toFixed(0)}
-              </div>
+
+              <ScorePill score={c.score} />
             </button>
           </li>
         ))}
       </ul>
 
       {steps.length > 0 && (
-        <div className="mt-4">
+        <div className="mt-6">
           <ReasoningTrail steps={steps} defaultOpen={false} />
         </div>
       )}
@@ -108,6 +128,33 @@ export function PriorityQueue() {
           onClose={() => setSelectedClient(null)}
         />
       )}
+    </div>
+  );
+}
+
+// Score pill — a mini horizontal bar + numeric readout. The bar uses the
+// accent gradient and a subtle glow that scales with the score so high-
+// priority rows pop. Score is clamped to [0, 100].
+function ScorePill({ score }: { score: number }) {
+  const clamped = Math.max(0, Math.min(100, score));
+  const pct = `${clamped}%`;
+  return (
+    <div className="flex shrink-0 items-center gap-3">
+      <div className="relative h-[6px] w-[72px] overflow-hidden rounded-full bg-border-soft">
+        <div
+          className="h-full rounded-full bg-accent-sheen"
+          style={{
+            width: pct,
+            boxShadow:
+              clamped >= 70
+                ? "0 0 12px rgba(91, 141, 239, 0.55)"
+                : "0 0 6px rgba(91, 141, 239, 0.3)",
+          }}
+        />
+      </div>
+      <span className="w-[28px] text-right font-mono text-[13px] tabular-nums text-text">
+        {clamped.toFixed(0)}
+      </span>
     </div>
   );
 }

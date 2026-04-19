@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, RefreshCw } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Heart,
+  Loader2,
+  RefreshCw,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import type { Signal } from "@/types/horizon";
 import { cn } from "@/lib/utils";
@@ -61,7 +69,13 @@ export function SignalFeed() {
   return (
     <div>
       <div className="flex items-center justify-between">
-        <h2 className="text-xs uppercase tracking-[0.18em] text-text-muted">
+        <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+          <span
+            className={cn(
+              "inline-block h-[6px] w-[6px] rounded-full bg-emerald-400/80",
+              loading ? "animate-glow-pulse" : "opacity-70"
+            )}
+          />
           Live signals
         </h2>
         <div className="flex items-center gap-3">
@@ -74,7 +88,7 @@ export function SignalFeed() {
             type="button"
             onClick={() => void fetchOnce()}
             disabled={loading}
-            className="flex items-center gap-1.5 rounded-md border border-border/60 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-text-muted hover:text-text disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-md border border-border-soft px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-text-muted transition hover:border-border hover:text-text disabled:opacity-50"
             aria-label="Refresh signals"
           >
             {loading ? (
@@ -88,16 +102,16 @@ export function SignalFeed() {
       </div>
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-400/30 bg-red-400/10 px-3 py-2 text-[13px] text-red-200">
+        <div className="mt-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger/90">
           {error}
         </div>
       )}
 
       {signals.length === 0 && loading && (
         <div className="mt-6 space-y-2">
-          <div className="h-12 rounded-md shimmer" />
-          <div className="h-12 rounded-md shimmer" />
-          <div className="h-12 rounded-md shimmer" />
+          <div className="h-[58px] rounded-lg shimmer" />
+          <div className="h-[58px] rounded-lg shimmer" />
+          <div className="h-[58px] rounded-lg shimmer" />
         </div>
       )}
 
@@ -109,35 +123,105 @@ export function SignalFeed() {
 
       {signals.length > 0 && (
         <ul className="mt-6 space-y-2">
-          {signals.map((s) => (
-            <li
-              key={s.id}
-              className="animate-fade-rise flex items-start gap-3 rounded-lg border border-border/60 bg-surface2/40 px-3 py-2.5"
-            >
-              <SeverityDot severity={s.severity} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] text-text">{s.summary}</span>
-                </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
-                  <span>{s.kind}</span>
-                  <span>·</span>
-                  <span>{s.source}</span>
-                  {s.timestamp && (
-                    <>
-                      <span>·</span>
-                      <span className="normal-case tracking-normal text-text-muted/80">
-                        {formatTimestamp(s.timestamp)}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </li>
+          {signals.map((s, idx) => (
+            <SignalRow signal={s} key={s.id} index={idx} />
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+// Individual signal row. A severity-colored left border + a soft matching
+// glow gives bankers an instant visual read. The kind icon on the right
+// adds a second layer of pattern recognition (transaction, engagement,
+// life event, KPI, risk).
+function SignalRow({ signal, index }: { signal: Signal; index: number }) {
+  const severityBar =
+    signal.severity === "high"
+      ? "bg-red-400"
+      : signal.severity === "med"
+      ? "bg-amber-400"
+      : "bg-emerald-400";
+  const glowClass =
+    signal.severity === "high"
+      ? "glow-down"
+      : signal.severity === "med"
+      ? "glow-warn"
+      : undefined;
+  const stagger =
+    index < 6 ? ["stagger-1", "stagger-2", "stagger-3", "stagger-4", "stagger-5", "stagger-6"][index] : "stagger-6";
+
+  return (
+    <li
+      className={cn(
+        "group relative animate-fade-rise flex items-center gap-4 overflow-hidden rounded-lg border border-border-soft bg-surface px-4 py-3 transition-colors duration-med hover:border-border",
+        glowClass,
+        stagger
+      )}
+    >
+      <span
+        className={cn("absolute left-0 top-0 h-full w-[2px]", severityBar, signal.severity === "high" && "animate-glow-pulse")}
+        aria-hidden
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[13px] text-text">{signal.summary}</span>
+        </div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
+          {signal.client_name && (
+            <>
+              <span className="normal-case tracking-normal text-text-muted">
+                {signal.client_name}
+              </span>
+              <span>·</span>
+            </>
+          )}
+          <span>{signal.kind}</span>
+          <span>·</span>
+          <span>{signal.source}</span>
+          {signal.timestamp && (
+            <>
+              <span>·</span>
+              <span className="normal-case tracking-normal text-text-muted/80">
+                {formatTimestamp(signal.timestamp)}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      <KindIcon kind={signal.kind} severity={signal.severity} />
+    </li>
+  );
+}
+
+function KindIcon({
+  kind,
+  severity,
+}: {
+  kind: Signal["kind"];
+  severity: Signal["severity"];
+}) {
+  const tone =
+    severity === "high"
+      ? "text-red-300/80"
+      : severity === "med"
+      ? "text-amber-300/80"
+      : "text-emerald-300/80";
+  const Icon =
+    kind === "transaction"
+      ? Zap
+      : kind === "engagement"
+      ? Activity
+      : kind === "life_event"
+      ? Heart
+      : kind === "risk"
+      ? AlertTriangle
+      : TrendingUp;
+  return (
+    <span className={cn("shrink-0", tone)}>
+      <Icon size={13} strokeWidth={2.2} />
+    </span>
   );
 }
 
@@ -169,22 +253,4 @@ function formatTimestamp(ts: string): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function SeverityDot({ severity }: { severity: Signal["severity"] }) {
-  const color =
-    severity === "high"
-      ? "bg-red-400"
-      : severity === "med"
-      ? "bg-amber-400"
-      : "bg-emerald-400";
-  return (
-    <span
-      className={cn(
-        "mt-[6px] h-[8px] w-[8px] shrink-0 rounded-full",
-        color,
-        severity === "high" && "animate-pulse"
-      )}
-    />
-  );
 }

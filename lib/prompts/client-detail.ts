@@ -7,19 +7,22 @@ export interface ClientDetailArgs {
 /**
  * Client Detail prompt — a streaming 360° view triggered by clicking a row
  * in the Priority Queue. We deliberately lean on all three Salesforce MCPs
- * in parallel so the banker sees a coherent picture: the business record,
- * behavioral signals, and the KPI context in one glance.
+ * so the banker sees a coherent picture: the business record, behavioral
+ * signals, and the KPI context in one glance.
  */
 export function clientDetailPrompt(a: ClientDetailArgs): string {
   const nameHint = a.clientName
     ? ` The client's display name is "${a.clientName}".`
     : "";
-  return `Produce a 360° snapshot of client ${a.clientId} for banker user id ${a.bankerUserId}.${nameHint}
+  return `Produce a 360° snapshot of Account ${a.clientId} for banker user id ${a.bankerUserId}.${nameHint}
 
-Fan out across all three MCP servers in parallel:
-- salesforce_crm: resolve the Account/Contact, list open opportunities (stage + amount), recent tasks (last 30 days), any open cases.
-- data_360: behavioral signals in the last 90 days (notable transactions, held-away movement, life events, digital engagement spikes).
-- tableau_next: top 3 portfolio KPIs relevant to this client and how they moved in the last 30 days.
+Plan — one pass, no retries on errors, use getObjectSchema before any custom field (__c):
+1. salesforce_crm.soqlQuery: SELECT Id, Name, Industry, AnnualRevenue, Type, LastActivityDate, OwnerId FROM Account WHERE Id = '${a.clientId}' LIMIT 1
+2. salesforce_crm.soqlQuery: SELECT Id, Name, StageName, Amount, CloseDate, Probability, LastActivityDate FROM Opportunity WHERE AccountId = '${a.clientId}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 10
+3. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, ActivityDate, Priority, WhoId, Who.Name FROM Task WHERE AccountId = '${a.clientId}' AND CreatedDate = LAST_N_DAYS:60 ORDER BY ActivityDate DESC NULLS LAST LIMIT 10
+4. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, Priority, CreatedDate FROM Case WHERE AccountId = '${a.clientId}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 10
+5. (Optional) data_360: getDcMetadata to find a Profile or Engagement DMO; if one exists, ONE postDcQuerySql WHERE a client identifier matches '${a.clientId}'. Skip on errors — do not guess.
+6. (Optional) tableau_next: getSemanticModels, then ONE analyzeSemanticData concrete question scoped to this account. Skip on errors.
 
 Return JSON ONLY (no prose, no fences):
 {

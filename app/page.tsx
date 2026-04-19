@@ -19,41 +19,56 @@ export default function HorizonHome() {
     hour: "numeric",
     minute: "2-digit",
   });
+  const dayLine = now.toLocaleDateString([], {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 
   const signedIn = Boolean(cookies().get("hz_sf")?.value);
 
   return (
-    <main className="relative mx-auto w-full max-w-[920px] px-6 pb-48 pt-16 md:pt-24">
+    <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56 pt-12 md:pt-16">
       <header className="flex items-center justify-between animate-fade-rise">
         <HorizonMark />
-        <div className="font-mono text-xs text-text-muted">{greetingTime}</div>
+        <div className="flex items-center gap-4 text-[11px] uppercase tracking-[0.2em] text-text-muted">
+          <span className="hidden sm:inline-block">{dayLine}</span>
+          <span className="h-[10px] w-px bg-border/70" aria-hidden />
+          <span className="font-mono text-[11px] normal-case tracking-normal text-text">
+            {greetingTime}
+          </span>
+        </div>
       </header>
 
       {!signedIn && (
-        <section className="mt-16 animate-fade-rise">
+        <section className="mt-16 animate-fade-rise stagger-1">
           <SignInBanner />
         </section>
       )}
 
       {signedIn && (
         <>
-          <section className="mt-20 animate-fade-rise">
+          <section className="mt-20 md:mt-24 animate-fade-rise stagger-1">
             <MorningBrief />
           </section>
 
-          <section className="mt-24 animate-fade-rise">
+          <Divider className="stagger-2" />
+          <section className="mt-16 animate-fade-rise stagger-2">
             <PriorityQueue />
           </section>
 
-          <section className="mt-24 animate-fade-rise">
+          <Divider className="stagger-3" />
+          <section className="mt-16 animate-fade-rise stagger-3">
             <PortfolioPulse />
           </section>
 
-          <section className="mt-24 animate-fade-rise">
+          <Divider className="stagger-4" />
+          <section className="mt-16 animate-fade-rise stagger-4">
             <PreDraftedActions />
           </section>
 
-          <section className="mt-24 animate-fade-rise">
+          <Divider className="stagger-5" />
+          <section className="mt-16 animate-fade-rise stagger-5">
             <SignalFeed />
           </section>
 
@@ -62,4 +77,10 @@ export default function HorizonHome() {
       )}
     </main>
   );
+}
+
+// Hairline section divider — used between the five surface sections of
+// the home page to establish rhythm without adding heavy borders.
+function Divider({ className = "" }: { className?: string }) {
+  return <div className={`mt-20 hairline animate-fade-in ${className}`} aria-hidden />;
 }

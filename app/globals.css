@@ -4,24 +4,63 @@
 
 :root {
   color-scheme: dark;
+  --bg: #0a0b0d;
+  --surface: #111316;
+  --surface2: #17191d;
+  --border: #23262b;
+  --border-soft: #1b1e23;
+  --text: #f2f3f5;
+  --text-muted: #8a8f98;
+  --accent: #5b8def;
+  --accent-2: #a78bfa;
 }
 
 html,
 body {
-  background-color: #0a0b0d;
-  color: #f2f3f5;
+  background-color: var(--bg);
+  color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11";
 }
 
 body {
   font-family: "Inter", system-ui, sans-serif;
+  /*
+   * Ambient page gradient. Two soft radial glows anchored to the top of the
+   * viewport — gives the page depth without being noisy. The gradient is
+   * fixed so it stays anchored as the banker scrolls.
+   */
+  background-image: radial-gradient(
+      70% 55% at 25% -10%,
+      rgba(91, 141, 239, 0.16) 0%,
+      rgba(91, 141, 239, 0) 65%
+    ),
+    radial-gradient(
+      55% 45% at 85% -5%,
+      rgba(167, 139, 250, 0.1) 0%,
+      rgba(167, 139, 250, 0) 70%
+    );
+  background-attachment: fixed;
+  background-repeat: no-repeat;
 }
 
 ::selection {
   background: rgba(91, 141, 239, 0.28);
-  color: #f2f3f5;
+  color: var(--text);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 @layer utilities {
@@ -33,15 +72,121 @@ body {
       rgba(255, 255, 255, 0.02) 100%
     );
     background-size: 200% 100%;
-    animation: shimmer 1.6s linear infinite;
+    animation: shimmer 2.2s linear infinite;
   }
 
   .ring-accent {
-    box-shadow: 0 0 0 1px rgba(91, 141, 239, 0.4),
-      0 0 24px rgba(91, 141, 239, 0.18);
+    box-shadow: 0 0 0 1px rgba(91, 141, 239, 0.45),
+      0 0 32px rgba(91, 141, 239, 0.25);
+  }
+
+  .ring-accent-soft {
+    box-shadow: 0 0 0 1px rgba(91, 141, 239, 0.18),
+      0 0 18px rgba(91, 141, 239, 0.1);
   }
 
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Cinematic gradient text — used sparingly on greeting words. */
+  .text-sheen {
+    background: linear-gradient(135deg, #f2f3f5 0%, #a7b4d8 55%, #8a8f98 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .text-accent-sheen {
+    background: linear-gradient(135deg, #5b8def 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Hairline separators: a very faint gradient line instead of a solid
+     border. Used between major page sections to keep rhythm without noise. */
+  .hairline {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.08),
+      transparent
+    );
+  }
+
+  .card {
+    background-color: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+      0 1px 0 rgba(0, 0, 0, 0.4);
+  }
+  .card-raised {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.025) 0%,
+      rgba(255, 255, 255, 0) 100%
+    ),
+    var(--surface);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 14px;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+      0 12px 48px -24px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Animated sheen band used inside approve buttons. Thin white gradient
+     sweeping left-to-right when hovered — signals premium action. */
+  .sheen-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.18) 50%,
+      transparent 100%
+    );
+    transform: translateX(-120%);
+    pointer-events: none;
+    transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .group:hover > .sheen-overlay {
+    transform: translateX(120%);
+  }
+
+  /* Subtle ambient drift on the hero glow — keeps the page feeling alive
+     without any overt motion that distracts the banker. */
+  .drift {
+    animation: accent-drift 12s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Severity glow presets — used by signal rows + KPI directions. */
+  .glow-up {
+    box-shadow: 0 0 24px rgba(74, 222, 128, 0.16);
+  }
+  .glow-down {
+    box-shadow: 0 0 24px rgba(248, 113, 113, 0.16);
+  }
+  .glow-warn {
+    box-shadow: 0 0 24px rgba(245, 165, 36, 0.18);
+  }
 }
+
+/* Font smoothing for the big display type in the hero. Reduces the
+   feathering that Inter's heavy weights get on dark backgrounds. */
+.font-display {
+  letter-spacing: -0.02em;
+  font-synthesis: none;
+}
+
+/* Stagger helpers — the home page animates sections in sequence. Keeping
+   the delay scale here (rather than per-component) so the rhythm is
+   consistent across the dashboard. */
+.stagger-1 { animation-delay: 60ms; }
+.stagger-2 { animation-delay: 140ms; }
+.stagger-3 { animation-delay: 240ms; }
+.stagger-4 { animation-delay: 360ms; }
+.stagger-5 { animation-delay: 500ms; }
+.stagger-6 { animation-delay: 660ms; }

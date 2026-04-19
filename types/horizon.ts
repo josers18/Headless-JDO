@@ -39,6 +39,7 @@ export interface DraftAction {
 export interface Signal {
   id: string;
   client_id?: string;
+  client_name?: string;
   kind: "transaction" | "engagement" | "life_event" | "kpi" | "risk";
   summary: string;
   severity: "low" | "med" | "high";
