@@ -15,7 +15,8 @@
     "verify:mcp": "tsx --env-file=.env scripts/verify-mcp.ts",
     "seed:dc": "tsx --env-file=.env scripts/seed-data-cloud.ts",
     "sf:login": "tsx --env-file=.env scripts/sf-login.ts",
-    "smoke:api": "tsx --env-file=.env scripts/smoke-api.ts"
+    "smoke:api": "tsx --env-file=.env scripts/smoke-api.ts",
+    "verify:p01": "tsx --env-file=.env scripts/verify-p01.ts"
   },
   "cacheDirectories": [
     "node_modules",
