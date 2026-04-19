@@ -517,4 +517,24 @@ Everything in this spec is in service of that 3 minutes.
 
 ---
 
-*Last updated: April 18, 2026. Owner: Jose. Status: GO.*
+## 15. Shipping State (auto-updated)
+
+- **Deploy target:** https://headless-jdo-002d2a119b15.herokuapp.com (Heroku app `headless-jdo`, release v14)
+- **Local dev:** `npm run dev` + `npm run sf:login` (PKCE against the org-locked ECA at `https://storm-16a17dc388fbe6.demo.my.salesforce.com`)
+- **LLM path:** Heroku Inference (Claude 4.5 Sonnet, `claude-4-5-sonnet`) via OpenAI-compatible `/v1/chat/completions`. Anthropic direct kept as a fallback but not active (`LLM_PROVIDER=heroku`).
+- **MCPs connected:** `salesforce_crm` (9 tools), `data_360` (2 tools), `tableau_next` (19 tools), `heroku_toolkit` (SSE transport).
+- **Smoke tests:** `npm run verify:mcp` and `npm run smoke:api` both PASS end-to-end against the deployed app as of the last commit on `main`.
+- **Day status:**
+  - Day 1 ✓ — `verify:mcp` clean
+  - Day 2 ✓ — Ask Anything streams tokens + live reasoning trail
+  - Day 3 ✓ — Morning Brief generates from three MCPs with streamed narrative
+  - Day 4 ✓ — Priority Queue streams 5 clients ranked by composite score (SSE, not JSON)
+  - Days 5–9 — remaining (Portfolio Pulse detail, Pre-Drafted Action execution end-to-end, Signal Feed polish, voice input, demo video).
+
+### Known follow-ups to unblock the banker login from prod
+- Add `https://headless-jdo-002d2a119b15.herokuapp.com/callback` to the External Client App's allowed Callback URLs (today only `localhost:3000/callback` is whitelisted).
+- If the ECA policy is still "Enforce User Provisioning", ensure the demo banker user is provisioned to the app.
+
+---
+
+*Last updated: April 18, 2026. Owner: Jose. Status: GO — deployed, smoke-tested end-to-end on Heroku.*
