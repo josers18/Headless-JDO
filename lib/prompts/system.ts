@@ -37,7 +37,7 @@ A. data_360 SQL (this is where the model fails most often — follow this exactl
    4. DO NOT query information_schema, pg_catalog, or any Postgres-style introspection. Those do not exist in Data Cloud SQL. To enumerate objects, call getDcMetadata instead.
    5. If a SQL call returns INVALID_ARGUMENT about a missing table or unknown column, do NOT immediately retry with another guess. Either (a) re-inspect the metadata response and pick a column that actually exists, or (b) abandon data_360 for this turn and say so in your final answer.
    6. Keep queries narrow: SELECT specific columns only (never SELECT *), LIMIT aggressively (e.g. LIMIT 20), and always qualify by the banker's user id or a resolved client id when applicable.
-   7. CIRCUIT BREAKER: the runtime will AUTOMATICALLY block further calls to a data_360 tool after 2 schema-mismatch errors in the same turn. When you see a tool result with "blocked": true, stop calling that tool immediately and finish your answer with whatever data you already have — do not try a different data_360 tool to compensate with made-up numbers.
+   7. CIRCUIT BREAKER: the runtime will AUTOMATICALLY block further calls to a data_360 tool after EVEN ONE schema-mismatch error in the same turn. When you see a tool result with "blocked": true, stop calling that tool immediately and finish your answer with whatever data you already have — do not try a different data_360 tool to compensate with made-up numbers.
 
 B. salesforce_crm SOQL:
    1. Before you reference any custom field (any name ending in __c), call getObjectSchema for that object to confirm the field exists. Do NOT invent custom fields like Health_Score__c, FinServ_TotalBankDeposits__c, etc. unless schema confirms them.

@@ -45,13 +45,19 @@ export function ReasoningTrail({
   const counts = useMemo(() => {
     let running = 0;
     let errors = 0;
+    let handled = 0;
     let ok = 0;
     for (const s of steps) {
       if (s.status === "running") running++;
-      else if (s.status === "error") errors++;
-      else if (s.status === "ok") ok++;
+      else if (s.status === "error") {
+        // Schema-mismatch rows are expected edge cases that the circuit
+        // breaker caught — they're not true failures, so we count them
+        // in a separate "handled" bucket to keep the header calm.
+        if (isHandledError(s)) handled++;
+        else errors++;
+      } else if (s.status === "ok") ok++;
     }
-    return { running, errors, ok };
+    return { running, errors, handled, ok };
   }, [steps]);
 
   // Group consecutive identical-signature errors so the trail reads "×3
@@ -89,6 +95,15 @@ export function ReasoningTrail({
             <span className="flex items-center gap-1 text-[10px] text-accent">
               <Loader2 size={11} className="animate-spin" />
               {counts.running}
+            </span>
+          )}
+          {counts.handled > 0 && (
+            <span
+              className="flex items-center gap-1 text-[10px] text-amber-300/90"
+              title="Schema mismatches caught by the breaker — handled gracefully"
+            >
+              <ShieldOff size={11} strokeWidth={2.4} />
+              {counts.handled}
             </span>
           )}
           {counts.errors > 0 && (
@@ -141,24 +156,26 @@ function AggregateRow({
   const isBlocked = /blocked by schema-mismatch breaker/i.test(firstPreview);
 
   return (
-    <li className="group relative rounded-md border border-danger/15 bg-danger/5 px-3 py-2 transition-colors">
+    <li className="group relative rounded-md border border-amber-400/15 bg-amber-400/5 px-3 py-2 transition-colors">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
         className="flex w-full items-center gap-2 text-left font-mono text-[11.5px]"
       >
-        {isBlocked ? (
-          <ShieldOff size={11} strokeWidth={2.4} className="shrink-0 text-amber-300" />
-        ) : (
-          <X size={11} strokeWidth={2.6} className="shrink-0 text-red-400" />
-        )}
+        <ShieldOff
+          size={11}
+          strokeWidth={2.4}
+          className="shrink-0 text-amber-300"
+        />
         <span className="text-accent">{server}</span>
         <span className="text-text-muted/70">.{tool}</span>
-        <span className="ml-2 rounded border border-danger/30 bg-danger/10 px-1.5 py-[1px] text-[10px] tabular-nums text-danger/90">
+        <span className="ml-2 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-[1px] text-[10px] tabular-nums text-amber-200/90">
           ×{count}
         </span>
         <span className="ml-auto truncate text-[10px] text-text-muted/60">
-          {isBlocked ? "breaker — further calls suppressed" : "schema mismatch"}
+          {isBlocked
+            ? "breaker — further calls suppressed"
+            : "schema mismatch — handled"}
         </span>
         <ChevronRight
           size={11}
@@ -169,7 +186,7 @@ function AggregateRow({
         />
       </button>
       {expanded && (
-        <pre className="mt-2 max-h-[240px] overflow-auto rounded-md border border-danger/30 bg-black/40 px-3 py-2 font-mono text-[11px] leading-snug text-red-300/90">
+        <pre className="mt-2 max-h-[240px] overflow-auto rounded-md border border-amber-400/30 bg-black/40 px-3 py-2 font-mono text-[11px] leading-snug text-amber-200/90">
           {formatted}
         </pre>
       )}
@@ -253,12 +270,15 @@ function TrailRow({ step }: { step: Step }) {
     () => (step.preview ? prettyPreview(step.preview) : ""),
     [step.preview]
   );
+  const handled = step.status === "error" && isHandledError(step);
+  const hardError = step.status === "error" && !handled;
 
   return (
     <li
       className={cn(
         "group relative rounded-md border border-transparent bg-surface/60 px-3 py-2 transition-colors",
-        step.status === "error" && "bg-danger/5"
+        hardError && "bg-danger/5",
+        handled && "bg-amber-400/5"
       )}
     >
       <button
@@ -267,11 +287,15 @@ function TrailRow({ step }: { step: Step }) {
         disabled={!canExpand}
         className="flex w-full items-center gap-2 text-left font-mono text-[11.5px]"
       >
-        <StatusDot status={step.status} />
+        <StatusDot status={step.status} handled={handled} />
         <span className="text-accent">{step.server}</span>
         <span className="text-text-muted/70">.{step.tool}</span>
         <span className="ml-auto truncate text-[10px] text-text-muted/60">
-          {step.input ? truncJson(step.input) : ""}
+          {handled
+            ? "schema mismatch — handled"
+            : step.input
+              ? truncJson(step.input)
+              : ""}
         </span>
         {canExpand && (
           <ChevronRight
@@ -287,7 +311,8 @@ function TrailRow({ step }: { step: Step }) {
         <pre
           className={cn(
             "mt-2 max-h-[240px] overflow-auto rounded-md border border-border-soft bg-black/40 px-3 py-2 font-mono text-[11px] leading-snug text-text-muted/90",
-            step.status === "error" && "border-danger/30 text-red-300/90"
+            hardError && "border-danger/30 text-red-300/90",
+            handled && "border-amber-400/30 text-amber-200/90"
           )}
         >
           {formatted}
@@ -297,15 +322,49 @@ function TrailRow({ step }: { step: Step }) {
   );
 }
 
-function StatusDot({ status }: { status?: Step["status"] }) {
+function StatusDot({
+  status,
+  handled = false,
+}: {
+  status?: Step["status"];
+  handled?: boolean;
+}) {
   if (status === "running")
     return <Loader2 size={11} className="shrink-0 animate-spin text-accent" />;
-  if (status === "error")
+  if (status === "error") {
+    if (handled)
+      return (
+        <ShieldOff
+          size={11}
+          strokeWidth={2.4}
+          className="shrink-0 text-amber-300"
+        />
+      );
     return <X size={11} strokeWidth={2.6} className="shrink-0 text-red-400" />;
+  }
   if (status === "ok")
     return <Check size={11} strokeWidth={2.6} className="shrink-0 text-emerald-400" />;
   return (
     <span className="h-[6px] w-[6px] shrink-0 rounded-full bg-text-muted/40" />
+  );
+}
+
+// A "handled" error is one whose preview matches a known schema-mismatch
+// signature the runtime is designed to catch and mitigate (via the
+// circuit breaker + synthetic tool result). These are expected graceful
+// degradations, not true failures — we render them amber and exclude
+// them from the red error counter so the header reads "calm" by default.
+function isHandledError(step: Step): boolean {
+  if (step.status !== "error") return false;
+  const p = (step.preview ?? "").toLowerCase();
+  return (
+    /blocked by schema-mismatch breaker/.test(p) ||
+    /invalid_argument/.test(p) ||
+    /unknown column/.test(p) ||
+    /unknown table/.test(p) ||
+    /no such column/.test(p) ||
+    /malformed_query/.test(p) ||
+    /unexpected token/.test(p)
   );
 }
 

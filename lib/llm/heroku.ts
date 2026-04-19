@@ -96,11 +96,12 @@ function isSchemaMismatchError(preview: string | undefined | null): boolean {
   return SCHEMA_ERROR_PATTERNS.some((re) => re.test(preview));
 }
 
-// Threshold for the breaker. One miss is understandable (rare DMO, custom
-// field the model hadn't seen in training). Two misses in the same run
-// from the same tool means the model is flailing — block further calls
-// to that tool for the rest of the turn.
-const SCHEMA_BREAKER_THRESHOLD = 2;
+// Threshold for the breaker. We trip on the very FIRST schema-mismatch
+// error from a tool. Rationale: the model almost never self-corrects an
+// INVALID_ARGUMENT/unknown-column mistake — if it guessed a column name
+// wrong once, its next guess is usually wrong too. Tripping immediately
+// keeps the reasoning trail clean for the demo and saves Flex credits.
+const SCHEMA_BREAKER_THRESHOLD = 1;
 
 // Synthetic response injected in place of a blocked tool call. Phrased
 // as a tool result the model will actually respect — "blocked" plus a
