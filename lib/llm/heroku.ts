@@ -90,6 +90,12 @@ const TRIP_ERROR_PATTERNS = [
   /no such column/i,
   /malformed_query/i,
   /unexpected token/i,
+  // Wrong tool name — model invented or guessed at the tool rather than
+  // copying from the tools list. Retrying with another guess always fails.
+  /unknown tool/i,
+  /invalid_tool_name/i,
+  /-32602/,
+  /\bmcp error\b/i,
   // Transport / CloudFront / auth / throttle
   /cloudfront/i,
   /request blocked/i,

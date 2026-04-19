@@ -254,6 +254,14 @@ function errorSignature(step: Step): string | null {
   else if (/no such column/.test(p)) family = "soql-unknown-column";
   else if (/malformed_query/.test(p) || /unexpected token/.test(p))
     family = "malformed-query";
+  else if (/unknown tool/.test(p) || /invalid_tool_name/.test(p) || /-32602/.test(p))
+    family = "unknown-tool";
+  else if (/cloudfront/.test(p) || /request (blocked|could not)/.test(p))
+    family = "transport-blocked";
+  else if (/\b403\b|\bforbidden\b/.test(p)) family = "http-403";
+  else if (/\b401\b|\bunauthorized\b/.test(p)) family = "http-401";
+  else if (/\b429\b|rate.?limit/.test(p)) family = "http-429";
+  else if (/\b50[234]\b/.test(p)) family = "http-5xx";
   else if (/invalid_argument/.test(p)) family = "invalid-argument";
   if (family === "other") return null;
   return `${step.server}.${step.tool}::${family}`;
@@ -364,7 +372,20 @@ function isHandledError(step: Step): boolean {
     /unknown table/.test(p) ||
     /no such column/.test(p) ||
     /malformed_query/.test(p) ||
-    /unexpected token/.test(p)
+    /unexpected token/.test(p) ||
+    /unknown tool/.test(p) ||
+    /invalid_tool_name/.test(p) ||
+    /-32602/.test(p) ||
+    /mcp error/.test(p) ||
+    /cloudfront/.test(p) ||
+    /request blocked/.test(p) ||
+    /request could not be satisfied/.test(p) ||
+    /\b403\b/.test(p) ||
+    /\b401\b/.test(p) ||
+    /\b429\b/.test(p) ||
+    /\b50[234]\b/.test(p) ||
+    /forbidden/.test(p) ||
+    /unauthorized/.test(p)
   );
 }
 
