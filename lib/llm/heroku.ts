@@ -76,6 +76,47 @@ export function herokuModel(): string {
   return process.env.INFERENCE_MODEL_ID ?? "claude-4-5-sonnet";
 }
 
+// Schema-mismatch signature. We trip a circuit breaker on these because
+// (a) they mean the model fabricated a column/table, and (b) letting it
+// retry produces an identical failure — a waste of Flex credits and a
+// demo-ruining cascade of red rows in the reasoning trail. See user
+// feedback 2026-04-19: the hygiene prompt alone wasn't enough.
+const SCHEMA_ERROR_PATTERNS = [
+  /invalid_argument/i,
+  /unknown column/i,
+  /unknown table/i,
+  /does not exist/i,
+  /no such column/i,
+  /malformed_query/i,
+  /unexpected token/i,
+] as const;
+
+function isSchemaMismatchError(preview: string | undefined | null): boolean {
+  if (!preview) return false;
+  return SCHEMA_ERROR_PATTERNS.some((re) => re.test(preview));
+}
+
+// Threshold for the breaker. One miss is understandable (rare DMO, custom
+// field the model hadn't seen in training). Two misses in the same run
+// from the same tool means the model is flailing — block further calls
+// to that tool for the rest of the turn.
+const SCHEMA_BREAKER_THRESHOLD = 2;
+
+// Synthetic response injected in place of a blocked tool call. Phrased
+// as a tool result the model will actually respect — "blocked" plus a
+// concrete next-step instruction.
+function blockedToolPayload(server: string, tool: string): string {
+  return JSON.stringify({
+    blocked: true,
+    server,
+    tool,
+    reason:
+      "Circuit breaker tripped: this tool returned repeated schema-mismatch errors in this turn. Further calls are disabled.",
+    instruction:
+      "Do NOT retry this tool for the rest of this turn. Stop invoking it and proceed with whatever data you already have from other tools. If you have no data, return a concise summary saying the source was unavailable — do not fabricate numbers.",
+  });
+}
+
 /**
  * Run the full tool-calling loop, non-streaming. Streaming is opt-in via
  * onEvent: we emit tool_use / tool_result / text_delta events as they happen.
@@ -107,6 +148,11 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   // that away. We keep a running copy here.
   let lastAssistantText = "";
   const model = herokuModel();
+
+  // Per-run circuit breaker state. Keyed by `${server}.${tool}` so we can
+  // block one data_360 tool without blocking the whole server.
+  const schemaErrorCount = new Map<string, number>();
+  const blockedTools = new Set<string>();
 
   for (iteration = 1; iteration <= maxIterations; iteration++) {
     onEvent({ type: "iteration_start", iteration });
@@ -190,12 +236,15 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
       })),
     });
 
-    // Execute in parallel.
+    // Execute in parallel, but gate each call through the circuit breaker.
+    // Blocked calls skip the network hop entirely and return a synthetic
+    // payload that steers the model toward a different plan.
     const results = await Promise.all(
       calls.map(async (c) => {
         const parsed = parseToolName(c.name);
         const server = parsed?.server ?? "salesforce_crm";
         const tool = parsed?.name ?? c.name;
+        const key = `${server}.${tool}`;
         let argObj: Record<string, unknown> = {};
         try {
           argObj = c.argsJson ? JSON.parse(c.argsJson) : {};
@@ -214,6 +263,35 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
             },
           };
         }
+
+        // Circuit breaker — short-circuit repeated schema mismatches.
+        // We still emit tool_use/tool_result events so the reasoning trail
+        // shows that the call was attempted and silenced.
+        if (blockedTools.has(key)) {
+          onEvent({ type: "tool_use", server, tool, input: argObj });
+          const blockedPreview = blockedToolPayload(server, tool);
+          onEvent({
+            type: "tool_result",
+            server,
+            tool,
+            preview: "blocked by schema-mismatch breaker",
+            is_error: true,
+          });
+          return {
+            c,
+            server,
+            tool,
+            argObj,
+            result: {
+              server: server as McpServerName,
+              tool,
+              isError: true,
+              content: null,
+              textPreview: blockedPreview,
+            },
+          };
+        }
+
         onEvent({
           type: "tool_use",
           server,
@@ -228,6 +306,19 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           preview: result.textPreview,
           is_error: result.isError,
         });
+
+        // Trip the breaker on schema-mismatch errors.
+        if (
+          result.isError &&
+          isSchemaMismatchError(result.textPreview)
+        ) {
+          const n = (schemaErrorCount.get(key) ?? 0) + 1;
+          schemaErrorCount.set(key, n);
+          if (n >= SCHEMA_BREAKER_THRESHOLD) {
+            blockedTools.add(key);
+          }
+        }
+
         return { c, server, tool, argObj, result };
       })
     );

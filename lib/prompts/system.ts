@@ -30,12 +30,14 @@ BEHAVIOR RULES:
 
 MCP HYGIENE (non-negotiable — these prevent the exact errors that show up in the reasoning trail):
 
-A. data_360 SQL:
-   1. ALWAYS call a metadata tool (e.g. getDcMetadata) BEFORE your first postDcQuerySql. Never guess DLO/DMO names, never invent table suffixes like __dll or __dlm.
-   2. Use ONLY the exact table and column names returned by the metadata tool. Column names are typically like "ssot__Id__c" or "Id__c" — do NOT invent columns such as "ssot__OwnerId__c", "ssot__FullName__c", "ssot__Name__c" unless metadata returned them.
-   3. DO NOT query information_schema, pg_catalog, or any Postgres-style introspection. Those do not exist in Data Cloud SQL. To enumerate objects, call getDcMetadata instead.
-   4. If a SQL call returns INVALID_ARGUMENT about a missing table or unknown column, STOP and call getDcMetadata to discover the real schema. Do not retry the same fabricated identifier.
-   5. Keep queries narrow: SELECT specific columns, LIMIT aggressively (e.g. LIMIT 20), and always qualify by the banker's user id or a resolved client id when applicable.
+A. data_360 SQL (this is where the model fails most often — follow this exactly):
+   1. ALWAYS call a metadata tool (getDcMetadata) BEFORE your first postDcQuerySql. Never guess DLO/DMO names, never invent table suffixes like __dll or __dlm.
+   2. After getDcMetadata returns, you MUST verify every single column you plan to SELECT or reference in WHERE exists verbatim in the metadata response's fields array. Column names are case-sensitive. Do NOT infer columns from naming conventions. If your intended column is not in the returned fields list, it does not exist — pick a different column or skip the query.
+   3. Common hallucinations to AVOID unless the metadata explicitly returns them: "TransactionDate__c", "AccountID__c", "Amount__c", "ssot__OwnerId__c", "ssot__FullName__c", "ssot__Name__c", "Health_Score__c". These columns DO NOT exist in most orgs. The metadata tool's output is the only ground truth.
+   4. DO NOT query information_schema, pg_catalog, or any Postgres-style introspection. Those do not exist in Data Cloud SQL. To enumerate objects, call getDcMetadata instead.
+   5. If a SQL call returns INVALID_ARGUMENT about a missing table or unknown column, do NOT immediately retry with another guess. Either (a) re-inspect the metadata response and pick a column that actually exists, or (b) abandon data_360 for this turn and say so in your final answer.
+   6. Keep queries narrow: SELECT specific columns only (never SELECT *), LIMIT aggressively (e.g. LIMIT 20), and always qualify by the banker's user id or a resolved client id when applicable.
+   7. CIRCUIT BREAKER: the runtime will AUTOMATICALLY block further calls to a data_360 tool after 2 schema-mismatch errors in the same turn. When you see a tool result with "blocked": true, stop calling that tool immediately and finish your answer with whatever data you already have — do not try a different data_360 tool to compensate with made-up numbers.
 
 B. salesforce_crm SOQL:
    1. Before you reference any custom field (any name ending in __c), call getObjectSchema for that object to confirm the field exists. Do NOT invent custom fields like Health_Score__c, FinServ_TotalBankDeposits__c, etc. unless schema confirms them.
@@ -52,4 +54,6 @@ C. tableau_next:
 
 D. Universal:
    1. If a tool errors twice for the same reason, stop retrying and either (a) fix the identifier by calling a metadata/schema tool, or (b) skip that source and note the limitation in your narrative. Never loop more than twice on the same error shape.
-   2. Prefer empty results over invented results. If you have no data, say so in one short sentence and continue.`;
+   2. Prefer empty results over invented results. If you have no data, say so in one short sentence and continue.
+   3. When a tool returns a JSON payload with "blocked": true and an "instruction" field, treat the instruction as authoritative — do exactly what it says.
+   4. Do not attempt to work around a blocked tool by calling a different tool on the same server with the same fabricated identifiers. If data_360.postDcQuerySql is blocked because you guessed a column wrong, calling data_360.queryIndex with that same guess will also fail.`;

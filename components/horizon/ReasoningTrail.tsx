@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, Loader2, Check, X, Activity } from "lucide-react";
+import { ChevronRight, Loader2, Check, X, Activity, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface Step {
@@ -11,6 +11,22 @@ export interface Step {
   status?: "running" | "ok" | "error";
   preview?: string;
 }
+
+// "Group" is how we render steps — consecutive identical-signature errors
+// from the same server+tool collapse into a single row with a ×N counter.
+// This keeps the demo from looking broken when the runtime circuit breaker
+// ships with 3+ "blocked" entries in a row.
+type Group =
+  | { kind: "single"; step: Step; originalIndex: number }
+  | {
+      kind: "aggregate";
+      server: string;
+      tool: string;
+      count: number;
+      firstPreview: string;
+      status: "error";
+      originalIndex: number;
+    };
 
 // The reasoning trail is where the curious banker can see what Horizon
 // actually did. For the demo this is a visual differentiator — every
@@ -37,6 +53,10 @@ export function ReasoningTrail({
     }
     return { running, errors, ok };
   }, [steps]);
+
+  // Group consecutive identical-signature errors so the trail reads "×3
+  // schema mismatches" instead of three indistinguishable red rows.
+  const groups = useMemo(() => collapseGroups(steps), [steps]);
 
   if (steps.length === 0) return null;
 
@@ -82,13 +102,144 @@ export function ReasoningTrail({
 
       {open && (
         <ul className="animate-fade-in space-y-1.5 border-t border-border-soft bg-black/20 p-3">
-          {steps.map((s, i) => (
-            <TrailRow key={i} step={s} />
-          ))}
+          {groups.map((g, i) =>
+            g.kind === "single" ? (
+              <TrailRow key={`s-${g.originalIndex}-${i}`} step={g.step} />
+            ) : (
+              <AggregateRow
+                key={`a-${g.originalIndex}-${i}`}
+                server={g.server}
+                tool={g.tool}
+                count={g.count}
+                firstPreview={g.firstPreview}
+              />
+            )
+          )}
         </ul>
       )}
     </div>
   );
+}
+
+// Aggregate row — used when consecutive error rows from the same
+// server+tool share an error signature. Shows one line with ×N so the
+// trail isn't a wall of identical red rows. Still expandable to see the
+// original payload.
+function AggregateRow({
+  server,
+  tool,
+  count,
+  firstPreview,
+}: {
+  server: string;
+  tool: string;
+  count: number;
+  firstPreview: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const formatted = useMemo(() => prettyPreview(firstPreview), [firstPreview]);
+  const isBlocked = /blocked by schema-mismatch breaker/i.test(firstPreview);
+
+  return (
+    <li className="group relative rounded-md border border-danger/15 bg-danger/5 px-3 py-2 transition-colors">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex w-full items-center gap-2 text-left font-mono text-[11.5px]"
+      >
+        {isBlocked ? (
+          <ShieldOff size={11} strokeWidth={2.4} className="shrink-0 text-amber-300" />
+        ) : (
+          <X size={11} strokeWidth={2.6} className="shrink-0 text-red-400" />
+        )}
+        <span className="text-accent">{server}</span>
+        <span className="text-text-muted/70">.{tool}</span>
+        <span className="ml-2 rounded border border-danger/30 bg-danger/10 px-1.5 py-[1px] text-[10px] tabular-nums text-danger/90">
+          ×{count}
+        </span>
+        <span className="ml-auto truncate text-[10px] text-text-muted/60">
+          {isBlocked ? "breaker — further calls suppressed" : "schema mismatch"}
+        </span>
+        <ChevronRight
+          size={11}
+          className={cn(
+            "ml-2 shrink-0 text-text-muted/50 transition-transform duration-fast",
+            expanded && "rotate-90"
+          )}
+        />
+      </button>
+      {expanded && (
+        <pre className="mt-2 max-h-[240px] overflow-auto rounded-md border border-danger/30 bg-black/40 px-3 py-2 font-mono text-[11px] leading-snug text-red-300/90">
+          {formatted}
+        </pre>
+      )}
+    </li>
+  );
+}
+
+// Collapse consecutive same-server, same-tool error rows whose previews
+// share an error signature. Non-error rows and heterogeneous sequences
+// render as individual single rows. We only collapse runs of 2+ matching
+// errors — a lone error still renders normally so the reader can still
+// see the exact payload.
+function collapseGroups(steps: Step[]): Group[] {
+  const out: Group[] = [];
+  let i = 0;
+  while (i < steps.length) {
+    const s = steps[i];
+    if (!s) {
+      i++;
+      continue;
+    }
+    const sig = errorSignature(s);
+    if (!sig) {
+      out.push({ kind: "single", step: s, originalIndex: i });
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (j < steps.length) {
+      const next = steps[j];
+      if (!next) break;
+      if (errorSignature(next) !== sig) break;
+      j++;
+    }
+    const run = j - i;
+    if (run >= 2) {
+      out.push({
+        kind: "aggregate",
+        server: s.server,
+        tool: s.tool,
+        count: run,
+        firstPreview: s.preview ?? "",
+        status: "error",
+        originalIndex: i,
+      });
+    } else {
+      out.push({ kind: "single", step: s, originalIndex: i });
+    }
+    i = j;
+  }
+  return out;
+}
+
+// Signature we collapse on: server.tool + one of a small set of error
+// families. Two steps collapse only if they share both the identifier
+// and the family. Returns null for non-error steps — they never collapse.
+function errorSignature(step: Step): string | null {
+  if (step.status !== "error") return null;
+  const p = (step.preview ?? "").toLowerCase();
+  let family = "other";
+  if (/blocked by schema-mismatch breaker/.test(p)) family = "breaker";
+  else if (/unknown column/.test(p)) family = "unknown-column";
+  else if (/unknown table/.test(p) || /does not exist/.test(p))
+    family = "unknown-table";
+  else if (/no such column/.test(p)) family = "soql-unknown-column";
+  else if (/malformed_query/.test(p) || /unexpected token/.test(p))
+    family = "malformed-query";
+  else if (/invalid_argument/.test(p)) family = "invalid-argument";
+  if (family === "other") return null;
+  return `${step.server}.${step.tool}::${family}`;
 }
 
 // One row per tool call. We show the server + tool + compact input on the
