@@ -7,6 +7,7 @@ import { useAgentStream } from "@/lib/client/useAgentStream";
 import { useSpeechInput } from "@/lib/client/useSpeechInput";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { sanitizeNarrative } from "@/lib/client/sanitizeNarrative";
+import { MarkdownView } from "./MarkdownView";
 
 // The Ask bar is pinned to the bottom of every page. It has two jobs:
 //  1) Receive banker questions and stream the answer back inline above the
@@ -107,8 +108,8 @@ export function AskBar() {
                 </div>
               )}
               {cleanNarrative && (
-                <div className="mt-3 whitespace-pre-wrap text-[14px] leading-relaxed text-text">
-                  {cleanNarrative}
+                <div className="mt-3">
+                  <MarkdownView source={cleanNarrative} />
                   {state === "streaming" && (
                     <span className="ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] animate-pulse bg-accent" />
                   )}
