@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import type { PriorityClient } from "@/types/horizon";
 import { useAgentStream } from "@/lib/client/useAgentStream";
+import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
+import { ClientDetailSheet } from "./ClientDetailSheet";
 
 // Heroku caps non-streaming HTTP at 30s; the priority agent loop routinely
 // needs 40–60s for a cold cross-MCP fetch. We ride the same SSE pipeline as
@@ -13,6 +15,9 @@ import { ReasoningTrail } from "./ReasoningTrail";
 export function PriorityQueue() {
   const { narrative, steps, state, error, start } = useAgentStream();
   const [hasStarted, setHasStarted] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<PriorityClient | null>(
+    null
+  );
 
   useEffect(() => {
     if (hasStarted) return;
@@ -58,17 +63,34 @@ export function PriorityQueue() {
           </li>
         )}
         {clients.map((c) => (
-          <li
-            key={c.client_id}
-            className="flex items-start justify-between gap-6 py-5"
-          >
-            <div>
-              <div className="font-medium text-text">{c.name}</div>
-              <div className="mt-1 text-sm text-text-muted">{c.reason}</div>
-            </div>
-            <div className="shrink-0 font-mono text-xs text-accent">
-              {c.score.toFixed(0)}
-            </div>
+          <li key={c.client_id}>
+            <button
+              type="button"
+              onClick={() => setSelectedClient(c)}
+              className="group flex w-full items-start justify-between gap-6 py-5 text-left transition-colors duration-fast ease-out hover:bg-surface2/40 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
+            >
+              <div>
+                <div className="font-medium text-text group-hover:text-accent">
+                  {c.name}
+                </div>
+                <div className="mt-1 text-sm text-text-muted">{c.reason}</div>
+                {c.sources && c.sources.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
+                    {c.sources.map((s) => (
+                      <span
+                        key={s}
+                        className="rounded border border-border/50 px-1.5 py-0.5"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="shrink-0 font-mono text-xs text-accent">
+                {c.score.toFixed(0)}
+              </div>
+            </button>
           </li>
         ))}
       </ul>
@@ -77,6 +99,14 @@ export function PriorityQueue() {
         <div className="mt-4">
           <ReasoningTrail steps={steps} defaultOpen={false} />
         </div>
+      )}
+
+      {selectedClient && (
+        <ClientDetailSheet
+          clientId={selectedClient.client_id}
+          clientName={selectedClient.name}
+          onClose={() => setSelectedClient(null)}
+        />
       )}
     </div>
   );
@@ -94,58 +124,16 @@ interface PriorityPayload {
 
 function parsePriorityPayload(text: string): PriorityPayload {
   if (!text || !text.trim()) return { clients: [], note: null };
-  const stripped = stripFence(text);
-  const obj = extractFirstJsonObject(stripped);
-  if (!obj) return { clients: [], note: null };
-  try {
-    const parsed = JSON.parse(obj) as {
-      clients?: PriorityClient[];
-      error?: string;
-      details?: unknown;
-    };
-    if (Array.isArray(parsed.clients) && parsed.clients.length > 0) {
-      return { clients: parsed.clients, note: null };
-    }
-    if (typeof parsed.error === "string") {
-      return { clients: [], note: parsed.error };
-    }
-    return { clients: [], note: null };
-  } catch {
-    return { clients: [], note: null };
+  const parsed = tryParseJson<{
+    clients?: PriorityClient[];
+    error?: string;
+  }>(text);
+  if (!parsed) return { clients: [], note: null };
+  if (Array.isArray(parsed.clients) && parsed.clients.length > 0) {
+    return { clients: parsed.clients, note: null };
   }
-}
-
-function stripFence(text: string): string {
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  return (fence?.[1] ?? text).trim();
-}
-
-function extractFirstJsonObject(text: string): string | null {
-  const start = text.indexOf("{");
-  if (start === -1) return null;
-  let depth = 0;
-  let inStr = false;
-  let escape = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch === "\\") {
-      escape = true;
-      continue;
-    }
-    if (ch === '"') {
-      inStr = !inStr;
-      continue;
-    }
-    if (inStr) continue;
-    if (ch === "{") depth++;
-    else if (ch === "}") {
-      depth--;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
+  if (typeof parsed.error === "string") {
+    return { clients: [], note: parsed.error };
   }
-  return null;
+  return { clients: [], note: null };
 }

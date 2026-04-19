@@ -519,22 +519,33 @@ Everything in this spec is in service of that 3 minutes.
 
 ## 15. Shipping State (auto-updated)
 
-- **Deploy target:** https://headless-jdo-002d2a119b15.herokuapp.com (Heroku app `headless-jdo`, release v14)
+- **Deploy target:** https://headless-jdo-002d2a119b15.herokuapp.com (Heroku app `headless-jdo`)
 - **Local dev:** `npm run dev` + `npm run sf:login` (PKCE against the org-locked ECA at `https://storm-16a17dc388fbe6.demo.my.salesforce.com`)
 - **LLM path:** Heroku Inference (Claude 4.5 Sonnet, `claude-4-5-sonnet`) via OpenAI-compatible `/v1/chat/completions`. Anthropic direct kept as a fallback but not active (`LLM_PROVIDER=heroku`).
 - **MCPs connected:** `salesforce_crm` (9 tools), `data_360` (2 tools), `tableau_next` (19 tools), `heroku_toolkit` (SSE transport).
-- **Smoke tests:** `npm run verify:mcp` and `npm run smoke:api` both PASS end-to-end against the deployed app as of the last commit on `main`.
+- **Smoke tests:** `npm run verify:mcp` and `npm run smoke:api` both PASS end-to-end against the deployed app as of the last commit on `main`. Prod `/api/health` is green.
 - **Day status:**
   - Day 1 ✓ — `verify:mcp` clean
   - Day 2 ✓ — Ask Anything streams tokens + live reasoning trail
-  - Day 3 ✓ — Morning Brief generates from three MCPs with streamed narrative
-  - Day 4 ✓ — Priority Queue streams 5 clients ranked by composite score (SSE, not JSON)
-  - Days 5–9 — remaining (Portfolio Pulse detail, Pre-Drafted Action execution end-to-end, Signal Feed polish, voice input, demo video).
+  - Day 3 ✓ — Morning Brief renders JSON as cards + Web Speech narration (Listen/Stop)
+  - Day 4 ✓ — Priority Queue streams 5 ranked clients (SSE) + clickable rows → 360° Client Detail Sheet (`/api/client/[id]`, SSE)
+  - Day 5 ✓ — Portfolio Pulse (`/api/pulse`, SSE) with 2–3 KPIs + narration; Pre-Drafted Actions (`/api/drafts`, SSE) with Approve→Execute handshake to `/api/actions`
+  - Day 6 ✓ — Live Signal Feed polls `/api/signals` (data_360 + salesforce_crm, 45s cadence, severity-coded, merges by id)
+  - Day 7 ✓ — Voice input on AskBar (SpeechRecognition, interim + final transcript into the textbox); signed-out banner; error states across every card
+  - Days 8–9 — remaining: demo video recording + edit.
 
-### Known follow-ups to unblock the banker login from prod
-- Add `https://headless-jdo-002d2a119b15.herokuapp.com/callback` to the External Client App's allowed Callback URLs (today only `localhost:3000/callback` is whitelisted).
-- If the ECA policy is still "Enforce User Provisioning", ensure the demo banker user is provisioned to the app.
+### Surfaces shipping today
+- `/` — Morning Brief → Priority Queue → Portfolio Pulse → Pre-Drafted Actions → Live Signals → Ask Bar (fixed)
+- Click any Priority Queue row to open the 360° sheet (Esc closes)
+- Listen button on Morning Brief + Portfolio Pulse (Web Speech, gracefully hides where unsupported)
+- Mic button on Ask Bar (Web Speech Recognition, gracefully hides where unsupported)
+
+### Known follow-ups
+- Add `https://headless-jdo-002d2a119b15.herokuapp.com/callback` to the External Client App's allowed Callback URLs (done).
+- Slack page `app/slack/page.tsx` is still a stretch stub; Block Kit rendering has not been done.
+- `lib/anthropic/client.ts` + `lib/anthropic/mcp-servers.ts` + the `LLM_PROVIDER=anthropic` branch are dead code kept as a kill-switch — remove once Heroku billing is permanent.
+- Rotate leaked secrets that appeared in chat history: `ANTHROPIC_API_KEY`, `SF_CLIENT_SECRET`, `INFERENCE_KEY`.
 
 ---
 
-*Last updated: April 18, 2026. Owner: Jose. Status: GO — deployed, smoke-tested end-to-end on Heroku.*
+*Last updated: April 19, 2026. Owner: Jose. Status: GO — Days 1–7 shipped, deployed, smoke-tested end-to-end on Heroku.*

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Square, X } from "lucide-react";
+import { ArrowUp, Mic, Square, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAgentStream } from "@/lib/client/useAgentStream";
+import { useSpeechInput } from "@/lib/client/useSpeechInput";
 import { ReasoningTrail } from "./ReasoningTrail";
 
 export function AskBar() {
@@ -13,6 +14,20 @@ export function AskBar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const { narrative, steps, state, error, start, cancel, reset } =
     useAgentStream();
+  const speech = useSpeechInput();
+
+  // Pipe live dictation into the input. `interim` is the word-in-progress;
+  // `transcript` is the finalized text. Concatenating gives the banker
+  // instant feedback without duplicating already-committed words.
+  useEffect(() => {
+    if (!speech.listening) return;
+    const merged = [speech.transcript, speech.interim]
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (merged) setValue(merged);
+  }, [speech.listening, speech.transcript, speech.interim]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -32,9 +47,15 @@ export function AskBar() {
   async function submit() {
     const q = value.trim();
     if (!q || state === "streaming") return;
+    if (speech.listening) speech.stop();
     setLastQuestion(q);
     setValue("");
     await start("/api/ask", { q });
+  }
+
+  function toggleMic() {
+    if (speech.listening) speech.stop();
+    else speech.start();
   }
 
   const showPanel = Boolean(
@@ -86,6 +107,12 @@ export function AskBar() {
           </div>
         )}
 
+        {speech.error && (
+          <div className="mx-auto max-w-prose rounded-md border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-[11px] text-red-200">
+            Voice input: {speech.error}
+          </div>
+        )}
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -93,7 +120,8 @@ export function AskBar() {
           }}
           className={cn(
             "flex items-center gap-3 rounded-xl border border-border bg-surface/90 px-4 py-3 backdrop-blur transition duration-med ease-out",
-            focus && "ring-accent"
+            focus && "ring-accent",
+            speech.listening && "border-accent/60 ring-1 ring-accent/40"
           )}
         >
           <input
@@ -102,10 +130,32 @@ export function AskBar() {
             onChange={(e) => setValue(e.target.value)}
             onFocus={() => setFocus(true)}
             onBlur={() => setFocus(false)}
-            placeholder="Ask Horizon anything about your book… (⌘K)"
+            placeholder={
+              speech.listening
+                ? "Listening…"
+                : "Ask Horizon anything about your book… (⌘K)"
+            }
             className="flex-1 bg-transparent text-[15px] text-text placeholder:text-text-muted focus:outline-none"
             aria-label="Ask Horizon"
           />
+          {speech.supported && (
+            <button
+              type="button"
+              onClick={toggleMic}
+              disabled={state === "streaming"}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md transition duration-fast",
+                speech.listening
+                  ? "bg-accent text-bg animate-pulse"
+                  : "bg-surface2 text-text-muted hover:text-text",
+                state === "streaming" && "opacity-40"
+              )}
+              aria-label={speech.listening ? "Stop dictating" : "Dictate"}
+              title={speech.listening ? "Stop dictating" : "Dictate"}
+            >
+              <Mic size={14} />
+            </button>
+          )}
           {state === "streaming" ? (
             <button
               type="button"
