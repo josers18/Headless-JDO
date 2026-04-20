@@ -4,7 +4,10 @@ import { isLikelyMp3Buffer } from "@/lib/tts/mp3Guards";
 /** Default voice: Rachel (library preset). Override with your cloned voice id. */
 const DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM";
 
-/** Docs default; turbo is often plan-gated — multilingual v2 is the safe baseline. */
+/** Requested default for Horizon (fast, low-latency). Retries use multilingual v2 if Flash is rejected. */
+const DEFAULT_MODEL_ID = "eleven_flash_v2_5";
+
+/** Safe fallback when the account or voice does not support Flash / preferred bitrate. */
 const FALLBACK_MODEL = "eleven_multilingual_v2";
 
 export interface ElevenLabsTtsResult {
@@ -42,7 +45,7 @@ async function postTts(
 
 /**
  * Calls ElevenLabs text-to-speech. Returns MP3 bytes on success.
- * Retries with safer model / bitrate when the plan rejects turbo or high kbps.
+ * Retries with multilingual v2 / lower MP3 bitrate when Flash or format is rejected.
  */
 export async function synthesizeElevenLabsMp3(
   text: string
@@ -56,8 +59,8 @@ export async function synthesizeElevenLabsMp3(
     .trim()
     .replace(/\/$/, "");
   const preferredModel =
-    optionalEnv("ELEVENLABS_MODEL_ID", FALLBACK_MODEL).trim() ||
-    FALLBACK_MODEL;
+    optionalEnv("ELEVENLABS_MODEL_ID", DEFAULT_MODEL_ID).trim() ||
+    DEFAULT_MODEL_ID;
   const preferredFormat =
     optionalEnv("ELEVENLABS_OUTPUT_FORMAT", "mp3_44100_128").trim() ||
     "mp3_44100_128";
