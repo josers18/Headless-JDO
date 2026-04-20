@@ -194,7 +194,9 @@ function preflightDataCloudSql(
   args: Record<string, unknown>
 ): string | null {
   if (server !== "data_360") return null;
-  if (tool !== "postDcQuerySql") return null;
+  // OpenAI tool names are sanitized + max 64 chars; the MCP leaf name is
+  // often suffixed (e.g. postDcQuerySqlmarketing_data_cloud_queries).
+  if (!/^postDcQuerySql/i.test(tool)) return null;
   const sql = typeof args.sql === "string" ? args.sql : "";
   if (!sql) return null;
   for (const { re, reason } of FORBIDDEN_DC_SQL_PATTERNS) {
