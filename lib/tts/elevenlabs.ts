@@ -26,23 +26,36 @@ export async function synthesizeElevenLabsMp3(
   }
   const voiceId = optionalEnv("ELEVENLABS_VOICE_ID", DEFAULT_VOICE_ID);
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
-  const res = await fetch(url, {
+  const modelId = optionalEnv("ELEVENLABS_MODEL_ID", "eleven_turbo_v2_5");
+  const bodyPrimary = JSON.stringify({
+    text,
+    model_id: modelId,
+    voice_settings: {
+      stability: 0.45,
+      similarity_boost: 0.72,
+    },
+  });
+  let res = await fetch(url, {
     method: "POST",
     headers: {
       "xi-api-key": apiKey,
       Accept: "audio/mpeg",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      text,
-      model_id: optionalEnv("ELEVENLABS_MODEL_ID", "eleven_turbo_v2_5"),
-      voice_settings: {
-        stability: 0.45,
-        similarity_boost: 0.72,
-        speed: 0.95,
-      },
-    }),
+    body: bodyPrimary,
   });
+  // why: some keys/models reject extra voice_settings fields; retry minimal body.
+  if (!res.ok && res.status >= 400 && res.status < 500) {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "xi-api-key": apiKey,
+        Accept: "audio/mpeg",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text, model_id: modelId }),
+    });
+  }
   if (!res.ok) {
     const errText = (await res.text()).slice(0, 200);
     return {

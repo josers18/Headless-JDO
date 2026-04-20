@@ -25,6 +25,15 @@ function cleanupAudio(
   if (url) URL.revokeObjectURL(url);
 }
 
+/** MP3 frame sync (0xFFE…) or leading ID3 tag — avoids relying on Content-Type alone. */
+function isLikelyMp3Bytes(bytes: Uint8Array): boolean {
+  if (bytes.length < 4) return false;
+  const b0 = bytes[0]!;
+  const b1 = bytes[1]!;
+  if (b0 === 0x49 && b1 === 0x44 && bytes[2] === 0x33) return true;
+  return b0 === 0xff && (b1 & 0xe0) === 0xe0;
+}
+
 /**
  * Narration for Morning Brief + Portfolio Pulse: tries POST /api/tts
  * (ElevenLabs MP3, Redis-cached server-side) first; falls back to Web Speech.
@@ -78,9 +87,35 @@ export function useSpokenNarration(): SpokenNarration {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
           });
-          const ct = res.headers.get("content-type") ?? "";
-          if (res.ok && ct.includes("audio/mpeg")) {
-            const blob = await res.blob();
+          const buf = await res.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+
+          if (res.status === 401) {
+            playWeb(text);
+            return;
+          }
+
+          if (res.ok && bytes.length >= 4 && bytes[0] === 0x7b) {
+            try {
+              const data = JSON.parse(
+                new TextDecoder().decode(bytes)
+              ) as { mode?: string };
+              if (data.mode === "fallback") {
+                playWeb(text);
+                return;
+              }
+            } catch {
+              playWeb(text);
+              return;
+            }
+          }
+
+          if (
+            res.ok &&
+            bytes.length > 500 &&
+            isLikelyMp3Bytes(bytes)
+          ) {
+            const blob = new Blob([buf], { type: "audio/mpeg" });
             const url = URL.createObjectURL(blob);
             objectUrlRef.current = url;
             const audio = new Audio(url);
@@ -101,13 +136,7 @@ export function useSpokenNarration(): SpokenNarration {
             }
             return;
           }
-          if (res.ok && ct.includes("application/json")) {
-            const data = (await res.json()) as { mode?: string };
-            if (data.mode === "fallback") {
-              playWeb(text);
-              return;
-            }
-          }
+
           playWeb(text);
         } catch {
           playWeb(text);
