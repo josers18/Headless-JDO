@@ -26,6 +26,11 @@ export async function POST(req: NextRequest) {
       messages: [{ role: "user", content: askAnythingPrompt(q) }],
       salesforceToken: token.access_token,
       maxIterations: 10,
+      // Hard-force at least one real tool call on iteration 1. Without
+      // this the model was skipping the tool loop entirely on free-form
+      // asks and hallucinating Salesforce Ids from prior training.
+      // See FIX_PASS.md#P0-2.
+      forceFirstToolCall: true,
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
           send({ type: "text_delta", text: e.text });

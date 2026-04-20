@@ -47,6 +47,18 @@ export interface AgentRunArgs {
   temperature?: number;
   maxTokens?: number;
   onEvent?: (e: AgentEvent) => void;
+  /**
+   * If true, force `tool_choice: "required"` on the first iteration so the
+   * model must emit at least one structured tool_call before it can finalize
+   * a plain text answer. Subsequent iterations use "auto" so the model can
+   * exit the loop normally with prose.
+   *
+   * Use this for endpoints where skipping the tool loop would be
+   * catastrophic (e.g. /api/ask, where a tool-less answer is pure
+   * hallucination). Do NOT use it for turns that may legitimately answer
+   * from prior tool output with no new calls.
+   */
+  forceFirstToolCall?: boolean;
 }
 
 export interface AgentRunResult {
@@ -200,6 +212,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     temperature = 0.3,
     maxTokens = 4096,
     onEvent = () => {},
+    forceFirstToolCall = false,
   } = args;
 
   const toolDefs = await registry.listAllTools();
@@ -230,11 +243,24 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     // why: stream=true gives us text deltas AND lets us watch tool_calls build
     // up incrementally. We still need to fully drain before executing, so we
     // accumulate into a single assistant message.
+    // Iteration 1 + forceFirstToolCall → tool_choice: "required".
+    // The OpenAI spec says the model MUST emit a tool_call in this mode.
+    // We observed /api/ask skipping the tool loop entirely for several
+    // free-form questions despite imperative prompting; "required" is the
+    // hard guarantee that ends the ambiguity. Every iteration after the
+    // first uses "auto" so the model can finalize with plain prose.
+    const toolChoice =
+      tools.length > 0
+        ? iteration === 1 && forceFirstToolCall
+          ? ("required" as const)
+          : ("auto" as const)
+        : undefined;
+
     const stream = await openai().chat.completions.create({
       model,
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      tool_choice: tools.length > 0 ? "auto" : undefined,
+      tool_choice: toolChoice,
       temperature,
       max_tokens: maxTokens,
       stream: true,

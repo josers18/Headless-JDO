@@ -29,6 +29,8 @@ export interface RunAgentInput {
   maxIterations?: number;
   temperature?: number;
   maxTokens?: number;
+  /** See `AgentRunArgs.forceFirstToolCall` in lib/llm/heroku.ts. */
+  forceFirstToolCall?: boolean;
 }
 
 export interface RunAgentOutput {
@@ -71,6 +73,7 @@ export async function runAgentWithMcp(
       maxIterations: input.maxIterations,
       temperature: input.temperature,
       maxTokens: input.maxTokens,
+      forceFirstToolCall: input.forceFirstToolCall,
     });
     return result;
   } finally {
