@@ -132,12 +132,42 @@ export function PriorityQueue() {
   );
 }
 
-// Score pill — a mini horizontal bar + numeric readout. The bar uses the
-// accent gradient and a subtle glow that scales with the score so high-
-// priority rows pop. Score is clamped to [0, 100].
+// Score pill — a mini horizontal bar + qualitative tier tag. The bar uses
+// the accent gradient and a subtle glow that scales with the score so
+// high-priority rows pop. The tag translates the numeric score (which
+// the banker doesn't need to see raw) into one of three levels:
+//   - Critical  (>= 90): glows brighter, reserved for truly urgent rows
+//   - Important (70–89): standard emphasis
+//   - Watch     (< 70):  muted — worth knowing about, not acting on today
+// Score is still clamped to [0, 100] for the bar fill so the visual
+// density hierarchy is preserved even though we hide the number.
+type Tier = "critical" | "important" | "watch";
+
+function scoreTier(score: number): Tier {
+  if (score >= 90) return "critical";
+  if (score >= 70) return "important";
+  return "watch";
+}
+
+const TIER_LABEL: Record<Tier, string> = {
+  critical: "Critical",
+  important: "Important",
+  watch: "Watch",
+};
+
+const TIER_CLASS: Record<Tier, string> = {
+  critical:
+    "text-accent border-accent/40 bg-accent/10",
+  important:
+    "text-text border-border-soft bg-surface/80",
+  watch:
+    "text-text-muted border-border-soft bg-surface/50",
+};
+
 function ScorePill({ score }: { score: number }) {
   const clamped = Math.max(0, Math.min(100, score));
   const pct = `${clamped}%`;
+  const tier = scoreTier(clamped);
   return (
     <div className="flex shrink-0 items-center gap-3">
       <div className="relative h-[6px] w-[72px] overflow-hidden rounded-full bg-border-soft">
@@ -146,14 +176,24 @@ function ScorePill({ score }: { score: number }) {
           style={{
             width: pct,
             boxShadow:
-              clamped >= 70
-                ? "0 0 12px rgba(91, 141, 239, 0.55)"
-                : "0 0 6px rgba(91, 141, 239, 0.3)",
+              tier === "critical"
+                ? "0 0 14px rgba(91, 141, 239, 0.65)"
+                : tier === "important"
+                  ? "0 0 10px rgba(91, 141, 239, 0.45)"
+                  : "0 0 4px rgba(91, 141, 239, 0.2)",
           }}
         />
       </div>
-      <span className="w-[28px] text-right font-mono text-[13px] tabular-nums text-text">
-        {clamped.toFixed(0)}
+      <span
+        className={cn(
+          "rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] font-mono",
+          TIER_CLASS[tier]
+        )}
+        // why: numeric score still available to assistive tech / power-users
+        // inspecting the DOM, but invisible in the rendered UI.
+        data-score={clamped.toFixed(0)}
+      >
+        {TIER_LABEL[tier]}
       </span>
     </div>
   );

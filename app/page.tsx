@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { HorizonMark } from "@/components/brand/HorizonMark";
+import { HeaderClock } from "@/components/horizon/HeaderClock";
 import { MorningBrief } from "@/components/horizon/MorningBrief";
 import { PriorityQueue } from "@/components/horizon/PriorityQueue";
 import { PortfolioPulse } from "@/components/horizon/PortfolioPulse";
@@ -14,30 +15,13 @@ import { SignInBanner } from "@/components/horizon/SignInBanner";
 export const dynamic = "force-dynamic";
 
 export default function HorizonHome() {
-  const now = new Date();
-  const greetingTime = now.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const dayLine = now.toLocaleDateString([], {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
   const signedIn = Boolean(cookies().get("hz_sf")?.value);
 
   return (
     <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56 pt-12 md:pt-16">
       <header className="flex items-center justify-between animate-fade-rise">
         <HorizonMark />
-        <div className="flex items-center gap-4 text-[11px] uppercase tracking-[0.2em] text-text-muted">
-          <span className="hidden sm:inline-block">{dayLine}</span>
-          <span className="h-[10px] w-px bg-border/70" aria-hidden />
-          <span className="font-mono text-[11px] normal-case tracking-normal text-text">
-            {greetingTime}
-          </span>
-        </div>
+        <HeaderClock />
       </header>
 
       {!signedIn && (

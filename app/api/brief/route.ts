@@ -16,6 +16,13 @@ export async function POST(_req: NextRequest) {
   if (!token) return new Response("unauthenticated", { status: 401 });
 
   const now = new Date();
+  // why: Heroku dynos run in UTC, so raw toLocaleTimeString() was
+  // stamping e.g. "4:00 AM" into the brief context on what is actually
+  // 11:00 PM ET the prior day — the model then wrote signoffs like
+  // "good morning" when the banker was ending their day. Force the
+  // banker's intended zone via an env var. Defaults to America/New_York
+  // which fits the demo; swap via DEMO_BANKER_TZ for any other TZDB name.
+  const tz = optionalEnv("DEMO_BANKER_TZ", "America/New_York");
   const prompt = morningBriefPrompt({
     bankerName: optionalEnv("DEMO_BANKER_NAME", "there"),
     bankerUserId:
@@ -23,12 +30,17 @@ export async function POST(_req: NextRequest) {
     localTime: now.toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",
+      timeZone: tz,
     }),
-    dayOfWeek: now.toLocaleDateString([], { weekday: "long" }),
+    dayOfWeek: now.toLocaleDateString([], {
+      weekday: "long",
+      timeZone: tz,
+    }),
     date: now.toLocaleDateString([], {
       month: "long",
       day: "numeric",
       year: "numeric",
+      timeZone: tz,
     }),
   });
 
