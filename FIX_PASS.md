@@ -358,3 +358,34 @@ If all 7 pass, you're ready to film.
 - Tag `v1.0-submitted` after video upload on April 27
 
 Good luck.
+
+---
+
+## Deferred ideas (post-submission)
+
+Capturing here so we don't forget, but these are explicitly out of scope
+until FIX_PASS P0 + P1 are green and the video is submitted.
+
+### Kimi K2 Thinking as a second provider (decided 2026-04-18)
+
+Heroku Inference now hosts `kimi-k2-thinking` on a separate add-on
+(`inference-reticulated-65811`, toolkit token
+`inf-81266d65-ea16-4933-9849-34665579f1e1`, MCP SSE transport at
+`https://us.inference.heroku.com/mcp/sse`). Kimi K2 Thinking is an
+open-weights MoE model tuned for agentic tool-calling with a 256k
+context, notably faster and cheaper than Claude 4.5 Sonnet.
+
+**Decision:** hold until post-submission. Rationale:
+- 9 days to video (Apr 27); FIX_PASS has P0-3 + 7 P1 items open
+- Routes where Kimi would help (`/api/drafts`, `/api/priority`,
+  `/api/pulse`) already stream SSE with per-card loading states —
+  latency is not the bottleneck the banker perceives
+- Routes where speed *is* visible (`/api/brief` first paint,
+  `/api/ask` streaming) are where Claude's prose polish most matters
+- Adding a second provider touches `lib/llm/provider.ts` wiring and
+  risks regressions near the freeze window
+
+**Revisit after submission:** if Flex spend needs to come down,
+narrowly scope Kimi to `/api/drafts` first as a try-before-buy.
+Would require a thin `lib/llm/kimi.ts` mirroring `lib/llm/heroku.ts`
+(~80% copy) and a per-route provider map in `lib/llm/provider.ts`.

@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "salesforce_crm": {
+      "url": "https://api.salesforce.com/platform/mcp/v1/platform/sobject-all",
+      "headers": {
+        "Authorization": "Bearer ${env:SF_ACCESS_TOKEN}"
+      }
+    },
+    "data_360": {
+      "url": "https://api.salesforce.com/platform/mcp/v1/custom/Data360MCP",
+      "headers": {
+        "Authorization": "Bearer ${env:SF_ACCESS_TOKEN}"
+      }
+    },
+    "tableau_next": {
+      "url": "https://api.salesforce.com/platform/mcp/v1/custom/AnalyticsMCP",
+      "headers": {
+        "Authorization": "Bearer ${env:SF_ACCESS_TOKEN}"
+      }
+    },
+    "heroku_toolkit": {
+      "url": "${env:INFERENCE_URL}/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${env:INFERENCE_KEY}"
+      }
+    }
+  }
+}

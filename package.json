@@ -17,7 +17,9 @@
     "sf:login": "tsx --env-file=.env scripts/sf-login.ts",
     "smoke:api": "tsx --env-file=.env scripts/smoke-api.ts",
     "verify:p01": "tsx --env-file=.env scripts/verify-p01.ts",
-    "verify:p02": "tsx --env-file=.env scripts/verify-p02.ts"
+    "verify:p02": "tsx --env-file=.env scripts/verify-p02.ts",
+    "mcp:check": "tsx --env-file=.env scripts/mcp-check.ts",
+    "mcp:refresh": "bash scripts/mcp-refresh.sh"
   },
   "cacheDirectories": [
     "node_modules",
