@@ -6,10 +6,24 @@ import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ArcNode } from "./ArcNode";
 import { GhostPrompt } from "./GhostPrompt";
+import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
 import { cn } from "@/lib/utils";
 import type { ArcNodePayload, TodaysArcPayload } from "@/types/horizon";
 import { HORIZON_REFRESH_ARC } from "@/lib/client/horizonEvents";
 import { vibrateLight } from "@/lib/gestures";
+
+function isArcNodePayload(o: unknown): o is ArcNodePayload {
+  if (!o || typeof o !== "object") return false;
+  const x = o as Record<string, unknown>;
+  return (
+    typeof x.id === "string" &&
+    typeof x.type === "string" &&
+    typeof x.start === "string" &&
+    typeof x.duration_minutes === "number" &&
+    typeof x.title === "string" &&
+    typeof x.context === "string"
+  );
+}
 
 function isArcPayload(v: unknown): v is TodaysArcPayload {
   if (!v || typeof v !== "object") return false;
@@ -17,7 +31,9 @@ function isArcPayload(v: unknown): v is TodaysArcPayload {
   if (typeof o.now !== "string" || typeof o.end_of_day !== "string") {
     return false;
   }
-  if (!Array.isArray(o.nodes)) return false;
+  if (!Array.isArray(o.nodes) || !o.nodes.every(isArcNodePayload)) return false;
+  if (o.lookahead_week != null && !Array.isArray(o.lookahead_week)) return false;
+  if (o.lookahead_month != null && !Array.isArray(o.lookahead_month)) return false;
   return true;
 }
 
@@ -41,6 +57,66 @@ function formatTick(
     minute: "2-digit",
     timeZone: tz,
   });
+}
+
+function formatArcWhen(iso: string, tz?: string): string {
+  const d = Date.parse(iso);
+  if (Number.isNaN(d)) return iso;
+  return new Date(d).toLocaleString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: tz,
+  });
+}
+
+function ArcLookaheadSection({
+  title,
+  subtitle,
+  nodes,
+  tz,
+}: {
+  title: string;
+  subtitle: string;
+  nodes: ArcNodePayload[];
+  tz?: string;
+}) {
+  if (!nodes.length) return null;
+  return (
+    <section className="mt-8 border-t border-border-soft/40 pt-6">
+      <h3 className="text-[10px] font-medium uppercase tracking-[0.2em] text-text-muted">
+        {title}
+      </h3>
+      <p className="mt-1 text-[11px] leading-relaxed text-text-muted/80">
+        {subtitle}
+      </p>
+      <ul className="mt-3 space-y-2">
+        {nodes.map((n) => (
+          <li
+            key={n.id}
+            className="rounded-lg border border-border-soft/50 bg-surface/35 px-3 py-2.5"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono text-[10px] text-text-muted">
+                {formatArcWhen(n.start, tz)}
+              </span>
+              <span className="rounded border border-border-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-text-muted/80">
+                {n.type}
+              </span>
+            </div>
+            <div className="mt-1.5 text-[13px] font-medium text-text">
+              {n.title}
+            </div>
+            <div className="mt-1 text-[12px] leading-snug text-text-muted">
+              <TextWithSalesforceIds text={n.context} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 export function TodaysArc() {
@@ -77,10 +153,20 @@ export function TodaysArc() {
     }).catch(() => {});
   }, []);
 
-  const arc = useMemo(() => {
+  const arc = useMemo((): TodaysArcPayload | null => {
     const raw = tryParseJson<unknown>(narrative);
     if (!raw || !isArcPayload(raw)) return null;
-    return raw;
+    const week = Array.isArray(raw.lookahead_week)
+      ? raw.lookahead_week.filter(isArcNodePayload)
+      : [];
+    const month = Array.isArray(raw.lookahead_month)
+      ? raw.lookahead_month.filter(isArcNodePayload)
+      : [];
+    return {
+      ...raw,
+      lookahead_week: week,
+      lookahead_month: month,
+    };
   }, [narrative]);
 
   const isLoading = state === "streaming" && !arc;
@@ -100,6 +186,24 @@ export function TodaysArc() {
     () => arc?.nodes.find((x) => x.id === selectedId) ?? null,
     [arc, selectedId]
   );
+
+  const weekNodes = arc?.lookahead_week ?? [];
+  const monthNodes = arc?.lookahead_month ?? [];
+
+  const nowRailPct = useMemo(() => {
+    const span = endMs - nowMs;
+    if (span <= 0) return 0;
+    const t = Date.now();
+    const u = Math.min(endMs, Math.max(nowMs, t));
+    return ((u - nowMs) / span) * 100;
+  }, [nowMs, endMs]);
+
+  const hasArcContent =
+    !!arc &&
+    (arc.nodes.length > 0 ||
+      weekNodes.length > 0 ||
+      monthNodes.length > 0 ||
+      (arc.recommended_windows?.length ?? 0) > 0);
 
   return (
     <div data-horizon-section="arc">
@@ -126,7 +230,7 @@ export function TodaysArc() {
         </div>
       )}
 
-      {arc && arc.nodes.length > 0 && (
+      {hasArcContent && (
         <div className="mt-4">
           <GhostPrompt
             text="What should I move on the arc to protect focus time?"
@@ -164,7 +268,10 @@ export function TodaysArc() {
                 />
                 <div
                   className="pointer-events-none absolute bottom-0 left-0 top-8 w-px bg-accent/70 shadow-[0_0_12px_rgba(91,141,239,0.45)] animate-pulse"
-                  style={{ left: "0%" }}
+                  style={{
+                    left: `${Math.min(98, Math.max(2, nowRailPct))}%`,
+                    transform: "translateX(-50%)",
+                  }}
                   aria-hidden
                 />
                 {arc.nodes.map((node, i) => (
@@ -189,10 +296,14 @@ export function TodaysArc() {
               {selected && (
                 <div className="mt-4 rounded-lg border border-border-soft bg-surface2/50 px-4 py-3 text-[13px] leading-relaxed animate-fade-in">
                   <div className="font-medium text-text">{selected.title}</div>
-                  <p className="mt-1.5 text-text-muted">{selected.context}</p>
+                  <p className="mt-1.5 text-text-muted">
+                    <TextWithSalesforceIds text={selected.context} />
+                  </p>
                   {selected.client_id && (
                     <p className="mt-2 font-mono text-[10px] text-text-muted/70">
-                      Client: {selected.client_id}
+                      <TextWithSalesforceIds
+                        text={`Client: ${selected.client_id}`}
+                      />
                     </p>
                   )}
                 </div>
@@ -208,11 +319,26 @@ export function TodaysArc() {
                       <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent/90">
                         Window
                       </span>
-                      <p className="mt-1 text-text/90">{w.suggestion}</p>
+                      <p className="mt-1 text-text/90">
+                        <TextWithSalesforceIds text={w.suggestion} />
+                      </p>
                     </li>
                   ))}
                 </ul>
               )}
+
+              <ArcLookaheadSection
+                title="This week"
+                subtitle="Next 7 days after today — meetings, tasks, and closes from your tools."
+                nodes={weekNodes}
+                tz={tz}
+              />
+              <ArcLookaheadSection
+                title="This month"
+                subtitle="Further out (about days 8–30) so late days still show momentum."
+                nodes={monthNodes}
+                tz={tz}
+              />
             </div>
           </div>
         </div>
@@ -221,9 +347,12 @@ export function TodaysArc() {
       {!isLoading &&
         arc &&
         arc.nodes.length === 0 &&
+        weekNodes.length === 0 &&
+        monthNodes.length === 0 &&
         !(arc.recommended_windows && arc.recommended_windows.length > 0) && (
           <p className="mt-6 max-w-prose text-[14px] italic leading-relaxed text-text-muted">
-            Your day is open. Want to suggest 3 productive uses of the afternoon?
+            Nothing on the calendar for the rest of today. Pull to refresh after
+            you update Salesforce, or sign in again if the session expired.
           </p>
         )}
 

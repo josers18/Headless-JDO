@@ -98,5 +98,9 @@ export interface TodaysArcPayload {
   now: string;
   end_of_day: string;
   nodes: ArcNodePayload[];
+  /** Upcoming items (typically next ~7 days after today), same shape as nodes. */
+  lookahead_week?: ArcNodePayload[];
+  /** Further horizon (e.g. days 8–30), same shape as nodes. */
+  lookahead_month?: ArcNodePayload[];
   recommended_windows?: ArcRecommendedWindow[];
 }

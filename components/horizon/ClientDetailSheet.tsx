@@ -7,6 +7,7 @@ import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { cn } from "@/lib/utils";
 import { ReasoningTrail } from "./ReasoningTrail";
+import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
 import type { McpServerName } from "@/types/horizon";
 
 // ClientDetailSheet opens from the Priority Queue. It streams /api/client/[id]
@@ -126,7 +127,7 @@ export function ClientDetailSheet({
         <div className="relative px-8 pb-16 pt-8">
           <div className="flex items-center justify-between">
             <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
-              client · {clientId}
+              <TextWithSalesforceIds text={`client · ${clientId}`} />
             </div>
             <button
               onClick={onClose}
@@ -149,7 +150,7 @@ export function ClientDetailSheet({
               </div>
               {detail?.summary ? (
                 <p className="mt-2 max-w-prose text-[14px] leading-relaxed text-text-muted">
-                  {detail.summary}
+                  <TextWithSalesforceIds text={detail.summary} />
                 </p>
               ) : state === "streaming" && !detail ? (
                 <div className="mt-3 space-y-2">

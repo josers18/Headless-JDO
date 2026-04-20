@@ -13,6 +13,7 @@ import {
 import { tryParseJson } from "@/lib/client/jsonStream";
 import type { Signal } from "@/types/horizon";
 import { cn } from "@/lib/utils";
+import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
 
 const POLL_INTERVAL_MS = 45_000;
 
@@ -166,7 +167,9 @@ function SignalRow({ signal, index }: { signal: Signal; index: number }) {
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] text-text">{signal.summary}</span>
+          <span className="truncate text-[13px] text-text">
+            <TextWithSalesforceIds text={signal.summary} />
+          </span>
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
           {signal.client_name && (

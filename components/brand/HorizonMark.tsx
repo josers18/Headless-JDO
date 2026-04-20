@@ -38,8 +38,9 @@ export function HorizonMark({ className = "" }: { className?: string }) {
           />
         </svg>
       </span>
-      <span className="font-display text-[15px] tracking-tight text-text">
-        Horizon
+      <span className="font-display text-[12px] leading-tight tracking-tight text-text sm:text-[14px] md:text-[15px]">
+        <span className="text-text-muted">Cumulus Bank</span>{" "}
+        <span className="text-text">Horizon</span>
       </span>
     </div>
   );

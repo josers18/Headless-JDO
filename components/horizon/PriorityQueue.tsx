@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ClientDetailSheet } from "./ClientDetailSheet";
 import { GhostPrompt } from "./GhostPrompt";
+import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
 import {
   DraftActionCard,
   type DraftCardStatus,
@@ -336,7 +337,7 @@ function PriorityGroup({
                       />
                     </div>
                     <div className="mt-1 truncate text-[13px] leading-relaxed text-text-muted">
-                      {c.reason}
+                      <TextWithSalesforceIds text={c.reason} />
                     </div>
                     {c.sources && c.sources.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
