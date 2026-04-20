@@ -186,6 +186,7 @@ export async function connectMcpClients(
     )
   );
   const clients = new Map<McpServerName, Client>();
+  const failedSf: Array<{ server: McpServerName; error: string }> = [];
   for (let i = 0; i < settled.length; i++) {
     const entry = settled[i];
     const planned = plan[i];
@@ -193,15 +194,46 @@ export async function connectMcpClients(
     if (entry.status === "fulfilled") {
       clients.set(entry.value.server, entry.value.client);
     } else {
+      const errStr = String(entry.reason);
       log.warn("mcp.connect.failed", {
         server: planned.server,
-        error: String(entry.reason),
+        error: errStr,
       });
+      if (SF_SERVERS.includes(planned.server)) {
+        failedSf.push({ server: planned.server, error: errStr });
+      }
     }
   }
 
   if (clients.size === 0) {
     throw new Error("mcp: no servers connected");
+  }
+
+  // why: if ALL Salesforce MCPs failed but heroku_toolkit succeeded, the
+  // registry is non-empty and the agent loop proceeds silently with only
+  // generic toolkit tools — the LLM then has no way to answer CRM / Data
+  // Cloud / Tableau questions, so it hallucinates plausible-sounding
+  // answers with fabricated client names and Salesforce Ids. That footgun
+  // is a demo-killer; we detected it in the live Heroku logs when a stale
+  // probe token triggered 3× `Invalid token` responses followed by a
+  // successful `ask.done` with tools=0.
+  //
+  // When every SF server fails with an auth-looking error, throw a clear
+  // re-auth message. makeSseStream surfaces this as the error event and
+  // the client's 401 handler prompts a /api/connect trip.
+  const anySfConnected = SF_SERVERS.some((s) => clients.has(s));
+  if (!anySfConnected && failedSf.length > 0) {
+    const authShaped = failedSf.some(({ error }) =>
+      /invalid token|unauthorized|401|expired|forbidden|403/i.test(error)
+    );
+    const msg = authShaped
+      ? "Salesforce session expired. Visit /api/connect to reactivate."
+      : `Salesforce MCP servers unreachable (${failedSf.map((f) => f.server).join(", ")}). Check network / ECA config.`;
+    // Best-effort close the toolkit client so we don't leak it.
+    await Promise.allSettled(
+      [...clients.values()].map((c) => c.close().catch(() => {}))
+    );
+    throw new Error(msg);
   }
 
   // Cache of qualified-name → server+tool-name for fast dispatch.
