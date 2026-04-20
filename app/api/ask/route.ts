@@ -25,7 +25,13 @@ export async function POST(req: NextRequest) {
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: askAnythingPrompt(q) }],
       salesforceToken: token.access_token,
-      maxIterations: 10,
+      // why: the "top at-risk check-in" test made 13 successful tool
+      // calls and then hit the cap before the model could summarize,
+      // yielding an empty narrative on the UI. 12 gives Ask Bar
+      // questions a small buffer without inviting unbounded loops; the
+      // forced-finalize pass in lib/llm/heroku.ts catches the residual
+      // case where even 12 isn't enough.
+      maxIterations: 12,
       // Hard-force at least one real tool call on iteration 1. Without
       // this the model was skipping the tool loop entirely on free-form
       // asks and hallucinating Salesforce Ids from prior training.

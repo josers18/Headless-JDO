@@ -475,15 +475,65 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     // Loop continues — Claude reads the tool results and decides next action.
   }
 
-  // Hit iteration cap without a clean finish. Surface whatever prose the
-  // model produced in its final turn rather than dropping the run on the
-  // floor. We still log a soft `error` event so operators can see the cap
-  // was hit, but the user-visible text is the best-effort narrative.
+  // Hit iteration cap without a clean finish. Before giving up, run ONE
+  // final no-tools completion to force the model to write prose from the
+  // tool results it already has. This catches the "tool_calls=N, prose=''"
+  // silent-failure mode we saw on the "top at-risk check-in" Ask Bar run
+  // (FIX_PASS.md P0-2 verification): 13 successful tool calls, zero text
+  // deltas, blank response panel.
+  //
+  // why a second request instead of rewriting the loop: the loop condition
+  // is "model emits tool_calls → execute → feed back". If the LAST turn
+  // emitted tool_calls *again* on iteration maxIterations we exit before
+  // the model ever gets the results from that round, so lastAssistantText
+  // is empty. A follow-up with tool_choice:"none" forces summarization.
+  if (!lastAssistantText.trim() && tools.length > 0) {
+    try {
+      onEvent({
+        type: "error",
+        message: `iteration cap (${maxIterations}) reached with no prose — forcing finalize pass`,
+      });
+      const finalize = await openai().chat.completions.create({
+        model,
+        messages: [
+          ...messages,
+          {
+            role: "user",
+            content:
+              "You have reached the tool budget. Using only the tool results you have already seen in this turn, write the user-visible answer now. Follow the OUTPUT FORMAT from the original system prompt. Do NOT call any tools.",
+          },
+        ],
+        tools: tools.length > 0 ? tools : undefined,
+        tool_choice: "none" as const,
+        temperature,
+        max_tokens: maxTokens,
+        stream: true,
+      });
+      let forced = "";
+      for await (const chunk of finalize) {
+        const delta = chunk.choices[0]?.delta;
+        const piece = typeof delta?.content === "string" ? delta.content : "";
+        if (piece) {
+          forced += piece;
+          onEvent({ type: "text_delta", text: piece });
+        }
+      }
+      lastAssistantText = forced;
+    } catch (e) {
+      onEvent({
+        type: "error",
+        message: `finalize pass failed: ${String(e)}`,
+      });
+    }
+  }
+
   finalText = (lastAssistantText || finalText).trim();
-  onEvent({
-    type: "error",
-    message: `exceeded max iterations (${maxIterations}) — returning best-effort narrative`,
-  });
+  if (!finalText || lastAssistantText.length === 0) {
+    onEvent({
+      type: "error",
+      message: `exceeded max iterations (${maxIterations}) — returning best-effort narrative`,
+    });
+  }
   onEvent({
     type: "final",
     text: finalText || "(agent exceeded iteration cap without final answer)",

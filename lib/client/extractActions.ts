@@ -28,6 +28,16 @@ export interface ExtractedAskResponse {
 }
 
 const FENCE_RE = /```json\s*([\s\S]*?)```/gi;
+// Also match unfenced ```…``` blocks (no language tag) that *contain*
+// the "actions" key. The model occasionally omits the json tag.
+const FENCE_ANY_RE = /```\s*([\s\S]*?)```/gi;
+
+// Unfenced tail JSON: the model dumps a raw `{"actions":[...]}` at the
+// end of its response without any code fence around it. Our Q1 demo
+// showed exactly this pattern (JSON truncated mid-stream with no fence).
+// We match the LAST top-level object in the string that starts with {
+// and contains an "actions" key near the top.
+const UNFENCED_ACTIONS_RE = /(\{[\s\S]*?"actions"\s*:\s*\[[\s\S]*\})\s*$/;
 
 export function extractActions(raw: string): ExtractedAskResponse {
   if (!raw) return { prose: raw ?? "", actions: [] };
@@ -35,6 +45,7 @@ export function extractActions(raw: string): ExtractedAskResponse {
   let lastMatch: { start: number; end: number; actions: DraftAction[] } | null =
     null;
 
+  // 1) Preferred path: fenced ```json block that parses to {actions:[]}.
   for (const m of raw.matchAll(FENCE_RE)) {
     if (typeof m.index !== "number") continue;
     const body = (m[1] ?? "").trim();
@@ -49,6 +60,51 @@ export function extractActions(raw: string): ExtractedAskResponse {
       end: m.index + m[0].length,
       actions,
     };
+  }
+
+  // 2) Fallback: any fenced block (no lang tag) that parses.
+  if (!lastMatch) {
+    for (const m of raw.matchAll(FENCE_ANY_RE)) {
+      if (typeof m.index !== "number") continue;
+      const body = (m[1] ?? "").trim();
+      if (!body.includes('"actions"')) continue;
+      const parsed = safeParse(body);
+      if (!parsed || typeof parsed !== "object") continue;
+      const rawActions = (parsed as { actions?: unknown }).actions;
+      if (!Array.isArray(rawActions)) continue;
+      const actions = rawActions.filter(isDraftAction);
+      if (actions.length === 0) continue;
+      lastMatch = {
+        start: m.index,
+        end: m.index + m[0].length,
+        actions,
+      };
+    }
+  }
+
+  // 3) Last-resort fallback: UNFENCED `{"actions":[...]}` at the tail.
+  // The model sometimes skips the code fence entirely. We only do this
+  // when fenced extraction failed to avoid nuking legitimate inline
+  // JSON inside prose.
+  if (!lastMatch) {
+    const m = UNFENCED_ACTIONS_RE.exec(raw);
+    if (m && typeof m.index === "number") {
+      const body = (m[1] ?? "").trim();
+      const parsed = safeParse(body);
+      if (parsed && typeof parsed === "object") {
+        const rawActions = (parsed as { actions?: unknown }).actions;
+        if (Array.isArray(rawActions)) {
+          const actions = rawActions.filter(isDraftAction);
+          if (actions.length > 0) {
+            lastMatch = {
+              start: m.index,
+              end: m.index + m[0].length,
+              actions,
+            };
+          }
+        }
+      }
+    }
   }
 
   if (!lastMatch) return { prose: raw, actions: [] };

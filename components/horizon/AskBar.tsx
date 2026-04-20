@@ -17,7 +17,10 @@ import { cn } from "@/lib/utils";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { useSpeechInput } from "@/lib/client/useSpeechInput";
 import { ReasoningTrail } from "./ReasoningTrail";
-import { sanitizeNarrative } from "@/lib/client/sanitizeNarrative";
+import {
+  sanitizeNarrative,
+  stripActionsTail,
+} from "@/lib/client/sanitizeNarrative";
 import { extractActions } from "@/lib/client/extractActions";
 import { MarkdownView } from "./MarkdownView";
 import type { DraftAction } from "@/types/horizon";
@@ -88,11 +91,16 @@ export function AskBar() {
   const cleanNarrative = useMemo(() => sanitizeNarrative(narrative), [narrative]);
 
   // Split the cleaned narrative into prose (markdown for display) and
-  // parsed DraftAction[] (rendered as approve chips below).
-  const { prose, actions } = useMemo(
+  // parsed DraftAction[] (rendered as approve chips below). We then apply
+  // one more pass (`stripActionsTail`) to the prose to hide any in-flight
+  // or malformed `{"actions":[...]}` block that extractActions couldn't
+  // parse yet. Without this, the JSON leaks as visible text during the
+  // stream — exactly the Q1 demo failure mode.
+  const { prose: rawProse, actions } = useMemo(
     () => extractActions(cleanNarrative),
     [cleanNarrative]
   );
+  const prose = useMemo(() => stripActionsTail(rawProse), [rawProse]);
 
   async function approveAction(d: DraftAction) {
     setActionStatus((s) => ({ ...s, [d.id]: { kind: "executing" } }));

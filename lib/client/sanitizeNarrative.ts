@@ -75,3 +75,31 @@ export function sanitizeNarrative(raw: string): string {
   s = s.replace(/[ \t]+\n/g, "\n");
   return s.trim();
 }
+
+// Drafted-actions JSON leakage. The Ask Bar prompt asks the model to
+// append a ```json block `{"actions":[...]}`. extractActions pulls the
+// block out when it parses successfully, but during streaming the JSON
+// is arriving character-by-character and can't parse yet — meanwhile
+// it renders as text in the prose pane. Also, the Q1 demo showed the
+// model sometimes omits the code fence entirely, yielding a raw
+// `{"actions":[...` tail that extractActions' fallback catches only
+// after the object closes. This helper is the safety net for the
+// in-between moments: applied to the PROSE AFTER extractActions has
+// already tried to pull out a valid block, so we never drop real
+// actions — only the leftover text that couldn't be parsed yet.
+//
+// All patterns are anchored to end-of-string; we only ever clip the
+// tail, never the middle.
+const ACTIONS_TAIL_PATTERNS = [
+  /```(?:json)?\s*\{\s*"actions"[\s\S]*$/i,
+  /\{\s*"actions"\s*:\s*\[[\s\S]*$/,
+];
+
+export function stripActionsTail(prose: string): string {
+  if (!prose) return prose;
+  let s = prose;
+  for (const re of ACTIONS_TAIL_PATTERNS) {
+    s = s.replace(re, "");
+  }
+  return s.trimEnd();
+}
