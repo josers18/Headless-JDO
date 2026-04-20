@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { isLikelyMp3Buffer } from "@/lib/tts/mp3Guards";
 import { isSpeechSupported, speak, stopSpeaking } from "@/lib/voice";
 
 export interface SpokenNarration {
@@ -23,15 +24,6 @@ function cleanupAudio(
     audioRef.current = null;
   }
   if (url) URL.revokeObjectURL(url);
-}
-
-/** MP3 frame sync (0xFFE…) or leading ID3 tag — avoids relying on Content-Type alone. */
-function isLikelyMp3Bytes(bytes: Uint8Array): boolean {
-  if (bytes.length < 4) return false;
-  const b0 = bytes[0]!;
-  const b1 = bytes[1]!;
-  if (b0 === 0x49 && b1 === 0x44 && bytes[2] === 0x33) return true;
-  return b0 === 0xff && (b1 & 0xe0) === 0xe0;
 }
 
 /**
@@ -60,7 +52,12 @@ export function useSpokenNarration(): SpokenNarration {
     setSpeaking(false);
   }, []);
 
-  const playWeb = useCallback((text: string) => {
+  const playWeb = useCallback((text: string, reason: string) => {
+    if (reason) {
+      // why: operators need a single grep-friendly line when ElevenLabs path fails in prod.
+      // eslint-disable-next-line no-console
+      console.info(`[Horizon TTS] Web Speech fallback — ${reason}`);
+    }
     if (!isSpeechSupported()) {
       if (mountedRef.current) setSpeaking(false);
       return;
@@ -87,38 +84,49 @@ export function useSpokenNarration(): SpokenNarration {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
           });
+          const tag = (res.headers.get("x-tts-result") ?? "").toLowerCase();
           const buf = await res.arrayBuffer();
           const bytes = new Uint8Array(buf);
 
           if (res.status === 401) {
-            playWeb(text);
+            playWeb(
+              text,
+              `HTTP 401 (see X-TTS-Result / sign in, or set Heroku TTS_REQUIRE_SF_AUTH=0 for demo-only)`
+            );
             return;
-          }
-
-          if (res.ok && bytes.length >= 4 && bytes[0] === 0x7b) {
-            try {
-              const data = JSON.parse(
-                new TextDecoder().decode(bytes)
-              ) as { mode?: string };
-              if (data.mode === "fallback") {
-                playWeb(text);
-                return;
-              }
-            } catch {
-              playWeb(text);
-              return;
-            }
           }
 
           if (
             res.ok &&
-            bytes.length > 500 &&
-            isLikelyMp3Bytes(bytes)
+            (tag.startsWith("fallback") ||
+              (bytes.length >= 4 &&
+                bytes[0] === 0x7b &&
+                (() => {
+                  try {
+                    const data = JSON.parse(
+                      new TextDecoder().decode(bytes)
+                    ) as { mode?: string };
+                    return data.mode === "fallback";
+                  } catch {
+                    return false;
+                  }
+                })()))
+          ) {
+            playWeb(text, `server fallback (${tag || "json body"})`);
+            return;
+          }
+
+          const minMp3 = 64;
+          if (
+            res.ok &&
+            bytes.length >= minMp3 &&
+            isLikelyMp3Buffer(bytes)
           ) {
             const blob = new Blob([buf], { type: "audio/mpeg" });
             const url = URL.createObjectURL(blob);
             objectUrlRef.current = url;
             const audio = new Audio(url);
+            audio.setAttribute("playsinline", "true");
             audioRef.current = audio;
             audio.onended = () => {
               cleanupAudio(audioRef, objectUrlRef);
@@ -126,20 +134,29 @@ export function useSpokenNarration(): SpokenNarration {
             };
             audio.onerror = () => {
               cleanupAudio(audioRef, objectUrlRef);
-              playWeb(text);
+              playWeb(text, "HTMLAudioElement error (codec / blob)");
             };
             try {
               await audio.play();
-            } catch {
+            } catch (e) {
               cleanupAudio(audioRef, objectUrlRef);
-              playWeb(text);
+              playWeb(
+                text,
+                `audio.play() rejected — ${e instanceof Error ? e.message : String(e)}`
+              );
             }
             return;
           }
 
-          playWeb(text);
-        } catch {
-          playWeb(text);
+          playWeb(
+            text,
+            `response not MP3 (status=${res.status}, bytes=${bytes.length}, x-tts-result=${tag || "none"})`
+          );
+        } catch (e) {
+          playWeb(
+            text,
+            `fetch failed — ${e instanceof Error ? e.message : String(e)}`
+          );
         }
       })();
     },

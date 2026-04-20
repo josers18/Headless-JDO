@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureFreshToken } from "@/lib/salesforce/token";
 import { synthesizeElevenLabsMp3 } from "@/lib/tts/elevenlabs";
 import { getRedis } from "@/lib/redis";
+import { isLikelyMp3Buffer } from "@/lib/tts/mp3Guards";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 
@@ -13,28 +14,73 @@ const TTS_KEY_PREFIX = "tts:v1:";
 const TTS_TTL_SEC = 60 * 60 * 24 * 7;
 const MAX_CHARS = 12_000;
 
+/** Single-dyno burst guard when SF auth is disabled for filming. */
+const RL_WINDOW_MS = 60_000;
+const RL_MAX = 50;
+const rlHits = new Map<string, number[]>();
+
+function clientIp(req: NextRequest): string {
+  return (
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    req.headers.get("x-real-ip") ??
+    "unknown"
+  );
+}
+
+function allowRate(ip: string): boolean {
+  const now = Date.now();
+  const arr = (rlHits.get(ip) ?? []).filter((t) => now - t < RL_WINDOW_MS);
+  arr.push(now);
+  rlHits.set(ip, arr);
+  return arr.length <= RL_MAX;
+}
+
 /**
- * POST /api/tts — authenticated narration for Morning Brief / Pulse.
+ * POST /api/tts — narration for Morning Brief / Pulse.
  *
  * Body: `{ "text": string }`
  *
- * - When `ELEVENLABS_API_KEY` is set: returns `audio/mpeg` (cached in Redis
- *   by SHA-256 of the text when `REDIS_URL` is set).
- * - When unset: returns JSON `{ "mode": "fallback" }` with 200 so the client
- *   can use Web Speech without treating it as an error.
+ * Auth: by default requires Salesforce session cookie (same as other APIs).
+ * Set `TTS_REQUIRE_SF_AUTH=0` on Heroku only for controlled demos if the SF
+ * cookie is not reaching this route; pair with a short rate limit (in-memory).
+ *
+ * Response header `X-TTS-Result` is always set for debugging in Network:
+ * `mp3` | `fallback_no_key` | `fallback_unauth` | `fallback_upstream` |
+ * `fallback_rate` | `fallback_bad_cache`
  */
 export async function POST(req: NextRequest) {
   const cid = correlationId();
-  const token = await ensureFreshToken();
-  if (!token) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  const ip = clientIp(req);
+  const requireSfAuth = optionalEnv("TTS_REQUIRE_SF_AUTH", "1") !== "0";
+
+  if (requireSfAuth) {
+    const token = await ensureFreshToken();
+    if (!token) {
+      log.info("tts.unauth", { cid, ip });
+      return NextResponse.json(
+        { error: "unauthenticated", mode: "fallback" as const },
+        {
+          status: 401,
+          headers: { "X-TTS-Result": "fallback_unauth" },
+        }
+      );
+    }
+  } else if (!allowRate(ip)) {
+    log.warn("tts.rate_limited", { cid, ip });
+    return NextResponse.json(
+      { mode: "fallback" as const, reason: "rate_limited" },
+      { status: 200, headers: { "X-TTS-Result": "fallback_rate" } }
+    );
   }
 
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "invalid json" }, { status: 400 });
+    return NextResponse.json(
+      { error: "invalid json" },
+      { status: 400, headers: { "X-TTS-Result": "error_bad_json" } }
+    );
   }
   const text =
     typeof body === "object" &&
@@ -44,15 +90,24 @@ export async function POST(req: NextRequest) {
       ? (body as { text: string }).text.trim()
       : "";
   if (!text) {
-    return NextResponse.json({ error: "text required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "text required" },
+      { status: 400, headers: { "X-TTS-Result": "error_no_text" } }
+    );
   }
   if (text.length > MAX_CHARS) {
-    return NextResponse.json({ error: "text too long" }, { status: 400 });
+    return NextResponse.json(
+      { error: "text too long" },
+      { status: 400, headers: { "X-TTS-Result": "error_too_long" } }
+    );
   }
 
-  if (!optionalEnv("ELEVENLABS_API_KEY")) {
+  if (!optionalEnv("ELEVENLABS_API_KEY").trim()) {
     log.info("tts.fallback_no_key", { cid, len: text.length });
-    return NextResponse.json({ mode: "fallback" as const }, { status: 200 });
+    return NextResponse.json(
+      { mode: "fallback" as const },
+      { status: 200, headers: { "X-TTS-Result": "fallback_no_key" } }
+    );
   }
 
   const hash = createHash("sha256").update(text, "utf8").digest("hex");
@@ -64,15 +119,20 @@ export async function POST(req: NextRequest) {
       const cached = await redis.get(cacheKey);
       if (cached) {
         const mp3 = Buffer.from(cached, "base64");
-        log.info("tts.cache_hit", { cid, len: text.length });
-        return new NextResponse(new Uint8Array(mp3), {
-          status: 200,
-          headers: {
-            "Content-Type": "audio/mpeg",
-            "Cache-Control": "private, max-age=604800",
-            "X-TTS-Cache": "hit",
-          },
-        });
+        if (mp3.length >= 64 && isLikelyMp3Buffer(mp3)) {
+          log.info("tts.cache_hit", { cid, len: text.length });
+          return new NextResponse(new Uint8Array(mp3), {
+            status: 200,
+            headers: {
+              "Content-Type": "audio/mpeg",
+              "Cache-Control": "private, max-age=604800",
+              "X-TTS-Cache": "hit",
+              "X-TTS-Result": "mp3",
+            },
+          });
+        }
+        await redis.del(cacheKey).catch(() => {});
+        log.warn("tts.cache_invalid_evicted", { cid, len: mp3.length });
       }
     } catch {
       // why: Redis optional; continue to upstream synth
@@ -88,7 +148,10 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json(
       { mode: "fallback" as const, reason: "upstream_error" },
-      { status: 200 }
+      {
+        status: 200,
+        headers: { "X-TTS-Result": "fallback_upstream" },
+      }
     );
   }
 
@@ -111,6 +174,7 @@ export async function POST(req: NextRequest) {
       "Content-Type": "audio/mpeg",
       "Cache-Control": "private, max-age=604800",
       "X-TTS-Cache": "miss",
+      "X-TTS-Result": "mp3",
     },
   });
 }
