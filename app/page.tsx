@@ -7,6 +7,7 @@ import { PortfolioPulse } from "@/components/horizon/PortfolioPulse";
 import { PreDraftedActions } from "@/components/horizon/PreDraftedActions";
 import { SignalFeed } from "@/components/horizon/SignalFeed";
 import { AskBar } from "@/components/horizon/AskBar";
+import { PulseStrip } from "@/components/horizon/PulseStrip";
 import { SignInBanner } from "@/components/horizon/SignInBanner";
 
 // Force dynamic — we read the Salesforce session cookie server-side to
@@ -18,11 +19,25 @@ export default function HorizonHome() {
   const signedIn = Boolean(cookies().get("hz_sf")?.value);
 
   return (
-    <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56 pt-12 md:pt-16">
-      <header className="flex items-center justify-between animate-fade-rise">
-        <HorizonMark />
-        <HeaderClock />
-      </header>
+    <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56">
+      {!signedIn && (
+        <header className="flex items-center justify-between pt-12 animate-fade-rise md:pt-16">
+          <HorizonMark />
+          <HeaderClock />
+        </header>
+      )}
+
+      {signedIn && (
+        <div className="sticky top-0 z-40 -mx-6 border-b border-border-soft/50 bg-bg/90 px-6 pb-4 pt-12 shadow-[0_12px_40px_-28px_rgba(0,0,0,0.55)] backdrop-blur-md supports-[backdrop-filter]:bg-bg/80 md:pt-16">
+          <header className="flex items-center justify-between animate-fade-rise">
+            <HorizonMark />
+            <HeaderClock />
+          </header>
+          <div className="mt-4 animate-fade-rise">
+            <PulseStrip />
+          </div>
+        </div>
+      )}
 
       {!signedIn && (
         <section className="mt-16 animate-fade-rise stagger-1">
@@ -32,7 +47,7 @@ export default function HorizonHome() {
 
       {signedIn && (
         <>
-          <section className="mt-20 md:mt-24 animate-fade-rise stagger-1">
+          <section className="mt-16 md:mt-20 animate-fade-rise stagger-1">
             <MorningBrief />
           </section>
 

@@ -54,3 +54,21 @@ export interface ReasoningStep {
   output_preview?: string;
   ms?: number;
 }
+
+/** UI v2 T0-1 — Pulse Strip agent JSON */
+export type PulseStripTemperature = "QUIET" | "ATTENTION" | "URGENT";
+
+export interface PulseStripNextEvent {
+  time: string;
+  label: string;
+}
+
+export interface PulseStripPayload {
+  temperature: PulseStripTemperature;
+  temperature_label: string;
+  review_count: number;
+  next_event: PulseStripNextEvent | null;
+  flag_count: number;
+  flag_deadline: "before EOD" | "this week" | "today" | null;
+  strip_line: string;
+}

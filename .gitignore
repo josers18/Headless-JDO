@@ -28,3 +28,4 @@ tsconfig.tsbuildinfo
 # Local-only product spec and defect backlog — not published to remotes.
 CLAUDE.md
 FIX_PASS.md
+UI_V2.md

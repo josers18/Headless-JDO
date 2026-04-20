@@ -9,6 +9,7 @@
  *   POST /api/brief   (SSE)
  *   POST /api/ask     (SSE, "who am I?")
  *   GET  /api/priority
+ *   GET  /api/pulse-strip
  *
  * Prints a brief pass/fail summary for each.
  */
@@ -175,13 +176,29 @@ async function main() {
   if (priority.firstText)
     console.log(`                         snippet: "${priority.firstText}..."`);
 
+  console.log(`\nGET  /api/pulse-strip    streaming...`);
+  const t3 = Date.now();
+  const strip = await streamSseGet("/api/pulse-strip", cookie);
+  console.log(
+    `                         status=${strip.status} ` +
+      `text_deltas=${strip.counts.text_delta} ` +
+      `tool_use=${strip.counts.tool_use} ` +
+      `tool_result=${strip.counts.tool_result} ` +
+      `errors=${strip.counts.error} ` +
+      `(${Date.now() - t3}ms)`
+  );
+  if (strip.firstText)
+    console.log(`                         snippet: "${strip.firstText.slice(0, 120)}..."`);
+
   const pass =
     h.status === 200 &&
     brief.status === 200 &&
     brief.counts.text_delta > 0 &&
     ask.status === 200 &&
     ask.counts.tool_use > 0 &&
-    priority.status === 200;
+    priority.status === 200 &&
+    strip.status === 200 &&
+    strip.counts.text_delta > 0;
   console.log(`\n${pass ? "PASS" : "FAIL"} — end-to-end ${pass ? "OK" : "issues above"}`);
   process.exit(pass ? 0 : 1);
 }
