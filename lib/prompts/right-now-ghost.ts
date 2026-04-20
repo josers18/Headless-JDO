@@ -16,6 +16,9 @@ export function rightNowGhostAskContext(item: BriefItem): string {
       `Linked Salesforce id (for lookups): ${item.client_id.trim()}`
     );
   }
+  if (item.client_name?.trim()) {
+    parts.push(`Linked client display name: ${item.client_name.trim()}`);
+  }
   if (item.sources?.length) {
     parts.push(`Brief source tags: ${item.sources.join(", ")}`);
   }

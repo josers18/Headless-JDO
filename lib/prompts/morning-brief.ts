@@ -66,7 +66,7 @@ Efficient plan (one pass — do not retry on errors):
 2. salesforce_crm (structured records): SELECT Id, Name, LastActivityDate, AnnualRevenue, Industry FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
 3. salesforce_crm (structured records): SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name, Probability, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 15
 4. tableau_next (REQUIRED — must attempt): getSemanticModels (optional Sales/Service category filter ONLY to narrow the list). Then call the analytics tool (name contains "analyzeSemantic" or starts with "analyze") ONCE using a semantic model id copied verbatim from one row in that list — never pass "Sales"/"Service" as the model id. Ask one concrete metric question tied to this banker (e.g. pipeline change for OwnerId = ${a.bankerUserId} over the last 7 days). Use the result for ONE KPI-driven item, or skip Tableau for this item if the list is empty or analyze errors.
-5. data_360 (REQUIRED — must attempt): call the Data Cloud metadata tool (name starts with "getDcMetadata") to discover available DLOs/DMOs. THEN — before writing any SQL — pick ONE obviously-relevant DMO (transactions, engagement, profile, life events) and locate it in the metadata response's fields array. Confirm the 2–3 columns you intend to SELECT appear CHARACTER-FOR-CHARACTER in that array (case-sensitive, full prefix). Only then emit ONE narrow SQL call (SELECT specific columns, LIMIT 20, qualified by OwnerId where applicable). If the fields array doesn't contain the columns you want verbatim — do NOT submit bare variants like "name" or "id" when the real column is "ssot__Name__c" etc. — skip the SQL for this run and note "no usable Data Cloud columns" in the relevant brief item instead. The circuit breaker will block any second data_360 call after a schema miss, so the SQL must be right on the first try or not happen.
+5. data_360 (REQUIRED — must attempt): call the Data Cloud metadata tool (name starts with "getDcMetadata") with NO entityName / entityDeveloperName / DMO filter unless the tool's prior response in THIS turn listed that exact entity and you are drilling down. Never invent or memorize entity names from training data (e.g. ssot__IndividualIdentityLink__dlm) — those often do not exist in this org and cause "DMO not found". Prefer an unfiltered or dataspace-only discovery first; pick a DMO that appears verbatim in the response. If getDcMetadata returns an error or empty usable DMOs, skip SQL for this brief (do not retry with another guessed entity name). THEN — before writing any SQL — pick ONE obviously-relevant DMO from THAT response (transactions, engagement, profile, life events) and locate it in the metadata response's fields array. Confirm the 2–3 columns you intend to SELECT appear CHARACTER-FOR-CHARACTER in that array (case-sensitive, full prefix). Only then emit ONE narrow SQL call (SELECT specific columns, LIMIT 20, qualified by OwnerId where applicable). If the fields array doesn't contain the columns you want verbatim — do NOT submit bare variants like "name" or "id" when the real column is "ssot__Name__c" etc. — skip the SQL for this run and note "no usable Data Cloud columns" in the relevant brief item instead. The circuit breaker will block any second data_360 call after a schema miss, so the SQL must be right on the first try or not happen.
 
 RIGHT NOW SELECTION (UI v2 — mandatory field):
 After finalizing the 3 ranked items, set "right_now_index" to 0, 1, or 2 — the
@@ -80,11 +80,14 @@ If two items tie, prefer the one with the most specific human CTA (a named
 person to call or meet) over an abstract "review the pipeline" item.
 Always set right_now_index — default 0 only when item 0 is clearly the best.
 
+JSON field rules:
+- Whenever you set "client_id" to a Salesforce 15- or 18-character Id, you MUST also set "client_name" to that record's human-readable name (Account Name, Contact Name, etc.) from the tool response you used — the UI links names in the copy to Salesforce.
+
 Return structured JSON ONLY (no prose, no markdown fences):
 {
   "greeting": "Good morning, ${firstName}.",
   "items": [
-    { "headline": "...", "why": "...", "suggested_action": "...", "sources": ["data_360"|"salesforce_crm"|"tableau_next"], "client_id": "...?" }
+    { "headline": "...", "why": "...", "suggested_action": "...", "sources": ["data_360"|"salesforce_crm"|"tableau_next"], "client_id": "...?", "client_name": "...?" }
   ],
   "signoff": "One line, slightly personal, time-aware.",
   "right_now_index": 0

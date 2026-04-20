@@ -15,6 +15,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { ReasoningTrail } from "./ReasoningTrail";
+import { BriefRichText } from "./BriefRichText";
 import { ClientDetailSheet } from "./ClientDetailSheet";
 import { GhostPrompt } from "./GhostPrompt";
 import { useAgentStream } from "@/lib/client/useAgentStream";
@@ -211,6 +212,7 @@ export function MorningBrief() {
       {isComplete && heroItem && (
         <div className="relative mt-4">
           <GhostPrompt
+            key={briefItemKey(heroItem)}
             text="Why is this Right Now item the right first move?"
             context={`The banker is viewing the morning brief.\n${rightNowGhostAskContext(heroItem)}`}
           />
@@ -236,14 +238,26 @@ export function MorningBrief() {
           </div>
 
           <h3 className="mt-4 max-w-[720px] text-[22px] font-semibold leading-snug tracking-tight text-text text-balance md:text-[30px]">
-            {heroItem.headline}
+            <BriefRichText
+              text={heroItem.headline}
+              clientId={heroItem.client_id}
+              clientName={heroItem.client_name}
+            />
           </h3>
           <p className="mt-3 max-w-[640px] text-[15px] leading-relaxed text-text-muted md:text-[16px]">
-            {heroItem.why}
+            <BriefRichText
+              text={heroItem.why}
+              clientId={heroItem.client_id}
+              clientName={heroItem.client_name}
+            />
           </p>
           {heroItem.suggested_action && (
             <p className="mt-4 max-w-[640px] text-[14px] leading-relaxed text-text/90">
-              {heroItem.suggested_action}
+              <BriefRichText
+                text={heroItem.suggested_action}
+                clientId={heroItem.client_id}
+                clientName={heroItem.client_name}
+              />
             </p>
           )}
 
@@ -252,7 +266,9 @@ export function MorningBrief() {
               type="button"
               onClick={() => {
                 if (heroItem.client_id) {
-                  const name = extractNameHint(heroItem.headline);
+                  const name =
+                    heroItem.client_name?.trim() ||
+                    extractNameHint(heroItem.headline);
                   dispatchHorizonFocusClient({
                     name: name ?? "Client",
                     clientId: heroItem.client_id,
@@ -279,7 +295,9 @@ export function MorningBrief() {
               disabled={!heroItem.client_id}
               onClick={() => {
                 if (!heroItem.client_id) return;
-                const name = extractNameHint(heroItem.headline);
+                const name =
+                  heroItem.client_name?.trim() ||
+                  extractNameHint(heroItem.headline);
                 dispatchHorizonFocusClient({
                   name: name ?? "Client",
                   clientId: heroItem.client_id,
@@ -326,7 +344,13 @@ export function MorningBrief() {
             </button>
             {whyOpen && (
               <div className="mt-3 space-y-3 rounded-lg border border-border-soft/50 bg-black/20 px-4 py-3 text-[13px] leading-relaxed text-text-muted animate-fade-in">
-                <p className="text-text/90">{heroItem.why}</p>
+                <p className="text-text/90">
+                  <BriefRichText
+                    text={heroItem.why}
+                    clientId={heroItem.client_id}
+                    clientName={heroItem.client_name}
+                  />
+                </p>
                 {heroItem.sources && heroItem.sources.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/80">
                     {heroItem.sources.map((s) => (
@@ -357,14 +381,26 @@ export function MorningBrief() {
             {alsoItems.map((item) => (
               <li key={briefItemKey(item)} className="relative">
                 <div className="text-[15px] font-medium leading-snug text-text/95">
-                  {item.headline}
+                  <BriefRichText
+                    text={item.headline}
+                    clientId={item.client_id}
+                    clientName={item.client_name}
+                  />
                 </div>
                 <p className="mt-1.5 max-w-[620px] text-[13px] leading-relaxed text-text-muted">
-                  {item.why}
+                  <BriefRichText
+                    text={item.why}
+                    clientId={item.client_id}
+                    clientName={item.client_name}
+                  />
                 </p>
                 {item.suggested_action && (
                   <p className="mt-2 text-[12.5px] text-accent/90">
-                    {item.suggested_action}
+                    <BriefRichText
+                      text={item.suggested_action}
+                      clientId={item.client_id}
+                      clientName={item.client_name}
+                    />
                   </p>
                 )}
                 {item.sources && item.sources.length > 0 && (

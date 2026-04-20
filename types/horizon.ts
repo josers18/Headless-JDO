@@ -10,6 +10,8 @@ export interface BriefItem {
   suggested_action: string;
   sources: McpServerName[];
   client_id?: string;
+  /** Human label for `client_id` (Account/Contact/etc.); used for name links in the UI. */
+  client_name?: string;
 }
 
 export interface MorningBrief {

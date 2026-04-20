@@ -25,6 +25,17 @@ function isArcNodePayload(o: unknown): o is ArcNodePayload {
   );
 }
 
+function sortArcNodesByStart(nodes: ArcNodePayload[]): ArcNodePayload[] {
+  return [...nodes].sort((a, b) => {
+    const ta = Date.parse(a.start);
+    const tb = Date.parse(b.start);
+    if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+    if (Number.isNaN(ta)) return 1;
+    if (Number.isNaN(tb)) return -1;
+    return ta - tb;
+  });
+}
+
 function isArcPayload(v: unknown): v is TodaysArcPayload {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
@@ -164,8 +175,8 @@ export function TodaysArc() {
       : [];
     return {
       ...raw,
-      lookahead_week: week,
-      lookahead_month: month,
+      lookahead_week: sortArcNodesByStart(week),
+      lookahead_month: sortArcNodesByStart(month),
     };
   }, [narrative]);
 
