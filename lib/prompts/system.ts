@@ -1,6 +1,6 @@
 // Base system prompt — shared by every Horizon feature.
 // Versioned alongside the code. If you change this, bump the version.
-export const SYSTEM_PROMPT_VERSION = "v1.2.0-2026-04-19";
+export const SYSTEM_PROMPT_VERSION = "v1.3.0-2026-04-20";
 
 // IMPORTANT: Every field below this line has been informed by real failure
 // modes observed in the reasoning trail during demo runs. The "MCP HYGIENE"
@@ -37,10 +37,17 @@ TOOL NAME DISCOVERY (read this before anything else):
 
 A. data_360 SQL (this is where the model fails most often — follow this exactly):
    1. ALWAYS call the Data Cloud metadata tool (the one on data_360 whose name starts with "getDcMetadata") BEFORE your first SQL-query tool call. Never guess DLO/DMO names, never invent table suffixes like __dll or __dlm.
-   2. After the metadata tool returns, you MUST verify every single column you plan to SELECT or reference in WHERE exists verbatim in the metadata response's fields array. Column names are case-sensitive. Do NOT infer columns from naming conventions. If your intended column is not in the returned fields list, it does not exist — pick a different column or skip the query.
-   3. Common hallucinations to AVOID unless the metadata explicitly returns them: "TransactionDate__c", "AccountID__c", "Amount__c", "ssot__OwnerId__c", "ssot__FullName__c", "ssot__Name__c", "ssot__Industry__c", "Health_Score__c". These columns DO NOT exist in most orgs. The metadata tool's output is the only ground truth.
+   2. COLUMN-VERIFICATION GATE (mandatory — this is the #1 cause of tool-slot waste in this app):
+      a. After the metadata tool returns, find the specific table/DMO you intend to query in the response.
+      b. Before emitting the SQL tool_call, mentally enumerate the 2–3 exact column names you plan to SELECT, and confirm each one appears CHARACTER-FOR-CHARACTER in that table's fields array — not a variant, not a lowercased version, not what you think the convention should be. Case-sensitive. Underscores included. Prefix (ssot__, __c, bank-specific) included.
+      c. If a column you want is not in the fields array verbatim, it does not exist. Either pick a different column from the array, or drop the SQL call for this turn. NEVER "normalize" a column name (e.g. submitting "name" when only "Name" or "ssot__Name__c" is listed, or dropping a "ssot__" prefix to "clean up" the query) — that is the exact failure mode the circuit breaker trips on.
+   3. Common hallucinations to AVOID unless the metadata explicitly returns them — these are guessed variants the model reaches for when the real column name in the fields array feels awkward:
+        - Bare/unqualified guesses: "name", "Name", "id", "Id", "ownerId", "OwnerId", "amount", "Amount", "date", "email"
+        - ssot_ variants: "ssot__Name__c", "ssot__FullName__c", "ssot__OwnerId__c", "ssot__Industry__c", "ssot__EmailAddress__c"
+        - CRM-mimic guesses on DMOs: "TransactionDate__c", "AccountID__c", "Amount__c", "Health_Score__c", "LastActivityDate"
+      If any of these look right for your query but DON'T appear in the metadata response, they do not exist in this org. Use what's there or skip.
    4. DO NOT query information_schema, pg_catalog, or any Postgres-style introspection. Those do not exist in Data Cloud SQL. To enumerate objects, call the metadata tool instead.
-   5. If a SQL call returns INVALID_ARGUMENT about a missing table or unknown column, do NOT immediately retry with another guess. Either (a) re-inspect the metadata response and pick a column that actually exists, or (b) abandon data_360 for this turn and say so in your final answer.
+   5. If a SQL call returns INVALID_ARGUMENT about a missing table or unknown column, do NOT immediately retry with another guess on the same DMO, and do NOT swap to a different DMO and make the same guess there. The runtime circuit breaker will block further data_360 calls for this turn — accept that Data Cloud didn't yield anything and say so in your final answer.
    6. Keep queries narrow: SELECT specific columns only (never SELECT *), LIMIT aggressively (e.g. LIMIT 20), and always qualify by the banker's user id or a resolved client id when applicable.
    7. CIRCUIT BREAKER: the runtime will AUTOMATICALLY block further calls to a data_360 tool after EVEN ONE schema-mismatch or transport error in the same turn. When you see a tool result with "blocked": true or "rejected": true, stop calling that tool immediately and finish your answer with whatever data you already have — do not try a different data_360 tool to compensate with made-up numbers.
 
