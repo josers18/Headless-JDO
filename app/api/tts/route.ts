@@ -147,7 +147,11 @@ export async function POST(req: NextRequest) {
       preview: synth.message.slice(0, 80),
     });
     return NextResponse.json(
-      { mode: "fallback" as const, reason: "upstream_error" },
+      {
+        mode: "fallback" as const,
+        reason: "upstream_error",
+        detail: synth.message.slice(0, 500),
+      },
       {
         status: 200,
         headers: { "X-TTS-Result": "fallback_upstream" },

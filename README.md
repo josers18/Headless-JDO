@@ -87,7 +87,7 @@ Copy [`.env.example`](./.env.example) to `.env` and fill values locally or in He
 | App URLs | `APP_URL` — must match the public origin behind the proxy (important on Heroku for OAuth redirects) |
 | Demo / brief context | `DEMO_BANKER_USER_ID`, `DEMO_BANKER_NAME`, optional `DEMO_BANKER_TZ` (IANA zone for server-side brief time; header clock uses the browser) |
 | Data | `DATABASE_URL`, `REDIS_URL` |
-| Narration (optional) | `ELEVENLABS_API_KEY` (trimmed — no stray newlines), optional `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID`, `ELEVENLABS_OUTPUT_FORMAT` — `POST /api/tts` returns MP3 (Redis cache when `REDIS_URL` is set). If `/api/tts` returns 401 while you are signed in, temporary demo escape hatch: `TTS_REQUIRE_SF_AUTH=0` (revert after). Browser console logs `[Horizon TTS] Web Speech fallback — …` with the reason when MP3 path is not used |
+| Narration (optional) | `ELEVENLABS_API_KEY` (trimmed — no stray newlines), optional `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` (default **`eleven_multilingual_v2`** — turbo models are often plan-gated), `ELEVENLABS_OUTPUT_FORMAT`, optional `ELEVENLABS_API_BASE` (`https://api.elevenlabs.io` or regional host). `POST /api/tts` returns MP3 (Redis when `REDIS_URL` is set). Fallback JSON includes **`detail`** with the upstream error text for the browser console. `TTS_REQUIRE_SF_AUTH=0` is a temporary demo escape if the SF cookie does not hit `/api/tts` |
 | Script-only SF token | Optional `SF_ACCESS_TOKEN`, `SF_INSTANCE_URL` after `npm run sf:login` |
 
 If any credential was ever exposed in chat or a public repo, **rotate it** in Salesforce, Heroku, and Anthropic — the repo and docs intentionally contain **no** real tokens.

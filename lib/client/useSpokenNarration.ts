@@ -112,7 +112,19 @@ export function useSpokenNarration(): SpokenNarration {
                   }
                 })()))
           ) {
-            playWeb(text, `server fallback (${tag || "json body"})`);
+            let extra = tag || "json body";
+            if (bytes.length >= 4 && bytes[0] === 0x7b) {
+              try {
+                const data = JSON.parse(
+                  new TextDecoder().decode(bytes)
+                ) as { detail?: string; reason?: string };
+                if (data.detail) extra = `${extra} — ${data.detail}`;
+                else if (data.reason) extra = `${extra} (${data.reason})`;
+              } catch {
+                /* ignore */
+              }
+            }
+            playWeb(text, `server fallback (${extra})`);
             return;
           }
 
