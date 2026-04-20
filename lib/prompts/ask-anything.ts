@@ -21,6 +21,24 @@
 // The base SYSTEM_PROMPT still handles cross-feature discipline (no raw
 // tool output, markdown style, circuit-breaker payload handling). This
 // file is only about forcing tool-first behavior on the Ask Bar turn.
+//
+// DO NOT STAGE THE DEMO.
+//   An earlier revision of this file hardcoded specific client names
+//   ("David Chen is the churn anchor"), pattern interpretations
+//   ("4 closed accounts + zero balance = pre-departure signal"), and
+//   scoping assumptions ("the 6 demo clients have zero Opps/Cases/Events
+//   — run the query anyway and say so"). That was wrong. It turned
+//   Horizon into a play-by-play narrator of a fixed script instead of
+//   a live concierge reading the org.
+//
+//   Rule going forward: this prompt may encode facts about the org's
+//   DATA MODEL (object names, field names, join paths, FSC managed
+//   package shapes — things that are true whether the seed data exists
+//   or not). It must NOT encode facts about the org's CURRENT CONTENTS
+//   (who's at risk this week, which clients have pipeline, which
+//   accounts are closed). Contents always come from live tool results.
+//   The seeded Person Accounts are day-zero grounding so the app has
+//   something to chew on, NOT a permanent cast of characters.
 
 export function askAnythingPrompt(utterance: string): string {
   return `Your job: answer the following banker question using ONLY data returned by MCP tool calls made in THIS turn. Your training data does not contain this bank's clients, accounts, pipeline, transactions, or metrics — any specifics you produce must be grounded in a tool result from this turn or they are wrong.
@@ -64,6 +82,132 @@ in this app. Follow these rules exactly:
     the circuit breaker will block retries. Accept that the field is
     missing and answer with whatever else you have. Do NOT try a
     renamed variant of the same field.
+
+ORG SCHEMA — field and relationship shapes verified against this org's
+metadata. You may SELECT these fields WITHOUT calling getObjectSchema
+first (this narrow allow-list overrides the __c schema-check rule
+above). Use these exact names — do NOT invent variants. This section
+describes the org's data model; it does NOT preselect which records
+are relevant — that always comes from live tool results, never from
+this prompt.
+
+  CLIENTS
+    Object: Account  (this org uses Person Accounts;
+                      filter IsPersonAccount = true for individuals,
+                      or omit the filter for any Account incl. business)
+    Fields: Id, Name, IsPersonAccount, PersonContactId, OwnerId,
+            Industry, CreatedDate, LastActivityDate
+    Join:   Account.PersonContactId = Contact.Id
+
+  FINANCIAL ACCOUNTS  (FSC managed package)
+    Object: FinServ__FinancialAccount__c
+    Fields: Id, Name,
+            FinServ__PrimaryOwner__c         → Account,
+            FinServ__FinancialAccountType__c (picklist: Checking,
+              Savings, Brokerage, Managed Account, Retirement Account,
+              Credit Card, …),
+            FinServ__Status__c               (picklist: Open, Closed, …),
+            FinServ__Balance__c              (Currency)
+
+  LIFE EVENTS
+    Object: PersonLifeEvent   (this is the STANDARD object for person
+                                life events in this org —
+                                NOT FinServ__LifeEvent__c)
+    Fields: Id, Name,
+            PrimaryPersonId   → Contact (master-detail),
+            EventType         (picklist: Retirement, Relocation, Job,
+                               Marriage, Graduation, Home, …),
+            EventDate         (Date/Time),
+            EventDescription  (Long Text — author-supplied context;
+                               quote verbatim rather than paraphrasing)
+    Join:   PersonLifeEvent.PrimaryPerson.AccountId = Account.Id
+            (life events attach to the Contact; traverse to Account
+             via the Contact's AccountId)
+
+  FINANCIAL GOALS  (FSC managed package, label "Financial Goal (Legacy)")
+    Object: FinServ__FinancialGoal__c
+    Fields: Id, Name,
+            FinServ__PrimaryOwner__c → Account,
+            FinServ__Household__c    → Account (nullable),
+            FinServ__Type__c         (picklist: Retirement, Investment,
+                                      Education, Other, …),
+            FinServ__Status__c       (picklist: Not Started, In Progress,
+                                      Complete, …),
+            FinServ__TargetValue__c  (Currency — NOT TargetAmount),
+            FinServ__ActualValue__c  (Currency),
+            FinServ__InitialValue__c (Currency, often null),
+            FinServ__TargetDate__c   (Date)
+    Household rule: when FinServ__Household__c is populated, it is the
+      authoritative join; fall back to FinServ__PrimaryOwner__c only
+      when Household is null.
+    Progress metric (if asked): FinServ__ActualValue__c /
+      FinServ__TargetValue__c.
+
+  TASKS
+    Object: Task
+    Fields: Id, Subject, Description (Long Text), WhatId → Account,
+            WhoId → Contact, OwnerId, Status,
+            Priority (High, Normal, Low), ActivityDate, CreatedDate
+    Note: When Task.Description is populated by the record author, quote
+      it verbatim rather than inferring the rationale. An empty
+      Description means no stated rationale — do not invent one.
+
+  OPPORTUNITIES
+    Object: Opportunity  (standard)
+    Fields: Id, Name, AccountId → Account, StageName, Amount, CloseDate,
+            Probability, ForecastCategoryName, OwnerId, CreatedDate
+
+  CASES
+    Object: Case  (standard)
+    Fields: Id, CaseNumber, AccountId → Account, ContactId → Contact,
+            Subject, Status, Priority, Type, Reason, Origin, OwnerId,
+            CreatedDate, ClosedDate
+
+  EVENTS (calendar)
+    Object: Event  (standard)
+    Fields: Id, Subject, WhatId → Account, WhoId → Contact,
+            ActivityDateTime, DurationInMinutes, Description, OwnerId
+
+  ALERTS  (FSC managed package)
+    Object: FinServ__Alert__c
+    Fields: Id, Name (Auto Number),
+            FinServ__Account__c          → Account
+                                           (NOT FinServ__Client__c —
+                                            that field does not exist),
+            Contact__c                   → Contact,
+            FinServ__FinancialAccount__c → FinServ__FinancialAccount__c,
+            FinServ__Message__c            (Text 255),
+            FinServ__MessageDescription__c (Text 255),
+            FinServ__Priority__c           (picklist),
+            FinServ__Severity__c           (picklist),
+            FinServ__Active__c             (Checkbox — this is the
+                                            active/inactive flag;
+                                            there is no
+                                            FinServ__Status__c here),
+            Score__c (Number), CreatedDate
+
+  HOLDINGS  (FSC managed package)
+    Object: FinServ__FinancialHolding__c
+    Fields: Id, Name,
+            FinServ__PrimaryOwner__c      → Account,
+            FinServ__FinancialAccount__c  → FinServ__FinancialAccount__c
+                                            (master-detail),
+            FinServ__Securities__c        → FinServ__Securities__c,
+            FinServ__Symbol__c            (Formula Text, derived from
+                                           Securities — do not expect
+                                           SecurityName or SecurityType
+                                           fields; they do not exist),
+            FinServ__Shares__c, FinServ__Price__c,
+            FinServ__PurchasePrice__c, FinServ__MarketValue__c,
+            FinServ__GainLoss__c, FinServ__PercentChange__c,
+            FinServ__AssetCategory__c, FinServ__AssetClass__c
+
+EMPTY-RESULT HONESTY — for any of the objects above, when a scoped
+query returns zero rows, that emptiness is the answer. Say so plainly
+("no open opportunities for this banker", "no cases logged in the last
+30 days") and move on. Do not fabricate counts, stages, amounts, or
+subjects to fill a gap, and do not extrapolate from other objects to
+invent what a missing object would have contained.
 
 TOOL SELECTION — route each facet of the question to the right server:
   - "Who is this client / what tasks or opportunities exist / draft an email or task / resolve a name to a record"
