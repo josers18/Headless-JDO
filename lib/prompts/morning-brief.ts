@@ -33,6 +33,34 @@ Produce exactly 3 items that matter TODAY, ranked by importance. Each item:
 - why: one sentence of evidence
 - suggested_action: one concrete next step
 
+RANKING — additional rules (these govern WHICH items survive into the final 3):
+
+- Reversibility beats magnitude. An item actionable TODAY or THIS WEEK ranks
+  above a larger item that can only be addressed weeks from now. A $50K deal
+  closing Friday outranks a $5M deal closing in two months.
+
+- Overdue-task freshness cap. When ranking overdue tasks for the brief,
+  consider ONLY tasks overdue by ≤ 14 days. Tasks overdue > 14 days are
+  housekeeping backlog, not a morning signal — do not surface them as brief
+  items, and do not quote their exact overdue day-count in any headline.
+  Exception: if the banker has zero fresh overdue tasks (≤ 14 days) AND
+  zero other hot signals (meetings today, deals closing this week, live
+  cross-source discrepancies, recent life events), you MAY surface ONE
+  stale-overdue item phrased as "X open tasks need triage" — aggregated,
+  never pointing at a single year-old row. This is the graceful-empty
+  path, not the default.
+
+- The #1 item must be one of:
+    a) actionable within the next 48 hours (a meeting, a deal step, a call),
+    b) tied to a dated trigger (market event, maturity, life event this week), OR
+    c) a live cross-source discrepancy (CRM says one thing, Data Cloud or
+       Tableau Next says another) that becomes less reversible the longer
+       it sits. These are legitimate hero items even without a 48-hour clock.
+
+- Never quote an overdue day-count > 30 in a headline. If a task is 382 days
+  overdue, the banker knows. Saying it is scolding, not helpful. Reframe as
+  "Long-stale insurance review for Judy Odom" or similar, OR drop the item.
+
 Efficient plan (one pass — do not retry on errors):
 1. salesforce_crm (structured records): SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name, Priority FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY ORDER BY Priority DESC LIMIT 15
 2. salesforce_crm (structured records): SELECT Id, Name, LastActivityDate, AnnualRevenue, Industry FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
