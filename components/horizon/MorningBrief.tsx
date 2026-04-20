@@ -25,6 +25,7 @@ import {
   readRightNowSnooze,
   writeRightNowSnooze,
 } from "@/lib/client/rightNowSnooze";
+import { rightNowGhostAskContext } from "@/lib/prompts/right-now-ghost";
 import type { BriefItem, MorningBrief as Brief } from "@/types/horizon";
 import { cn } from "@/lib/utils";
 
@@ -210,8 +211,8 @@ export function MorningBrief() {
       {isComplete && heroItem && (
         <div className="relative mt-4">
           <GhostPrompt
-            text="Why is my Right Now item the right first move?"
-            context="The banker is viewing the morning brief."
+            text="Why is this Right Now item the right first move?"
+            context={`The banker is viewing the morning brief.\n${rightNowGhostAskContext(heroItem)}`}
           />
         </div>
       )}

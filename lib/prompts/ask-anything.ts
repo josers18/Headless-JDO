@@ -80,11 +80,22 @@ ${args.scrollContext.trim()}
 `
       : "";
 
+  const anchorFollowThrough =
+    args.scrollContext?.includes("UI ANCHOR") === true &&
+    args.scrollContext.trim().length > 0
+      ? `
+UI ANCHOR FOLLOW-THROUGH (mandatory when the UI FOCUS block contains "UI ANCHOR"):
+The question's subject is the headline/entity named in that block—not whatever row happens to look "most urgent" in a generic tool listing.
+Your answer must explain or justify first-move priority FOR THAT ANCHOR. You may cite MCP tool results only in service of explaining THAT item.
+If you find a different person or task in tools, you may mention it only as contrast or contradiction; you must NOT replace the anchor headline with another name as if it were what the banker asked about.
+`
+      : "";
+
   return `${jobLead}
 
 QUESTION:
 "${utterance}"
-${scroll}
+${scroll}${anchorFollowThrough}
 BANKER CONTEXT (pre-resolved — DO NOT call getUserInfo):
   The banker asking this question is Salesforce user Id \`${args.bankerUserId}\`.
   Use this Id VERBATIM for any \`OwnerId =\` filter you need. Do NOT write
