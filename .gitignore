@@ -17,3 +17,10 @@ __pycache__/
 venv/
 tsconfig.tsbuildinfo
 *.tsbuildinfo
+
+# Cursor-generated state (the checked-in .cursor/mcp.json is
+# intentional — it's the MCP server registry; everything else the
+# IDE drops into this folder is local-only).
+.cursor/logs/
+.cursor/workspace-state/
+.cursor/sessions/
