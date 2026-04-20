@@ -151,6 +151,38 @@ const FORBIDDEN_DC_SQL_PATTERNS: Array<{ re: RegExp; reason: string }> = [
     reason:
       "SELECT * is not allowed — pick specific columns by name from the metadata response.",
   },
+  // Known-hallucinated column names. The system prompt already forbids
+  // these, but the model still reaches for them when the real field list
+  // from getDcMetadata feels awkward. Pattern enforcement is whack-a-mole
+  // by nature, but each entry here maps 1:1 to an actual INVALID_ARGUMENT
+  // we've seen in the trail. Add new entries as new variants surface.
+  {
+    // Quoted or unquoted ssot__ columns that are known NOT to exist in
+    // this org's DMOs. The metadata response uses DMO-specific prefixes
+    // (Acc_*, FinServ_*, etc.) rather than generic ssot__ envelopes on
+    // non-identity DMOs — when the model guesses ssot__OwnerId__c /
+    // ssot__Name__c / ssot__Industry__c / ssot__FullName__c etc.,
+    // Data Cloud returns "unknown column" and the circuit breaker trips.
+    re: /"?ssot__(OwnerId|FullName|Name|Industry|EmailAddress)__c"?/i,
+    reason:
+      "This ssot__* column is a common hallucination and does not exist in most DMOs in this org. Re-read the getDcMetadata response for the DMO you are querying and copy a real column name from its fields array verbatim.",
+  },
+  {
+    // Bare unquoted lowercase identifiers in SELECT/WHERE that the
+    // model sometimes produces as "normalized" versions of quoted
+    // DMO columns. Real DMO columns are mixed-case with suffixes
+    // ("Acc_Name__c"), so a bare lowercase "name" / "id" / "owner_id"
+    // reference is almost always a guess.
+    //
+    // We only trip on these when they appear as standalone column
+    // references — not as parts of quoted identifiers or longer
+    // snake_case column names. Anchoring with word boundaries plus
+    // a negative lookbehind for quote/underscore/dot keeps false
+    // positives off legitimate queries.
+    re: /(?<!["_.a-zA-Z0-9])(?:name|id|owner_id|ownerid)(?!["_a-zA-Z0-9])\s*(?:,|FROM\b|WHERE\b|=|\))/i,
+    reason:
+      "Bare lowercase 'name' / 'id' / 'owner_id' is not a real column in Data Cloud DMOs. Real column names are mixed-case with a DMO-specific prefix (e.g. Acc_Name__c, ssot__Id__c). Copy a column name verbatim from the getDcMetadata response for the DMO you are querying.",
+  },
 ];
 
 function preflightRejection(

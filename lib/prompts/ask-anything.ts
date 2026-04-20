@@ -40,11 +40,27 @@
 //   The seeded Person Accounts are day-zero grounding so the app has
 //   something to chew on, NOT a permanent cast of characters.
 
-export function askAnythingPrompt(utterance: string): string {
+export interface AskAnythingArgs {
+  bankerUserId: string;
+}
+
+export function askAnythingPrompt(
+  utterance: string,
+  args: AskAnythingArgs
+): string {
   return `Your job: answer the following banker question using ONLY data returned by MCP tool calls made in THIS turn. Your training data does not contain this bank's clients, accounts, pipeline, transactions, or metrics — any specifics you produce must be grounded in a tool result from this turn or they are wrong.
 
 QUESTION:
 "${utterance}"
+
+BANKER CONTEXT (pre-resolved — DO NOT call getUserInfo):
+  The banker asking this question is Salesforce user Id \`${args.bankerUserId}\`.
+  Use this Id VERBATIM for any \`OwnerId =\` filter you need. Do NOT write
+  literal placeholders like "<UNKNOWN>", "<bankerUserId>", or the Id of any
+  other user you might have seen in prior training data. Do NOT call
+  salesforce_crm.getUserInfo just to re-resolve this Id — it is already
+  resolved. Only call getUserInfo if the question genuinely asks about a
+  DIFFERENT user (e.g. "who on the team has the most open tasks").
 
 HARD CONTRACT (zero-tolerance — violations invalidate the answer)
 1. Before writing ANY prose, you MUST call at least one MCP tool. Your first model output for this turn is a tool_call, never assistant text.
@@ -223,7 +239,7 @@ CONCRETE FIRST STEPS — do these before any prose:
 
 1. Named-entity resolution. If the question mentions a client or account by name ("David Chen", "the Patels", "Rodriguez"), your FIRST tool call is a salesforce_crm SOQL query resolving that Contact/Account along with its real Id. Do not proceed to step 2 until the Id is in hand. If the name returns zero matches, the honest empty-data path applies.
 
-2. Owner scoping. If the question uses "my" ("my clients", "my pipeline", "my accounts"), resolve the banker's user Id via salesforce_crm.getUserInfo (or equivalent) before any OwnerId-scoped SOQL. Use the returned Id, never fabricate one.
+2. Owner scoping (the banker's user Id is ALREADY RESOLVED in BANKER CONTEXT above — paste it verbatim into any OwnerId filter; do not re-resolve). If the question uses "my" ("my clients", "my pipeline", "my accounts"), the first OwnerId-scoped SOQL is the one that follows entity resolution.
 
 3. Facet dispatch. Based on the category mapping above, fire the tool(s) that actually answer the question. For lookalike / anomaly / engagement questions, call data_360's metadata tool (name starts with "getDcMetadata") first to enumerate DLOs, then ONE narrow SQL. For AUM / pipeline / win-rate questions, call tableau_next's semantic-models tool (name starts with "getSemanticModels") then the analytics Q&A tool (name starts with "analyze") ONCE with a concrete metric question tied to this banker.
 
