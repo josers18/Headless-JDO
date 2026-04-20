@@ -12,7 +12,7 @@ Efficient plan (follow this order):
 2. salesforce_crm.soqlQuery: overdue/due-today Tasks for this user: SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY LIMIT 25
 3. salesforce_crm.soqlQuery: recent/open Cases tied to this user's accounts: SELECT Id, Subject, Status, Priority, AccountId, Account.Name FROM Case WHERE Account.OwnerId = '${a.bankerUserId}' AND IsClosed = false LIMIT 25
 4. data_360 (optional, best-effort): getDcMetadata first to discover available DMOs, then ONE postDcQuerySql that aggregates recent behavioral signals for accounts in the user's book. If metadata doesn't reveal an obviously relevant DMO, skip — do not guess.
-5. tableau_next (optional): getSemanticModels then at most ONE analyzeSemanticData for a concrete KPI question. Skip if not obvious.
+5. tableau_next (optional): getSemanticModels first (category filter like "Sales" is OK ONLY to narrow the list). Then at most ONE analyzeSemanticData — you MUST set targetEntityIdOrApiName (or the tool's equivalent field) to an id/apiName copied verbatim from ONE row in that getSemanticModels response. NEVER use "Sales", "Service", or any category label as the model identifier (that causes INVALID_INPUT). If the list is empty or you cannot bind a row, skip analyze entirely.
 
 Composite score (0-100): urgency (open tasks overdue, stale opps) × opportunity value (Amount) × signal strength. Pick the top ${n}.
 

@@ -185,7 +185,7 @@ const FORBIDDEN_DC_SQL_PATTERNS: Array<{ re: RegExp; reason: string }> = [
   },
 ];
 
-function preflightRejection(
+function preflightDataCloudSql(
   server: string,
   tool: string,
   args: Record<string, unknown>
@@ -207,6 +207,48 @@ function preflightRejection(
     }
   }
   return null;
+}
+
+/** Category labels from getSemanticModels filters — not valid model ids for analyze. */
+const TABLEAU_PLACEHOLDER_MODEL_ID = /^(sales|service|marketing|finance|operations)$/i;
+
+function preflightTableauAnalyze(
+  server: string,
+  tool: string,
+  args: Record<string, unknown>
+): string | null {
+  if (server !== "tableau_next") return null;
+  if (!/analyzeSemantic/i.test(tool)) return null;
+  const keys = [
+    "targetEntityIdOrApiName",
+    "targetEntityId",
+    "semanticModelId",
+    "modelId",
+    "entityIdentifier",
+  ] as const;
+  for (const k of keys) {
+    const v = args[k];
+    if (typeof v === "string" && TABLEAU_PLACEHOLDER_MODEL_ID.test(v.trim())) {
+      return JSON.stringify({
+        rejected: true,
+        server,
+        tool,
+        reason: `Invalid semantic model binding: "${v.trim()}" is a category label from getSemanticModels, not a semantic model id. Re-call getSemanticModels, pick one row, and copy its id/apiName/semanticModelId verbatim into analyzeSemanticData.`,
+        instruction:
+          "Do NOT retry analyzeSemanticData with the same placeholder. Call getSemanticModels in this turn, read the JSON rows, copy a real model identifier field from exactly one row, then call analyze once — or skip tableau_next for this turn.",
+      });
+    }
+  }
+  return null;
+}
+
+function preflightRejection(
+  server: string,
+  tool: string,
+  args: Record<string, unknown>
+): string | null {
+  return preflightDataCloudSql(server, tool, args) ??
+    preflightTableauAnalyze(server, tool, args);
 }
 
 // Threshold for the breaker. We trip on the very FIRST error matching a

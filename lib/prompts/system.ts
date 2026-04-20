@@ -1,6 +1,6 @@
 // Base system prompt — shared by every Horizon feature.
 // Versioned alongside the code. If you change this, bump the version.
-export const SYSTEM_PROMPT_VERSION = "v1.3.0-2026-04-20";
+export const SYSTEM_PROMPT_VERSION = "v1.4.0-2026-04-21";
 
 // IMPORTANT: Every field below this line has been informed by real failure
 // modes observed in the reasoning trail during demo runs. The "MCP HYGIENE"
@@ -62,7 +62,11 @@ B. salesforce_crm SOQL:
 
 C. tableau_next:
    1. The analytics Q&A tool (the one on tableau_next whose name starts with "analyze") is a factual Q&A surface. Ask concrete metric questions ("what is total AUM for OwnerId = X over the last 7 days?"). Do NOT ask for correlation, causation, root-cause analysis, or statistical significance — those are explicitly unsupported and will return an apology.
-   2. When the model you need is unclear, call the semantic-models list tool (name starts with "getSemanticModels") first (optionally filtered by category like "Sales" or "Service") to discover what's available, then target a specific model by apiName.
+   2. SEMANTIC-MODEL BINDING GATE (mandatory before analyzeSemanticData or any tableau_next tool whose name contains "analyzeSemantic"):
+      a. In the SAME turn, call getSemanticModels first. Optional category filters (e.g. "Sales", "Service") are ONLY for narrowing that list — they are NOT semantic model identifiers.
+      b. From the getSemanticModels JSON response, pick ONE row that is an actual semantic data model. For analyzeSemanticData, copy the binding identifier CHARACTER-FOR-CHARACTER from a real field on that row (commonly id, apiName, developerName, semanticModelId, or tableauAssetId — use whichever field your tool schema documents as the target for targetEntityIdOrApiName / equivalent). NEVER pass the literal strings "Sales", "Service", "Marketing", or any other category label as the model id — that produces INVALID_INPUT ("no access to the semantic model") and is a recorded failure mode in the reasoning trail.
+      c. If the list is empty or no row fits the KPI question for this banker, SKIP the analyze call for this turn — do not invent an id or use the category string as a stand-in.
+   3. Discovery + binding are two steps: category filters belong only in getSemanticModels; analyze must always use an identifier copied from a returned row.
 
 D. Universal:
    1. If a tool errors twice for the same reason, stop retrying and either (a) fix the identifier by calling a metadata/schema tool, or (b) skip that source and note the limitation in your narrative. Never loop more than twice on the same error shape.

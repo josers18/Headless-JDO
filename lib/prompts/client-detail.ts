@@ -22,7 +22,7 @@ Plan — one pass, no retries on errors, use getObjectSchema before any custom f
 3. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, ActivityDate, Priority, WhoId, Who.Name FROM Task WHERE AccountId = '${a.clientId}' AND CreatedDate = LAST_N_DAYS:60 ORDER BY ActivityDate DESC NULLS LAST LIMIT 10
 4. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, Priority, CreatedDate FROM Case WHERE AccountId = '${a.clientId}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 10
 5. (Optional) data_360: getDcMetadata to find a Profile or Engagement DMO; if one exists, ONE postDcQuerySql WHERE a client identifier matches '${a.clientId}'. Skip on errors — do not guess.
-6. (Optional) tableau_next: getSemanticModels, then ONE analyzeSemanticData concrete question scoped to this account. Skip on errors.
+6. (Optional) tableau_next: getSemanticModels, then ONE analyzeSemanticData with target bound to a real model id from the list (not "Sales"/"Service"). Skip on errors or empty list.
 
 Return JSON ONLY (no prose, no fences):
 {

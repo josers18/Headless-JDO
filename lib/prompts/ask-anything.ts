@@ -241,7 +241,7 @@ CONCRETE FIRST STEPS — do these before any prose:
 
 2. Owner scoping (the banker's user Id is ALREADY RESOLVED in BANKER CONTEXT above — paste it verbatim into any OwnerId filter; do not re-resolve). If the question uses "my" ("my clients", "my pipeline", "my accounts"), the first OwnerId-scoped SOQL is the one that follows entity resolution.
 
-3. Facet dispatch. Based on the category mapping above, fire the tool(s) that actually answer the question. For lookalike / anomaly / engagement questions, call data_360's metadata tool (name starts with "getDcMetadata") first to enumerate DLOs, then ONE narrow SQL. For AUM / pipeline / win-rate questions, call tableau_next's semantic-models tool (name starts with "getSemanticModels") then the analytics Q&A tool (name starts with "analyze") ONCE with a concrete metric question tied to this banker.
+3. Facet dispatch. Based on the category mapping above, fire the tool(s) that actually answer the question. For lookalike / anomaly / engagement questions, call data_360's metadata tool (name starts with "getDcMetadata") first to enumerate DLOs, then ONE narrow SQL. For AUM / pipeline / win-rate questions, call tableau_next getSemanticModels first, then ONE analyze tool — copy the semantic model identifier verbatim from a listed row (never use "Sales"/"Service" as the model id; those are list filters only).
 
 The circuit breaker handles tool errors — do not skip a required call out of caution, and do not retry a failed tool (the breaker blocks retries automatically).
 
