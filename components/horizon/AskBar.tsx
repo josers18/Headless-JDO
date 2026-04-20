@@ -1,6 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useViewportSection } from "@/hooks/useViewportSection";
+import {
+  HORIZON_ASK_SUBMIT,
+  HORIZON_FOCUS_CLIENT,
+  type HorizonAskSubmitDetail,
+} from "@/lib/client/horizonEvents";
 import {
   ArrowUp,
   Check,
@@ -41,10 +47,19 @@ export function AskBar() {
   const [actionStatus, setActionStatus] = useState<
     Record<string, InlineActionStatus>
   >({});
+  const [focusLine, setFocusLine] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { placeholder: scrollPlaceholder, contextLine } = useViewportSection();
   const { narrative, steps, state, error, start, cancel, reset } =
     useAgentStream();
   const speech = useSpeechInput();
+
+  const askContext = useMemo(() => {
+    const parts = [contextLine, focusLine].filter(
+      (s): s is string => Boolean(s && s.trim())
+    );
+    return parts.length ? parts.join("\n") : undefined;
+  }, [contextLine, focusLine]);
 
   useEffect(() => {
     try {
@@ -96,6 +111,24 @@ export function AskBar() {
   }, [speech.listening, speech.transcript, speech.interim]);
 
   useEffect(() => {
+    const onFocusClient = (e: Event) => {
+      const ce = e as CustomEvent<{ name?: string; clientId?: string }>;
+      const name = ce.detail?.name?.trim();
+      if (name) {
+        setFocusLine(
+          `The banker opened a client sheet for "${name}"${
+            ce.detail?.clientId
+              ? ` (Salesforce record id ${ce.detail.clientId}).`
+              : "."
+          }`
+        );
+      }
+    };
+    window.addEventListener(HORIZON_FOCUS_CLIENT, onFocusClient);
+    return () => window.removeEventListener(HORIZON_FOCUS_CLIENT, onFocusClient);
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -110,20 +143,45 @@ export function AskBar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [state, cancel]);
 
+  const submitWithQuestion = useCallback(
+    async (qRaw: string, ghostContext?: string) => {
+      const q = qRaw.trim();
+      if (!q || state === "streaming") return;
+      if (speech.listening) speech.stop();
+      setLastQuestion(q);
+      setValue("");
+      setActionStatus({});
+      const messages: AskThreadMessage[] = [
+        ...thread,
+        { role: "user", content: q },
+      ];
+      const merged =
+        [askContext, ghostContext]
+          .filter((x) => x && String(x).trim().length > 0)
+          .join("\n") || undefined;
+      await start(
+        "/api/ask",
+        merged ? { messages, context: merged } : { messages },
+        { onThreadSnapshot: persistThreadFromServer }
+      );
+    },
+    [askContext, persistThreadFromServer, speech, start, state, thread]
+  );
+
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const ce = e as CustomEvent<HorizonAskSubmitDetail>;
+      const q = ce.detail?.q?.trim();
+      if (!q || state === "streaming") return;
+      void submitWithQuestion(q, ce.detail?.context);
+    };
+    window.addEventListener(HORIZON_ASK_SUBMIT, onAsk as EventListener);
+    return () =>
+      window.removeEventListener(HORIZON_ASK_SUBMIT, onAsk as EventListener);
+  }, [state, submitWithQuestion]);
+
   async function submit() {
-    const q = value.trim();
-    if (!q || state === "streaming") return;
-    if (speech.listening) speech.stop();
-    setLastQuestion(q);
-    setValue("");
-    setActionStatus({});
-    const messages: AskThreadMessage[] = [
-      ...thread,
-      { role: "user", content: q },
-    ];
-    await start("/api/ask", { messages }, {
-      onThreadSnapshot: persistThreadFromServer,
-    });
+    await submitWithQuestion(value, undefined);
   }
 
   function toggleMic() {
@@ -294,6 +352,37 @@ export function AskBar() {
             aria-hidden
           />
 
+          {speech.supported && (
+            <>
+              <button
+                type="button"
+                onClick={toggleMic}
+                disabled={state === "streaming"}
+                className={cn(
+                  "relative flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-xl transition duration-fast md:h-9 md:w-9 md:min-h-0 md:min-w-0",
+                  speech.listening
+                    ? "bg-accent text-bg shadow-glow"
+                    : "bg-surface2 text-text-muted hover:text-text",
+                  state === "streaming" && "opacity-40"
+                )}
+                aria-label={speech.listening ? "Stop dictating" : "Dictate"}
+                title={speech.listening ? "Stop dictating" : "Dictate"}
+              >
+                <Mic size={15} />
+                {speech.listening && (
+                  <span
+                    className="pointer-events-none absolute inset-0 rounded-xl bg-accent/50 blur-md animate-glow-pulse"
+                    aria-hidden
+                  />
+                )}
+              </button>
+              {speech.listening && (
+                <div className="hidden shrink-0 max-md:flex">
+                  <VoiceWaveform />
+                </div>
+              )}
+            </>
+          )}
           <input
             ref={inputRef}
             value={value}
@@ -303,40 +392,16 @@ export function AskBar() {
             placeholder={
               speech.listening
                 ? "Listening…"
-                : "Ask Horizon anything about your book… (⌘K)"
+                : `${scrollPlaceholder} (⌘K)`
             }
-            className="relative flex-1 bg-transparent text-[15px] text-text placeholder:text-text-muted focus:outline-none"
+            className="relative min-h-[44px] flex-1 bg-transparent py-2 text-[15px] text-text placeholder:text-text-muted focus:outline-none md:min-h-0 md:py-0"
             aria-label="Ask Horizon"
           />
-          {speech.supported && (
-            <button
-              type="button"
-              onClick={toggleMic}
-              disabled={state === "streaming"}
-              className={cn(
-                "relative flex h-9 w-9 items-center justify-center rounded-xl transition duration-fast",
-                speech.listening
-                  ? "bg-accent text-bg shadow-glow"
-                  : "bg-surface2 text-text-muted hover:text-text",
-                state === "streaming" && "opacity-40"
-              )}
-              aria-label={speech.listening ? "Stop dictating" : "Dictate"}
-              title={speech.listening ? "Stop dictating" : "Dictate"}
-            >
-              <Mic size={15} />
-              {speech.listening && (
-                <span
-                  className="pointer-events-none absolute inset-0 rounded-xl bg-accent/50 blur-md animate-glow-pulse"
-                  aria-hidden
-                />
-              )}
-            </button>
-          )}
           {state === "streaming" ? (
             <button
               type="button"
               onClick={cancel}
-              className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-surface2 text-text-muted transition hover:text-text"
+              className="relative flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl bg-surface2 text-text-muted transition hover:text-text md:h-9 md:w-9 md:min-h-0 md:min-w-0"
               aria-label="Stop"
             >
               <Square size={14} />
@@ -346,7 +411,7 @@ export function AskBar() {
               type="submit"
               disabled={!value.trim()}
               className={cn(
-                "relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl transition duration-med",
+                "relative flex min-h-[44px] min-w-[44px] items-center justify-center overflow-hidden rounded-xl transition duration-med md:h-9 md:w-9 md:min-h-0 md:min-w-0",
                 value.trim()
                   ? "bg-accent-sheen text-bg shadow-glow"
                   : "bg-surface2 text-text-muted"
@@ -361,6 +426,26 @@ export function AskBar() {
           )}
         </form>
       </div>
+    </div>
+  );
+}
+
+function VoiceWaveform() {
+  return (
+    <div
+      className="flex h-6 items-end gap-0.5 px-0.5"
+      aria-hidden
+    >
+      {[12, 18, 14, 20].map((h, i) => (
+        <span
+          key={i}
+          className="w-[3px] rounded-full bg-accent/90 animate-pulse"
+          style={{
+            height: h,
+            animationDelay: `${i * 120}ms`,
+          }}
+        />
+      ))}
     </div>
   );
 }

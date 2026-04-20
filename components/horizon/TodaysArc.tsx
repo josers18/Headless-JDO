@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ArcNode } from "./ArcNode";
+import { GhostPrompt } from "./GhostPrompt";
 import { cn } from "@/lib/utils";
-import type { TodaysArcPayload } from "@/types/horizon";
+import type { ArcNodePayload, TodaysArcPayload } from "@/types/horizon";
+import { HORIZON_REFRESH_ARC } from "@/lib/client/horizonEvents";
+import { vibrateLight } from "@/lib/gestures";
 
 function isArcPayload(v: unknown): v is TodaysArcPayload {
   if (!v || typeof v !== "object") return false;
@@ -41,7 +44,7 @@ function formatTick(
 }
 
 export function TodaysArc() {
-  const { narrative, steps, state, error, start } = useAgentStream();
+  const { narrative, steps, state, error, start, reset } = useAgentStream();
   const [hasStarted, setHasStarted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -50,6 +53,29 @@ export function TodaysArc() {
     setHasStarted(true);
     void start("/api/arc", undefined, { method: "GET" });
   }, [hasStarted, start]);
+
+  useEffect(() => {
+    const fn = () => {
+      reset();
+      void start("/api/arc", undefined, { method: "GET" });
+    };
+    window.addEventListener(HORIZON_REFRESH_ARC, fn);
+    return () => window.removeEventListener(HORIZON_REFRESH_ARC, fn);
+  }, [reset, start]);
+
+  const onRescheduleIntent = useCallback((node: ArcNodePayload, deltaX: number) => {
+    vibrateLight();
+    void fetch("/api/arc-drag", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodeId: node.id,
+        title: node.title,
+        deltaPx: deltaX,
+        intent: "reschedule",
+      }),
+    }).catch(() => {});
+  }, []);
 
   const arc = useMemo(() => {
     const raw = tryParseJson<unknown>(narrative);
@@ -76,7 +102,7 @@ export function TodaysArc() {
   );
 
   return (
-    <div>
+    <div data-horizon-section="arc">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
@@ -97,6 +123,15 @@ export function TodaysArc() {
       {error && (
         <div className="mt-4 rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-[13px] text-danger/90">
           {error}
+        </div>
+      )}
+
+      {arc && arc.nodes.length > 0 && (
+        <div className="mt-4">
+          <GhostPrompt
+            text="What should I move on the arc to protect focus time?"
+            context="The banker is viewing Today's arc timeline."
+          />
         </div>
       )}
 
@@ -145,6 +180,7 @@ export function TodaysArc() {
                       onSelect={() =>
                         setSelectedId((id) => (id === node.id ? null : node.id))
                       }
+                      onRescheduleIntent={onRescheduleIntent}
                     />
                   </div>
                 ))}

@@ -1,44 +1,146 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { PriorityClient } from "@/types/horizon";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { cn } from "@/lib/utils";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ClientDetailSheet } from "./ClientDetailSheet";
+import { GhostPrompt } from "./GhostPrompt";
+import {
+  DraftActionCard,
+  type DraftCardStatus,
+  type StreamedDraft,
+} from "./DraftActionCard";
+import { useDrafts } from "./DraftsContext";
+import { vibrateLight } from "@/lib/gestures";
+import {
+  dispatchHorizonFocusClient,
+  HORIZON_REFRESH_PRIORITY,
+} from "@/lib/client/horizonEvents";
 
-// Heroku caps non-streaming HTTP at 30s; the priority agent loop routinely
-// needs 40–60s for a cold cross-MCP fetch. We ride the same SSE pipeline as
-// /api/ask + /api/brief and parse the accumulated narrative as JSON once the
-// stream closes. Visible progress is a nice bonus — bankers see the MCPs
-// light up instead of staring at a spinner.
+const PQ_GROUPS_KEY = "hz:pq-groups:v1";
+
+type Tier = "critical" | "important" | "watch";
+
+function tierForScore(score: number): Tier {
+  if (score >= 90) return "critical";
+  if (score >= 70) return "important";
+  return "watch";
+}
+
+function readGroupOpen(): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = sessionStorage.getItem(PQ_GROUPS_KEY);
+    if (!raw) return { today: true, week: true, watch: false };
+    const o = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      today: o.today !== false,
+      week: o.week !== false,
+      watch: Boolean(o.watch),
+    };
+  } catch {
+    return { today: true, week: true, watch: false };
+  }
+}
+
+function writeGroupOpen(next: Record<string, boolean>) {
+  try {
+    sessionStorage.setItem(PQ_GROUPS_KEY, JSON.stringify(next));
+  } catch {
+    /* quota */
+  }
+}
+
 export function PriorityQueue() {
-  const { narrative, steps, state, error, start } = useAgentStream();
+  const { narrative, steps, state, error, start, reset } = useAgentStream();
   const [hasStarted, setHasStarted] = useState(false);
   const [selectedClient, setSelectedClient] = useState<PriorityClient | null>(
     null
   );
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    typeof window === "undefined"
+      ? { today: true, week: true, watch: false }
+      : readGroupOpen()
+  );
+
+  const {
+    drafts,
+    statuses,
+    approve,
+    dismiss,
+    setPriorityClientIds,
+  } = useDrafts();
 
   useEffect(() => {
     if (hasStarted) return;
     setHasStarted(true);
-    start("/api/priority", undefined, { method: "GET" }).catch(() => {});
+    void start("/api/priority", undefined, { method: "GET" }).catch(() => {});
   }, [hasStarted, start]);
+
+  useEffect(() => {
+    const fn = () => {
+      reset();
+      void start("/api/priority", undefined, { method: "GET" }).catch(() => {});
+    };
+    window.addEventListener(HORIZON_REFRESH_PRIORITY, fn);
+    return () => window.removeEventListener(HORIZON_REFRESH_PRIORITY, fn);
+  }, [reset, start]);
 
   const { clients, note } = useMemo(() => parsePriorityPayload(narrative), [
     narrative,
   ]);
-  const isLoading = state === "streaming" || (state === "idle" && !hasStarted);
+
+  useEffect(() => {
+    setPriorityClientIds(clients.map((c) => c.client_id));
+  }, [clients, setPriorityClientIds]);
+
+  const grouped = useMemo(() => {
+    const today: PriorityClient[] = [];
+    const week: PriorityClient[] = [];
+    const watch: PriorityClient[] = [];
+    for (const c of clients) {
+      const t = tierForScore(c.score);
+      if (t === "critical") today.push(c);
+      else if (t === "important") week.push(c);
+      else watch.push(c);
+    }
+    return { today, week, watch };
+  }, [clients]);
+
+  const isLoading =
+    state === "streaming" || (state === "idle" && !hasStarted);
   const emptyMessage =
     state === "error"
       ? error ?? "Priority queue unavailable."
       : note ?? null;
 
+  const toggleGroup = useCallback((key: "today" | "week" | "watch") => {
+    setOpenGroups((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      writeGroupOpen(next);
+      return next;
+    });
+  }, []);
+
+  const ghost =
+    clients[0]?.name != null
+      ? `Why is ${clients[0].name} ranked first today?`
+      : "What should I focus on first in my book today?";
+
   return (
-    <div>
-      <div className="flex items-baseline justify-between">
+    <div data-horizon-section="priority">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
         <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
             className={cn(
@@ -57,63 +159,91 @@ export function PriorityQueue() {
         )}
       </div>
 
-      <ul className="mt-6 space-y-1">
+      {clients.length > 0 && (
+        <div className="mt-4">
+          <GhostPrompt
+            text={ghost}
+            context="The banker is viewing the priority queue."
+          />
+        </div>
+      )}
+
+      <div className="mt-6 space-y-4">
         {isLoading && clients.length === 0 && (
-          <>
+          <ul className="space-y-1">
             <li className="h-[72px] rounded-lg shimmer" aria-hidden />
             <li className="h-[72px] rounded-lg shimmer" aria-hidden />
             <li className="h-[72px] rounded-lg shimmer" aria-hidden />
-          </>
+          </ul>
         )}
         {!isLoading && clients.length === 0 && (
-          <li className="py-4 text-sm text-text-muted">
+          <p className="py-4 text-sm text-text-muted">
             {emptyMessage ?? "No priorities available yet."}
-          </li>
+          </p>
         )}
-        {clients.map((c, idx) => (
-          <li key={c.client_id} className="animate-fade-rise">
-            <button
-              type="button"
-              onClick={() => setSelectedClient(c)}
-              className="group relative grid w-full grid-cols-[56px_1fr_auto] items-center gap-5 rounded-lg border border-transparent px-4 py-4 text-left transition-colors duration-med ease-out hover:border-border-soft hover:bg-surface/60 focus:outline-none focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/30"
-            >
-              {/* Row index — set in a soft disk so it reads as a badge. */}
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
-                {String(idx + 1).padStart(2, "0")}
-              </div>
 
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-[15px] font-medium text-text group-hover:text-text">
-                    {c.name}
-                  </span>
-                  <ChevronRight
-                    size={13}
-                    className="shrink-0 text-text-muted/40 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:text-accent/80"
-                  />
-                </div>
-                <div className="mt-1 truncate text-[13px] leading-relaxed text-text-muted">
-                  {c.reason}
-                </div>
-                {c.sources && c.sources.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
-                    {c.sources.map((s) => (
-                      <span
-                        key={s}
-                        className="rounded border border-border-soft px-1.5 py-0.5"
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <ScorePill score={c.score} />
-            </button>
-          </li>
-        ))}
-      </ul>
+        {!isLoading && clients.length > 0 && (
+          <>
+            <PriorityGroup
+              id="today"
+              label="Today"
+              hint="Critical"
+              open={openGroups.today ?? true}
+              onToggle={() => toggleGroup("today")}
+              clients={grouped.today}
+              drafts={drafts}
+              statuses={statuses}
+              onApprove={approve}
+              onDismiss={dismiss}
+              onOpenClient={(c) => {
+                dispatchHorizonFocusClient({
+                  name: c.name,
+                  clientId: c.client_id,
+                });
+                setSelectedClient(c);
+              }}
+            />
+            <PriorityGroup
+              id="week"
+              label="This week"
+              hint="Important"
+              open={openGroups.week ?? true}
+              onToggle={() => toggleGroup("week")}
+              clients={grouped.week}
+              drafts={drafts}
+              statuses={statuses}
+              onApprove={approve}
+              onDismiss={dismiss}
+              onOpenClient={(c) => {
+                dispatchHorizonFocusClient({
+                  name: c.name,
+                  clientId: c.client_id,
+                });
+                setSelectedClient(c);
+              }}
+            />
+            <PriorityGroup
+              id="watch"
+              label="Watch"
+              hint="Lower urgency"
+              open={openGroups.watch ?? false}
+              onToggle={() => toggleGroup("watch")}
+              clients={grouped.watch}
+              drafts={drafts}
+              statuses={statuses}
+              onApprove={approve}
+              onDismiss={dismiss}
+              onOpenClient={(c) => {
+                dispatchHorizonFocusClient({
+                  name: c.name,
+                  clientId: c.client_id,
+                });
+                setSelectedClient(c);
+              }}
+            />
+          </>
+        )}
+      </div>
 
       {steps.length > 0 && (
         <div className="mt-6">
@@ -132,36 +262,197 @@ export function PriorityQueue() {
   );
 }
 
-// Score pill — a mini horizontal bar + qualitative tier tag. The bar uses
-// the accent gradient and a subtle glow that scales with the score so
-// high-priority rows pop. The tag translates the numeric score (which
-// the banker doesn't need to see raw) into one of three levels:
-//   - Critical  (>= 90): glows brighter, reserved for truly urgent rows
-//   - Important (70–89): standard emphasis
-//   - Watch     (< 70):  muted — worth knowing about, not acting on today
-// Score is still clamped to [0, 100] for the bar fill so the visual
-// density hierarchy is preserved even though we hide the number.
-type Tier = "critical" | "important" | "watch";
+function PriorityGroup({
+  id,
+  label,
+  hint,
+  open,
+  onToggle,
+  clients,
+  drafts,
+  statuses,
+  onApprove,
+  onDismiss,
+  onOpenClient,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  open: boolean;
+  onToggle: () => void;
+  clients: PriorityClient[];
+  drafts: StreamedDraft[];
+  statuses: Record<string, DraftCardStatus>;
+  onApprove: (d: StreamedDraft) => void | Promise<void>;
+  onDismiss: (d: StreamedDraft) => void;
+  onOpenClient: (c: PriorityClient) => void;
+}) {
+  if (clients.length === 0) return null;
+  return (
+    <section aria-labelledby={`pq-${id}-h`} className="rounded-xl border border-border-soft/40 bg-surface/20">
+      <button
+        type="button"
+        id={`pq-${id}-h`}
+        onClick={onToggle}
+        className="flex w-full min-h-[44px] items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface/40"
+      >
+        <span className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-text-muted">
+          {open ? (
+            <ChevronDown size={14} className="opacity-70" />
+          ) : (
+            <ChevronRight size={14} className="opacity-70" />
+          )}
+          {label}
+          <span className="rounded-full border border-border-soft px-2 py-0.5 font-mono text-[9px] text-text-muted/80">
+            {clients.length}
+          </span>
+        </span>
+        <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted/60">
+          {hint}
+        </span>
+      </button>
+      {open && (
+        <ul className="space-y-1 border-t border-border-soft/30 px-2 pb-2 pt-1">
+          {clients.map((c, idx) => (
+            <li key={c.client_id} className="animate-fade-rise">
+              <SwipePriorityRow>
+                <button
+                  type="button"
+                  onClick={() => onOpenClient(c)}
+                  className="group relative grid w-full grid-cols-[56px_1fr_auto] items-center gap-5 rounded-lg border border-transparent px-4 py-4 text-left transition-colors duration-med ease-out hover:border-border-soft hover:bg-surface/60 focus:outline-none focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/30"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
+                    {String(idx + 1).padStart(2, "0")}
+                  </div>
 
-function scoreTier(score: number): Tier {
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-[15px] font-medium text-text group-hover:text-text">
+                        {c.name}
+                      </span>
+                      <ChevronRight
+                        size={13}
+                        className="shrink-0 text-text-muted/40 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:text-accent/80"
+                      />
+                    </div>
+                    <div className="mt-1 truncate text-[13px] leading-relaxed text-text-muted">
+                      {c.reason}
+                    </div>
+                    {c.sources && c.sources.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
+                        {c.sources.map((s) => (
+                          <span
+                            key={s}
+                            className="rounded border border-border-soft px-1.5 py-0.5"
+                          >
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <ScorePill score={c.score} />
+                </button>
+              </SwipePriorityRow>
+              {drafts
+                .filter((d) => d.target_id === c.client_id)
+                .map((d, j) => {
+                  const st = statuses[d.id] ?? { kind: "idle" as const };
+                  if (st.kind === "dismissed") return null;
+                  return (
+                    <DraftActionCard
+                      key={d.id}
+                      draft={d}
+                      index={j}
+                      status={st}
+                      compact
+                      onApprove={() => void onApprove(d)}
+                      onDismiss={() => onDismiss(d)}
+                    />
+                  );
+                })}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function SwipePriorityRow({ children }: { children: ReactNode }) {
+  const dxRef = useRef(0);
+  const startX = useRef(0);
+  const active = useRef(false);
+  const [dx, setDx] = useState(0);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    active.current = true;
+    startX.current = e.clientX;
+    dxRef.current = 0;
+    setDx(0);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!active.current) return;
+    const next = Math.max(-72, Math.min(72, e.clientX - startX.current));
+    dxRef.current = next;
+    setDx(next);
+  };
+  const end = (e: React.PointerEvent) => {
+    if (!active.current) return;
+    active.current = false;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    const finalDx = dxRef.current;
+    if (Math.abs(finalDx) > 44) {
+      vibrateLight();
+    }
+    dxRef.current = 0;
+    setDx(0);
+  };
+
+  return (
+    <div className="overflow-hidden rounded-lg">
+      <div
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={end}
+        onPointerCancel={end}
+        style={{ transform: `translateX(${dx}px)` }}
+        className={cn(
+          "touch-pan-y transition-[transform] duration-fast ease-out",
+          dx !== 0 && "transition-none"
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+type TierLabel = "critical" | "important" | "watch";
+
+function scoreTier(score: number): TierLabel {
   if (score >= 90) return "critical";
   if (score >= 70) return "important";
   return "watch";
 }
 
-const TIER_LABEL: Record<Tier, string> = {
+const TIER_LABEL: Record<TierLabel, string> = {
   critical: "Critical",
   important: "Important",
   watch: "Watch",
 };
 
-const TIER_CLASS: Record<Tier, string> = {
-  critical:
-    "text-accent border-accent/40 bg-accent/10",
-  important:
-    "text-text border-border-soft bg-surface/80",
-  watch:
-    "text-text-muted border-border-soft bg-surface/50",
+const TIER_CLASS: Record<TierLabel, string> = {
+  critical: "text-accent border-accent/40 bg-accent/10",
+  important: "text-text border-border-soft bg-surface/80",
+  watch: "text-text-muted border-border-soft bg-surface/50",
 };
 
 function ScorePill({ score }: { score: number }) {
@@ -189,8 +480,6 @@ function ScorePill({ score }: { score: number }) {
           "rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] font-mono",
           TIER_CLASS[tier]
         )}
-        // why: numeric score still available to assistive tech / power-users
-        // inspecting the DOM, but invisible in the rendered UI.
         data-score={clamped.toFixed(0)}
       >
         {TIER_LABEL[tier]}
@@ -199,11 +488,6 @@ function ScorePill({ score }: { score: number }) {
   );
 }
 
-// The priority prompt instructs Claude to return a JSON object with a
-// `clients` array. The model sometimes wraps it in a ```json fence; sometimes
-// it emits conversational text before the object. We strip fences and try
-// to locate a JSON object by balancing braces. Anything unparseable surfaces
-// as a note so the UI can explain itself instead of erroring silently.
 interface PriorityPayload {
   clients: PriorityClient[];
   note: string | null;

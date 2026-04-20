@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { HORIZON_REFRESH_PULSE } from "@/lib/client/horizonEvents";
 import { ArrowDownRight, ArrowUpRight, Minus, Play, Square, Volume2 } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { useSpokenNarration } from "@/lib/client/useSpokenNarration";
 import { applyPulseHygieneToKpis } from "@/lib/client/pulseMetricHygiene";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
+import { GhostPrompt } from "./GhostPrompt";
 import { cn } from "@/lib/utils";
 
 interface Pulse {
@@ -24,7 +26,7 @@ interface Pulse {
 // playback piggybacks on the same hook Morning Brief uses — two of our
 // "protect at all costs" features share the same surface for narration.
 export function PortfolioPulse() {
-  const { narrative, steps, state, error, start } = useAgentStream();
+  const { narrative, steps, state, error, start, reset } = useAgentStream();
   const { supported: voiceSupported, speaking, play, stop } =
     useSpokenNarration();
   const [hasStarted, setHasStarted] = useState(false);
@@ -34,6 +36,15 @@ export function PortfolioPulse() {
     setHasStarted(true);
     start("/api/pulse", undefined, { method: "GET" }).catch(() => {});
   }, [hasStarted, start]);
+
+  useEffect(() => {
+    const fn = () => {
+      reset();
+      void start("/api/pulse", undefined, { method: "GET" }).catch(() => {});
+    };
+    window.addEventListener(HORIZON_REFRESH_PULSE, fn);
+    return () => window.removeEventListener(HORIZON_REFRESH_PULSE, fn);
+  }, [reset, start]);
 
   const pulseRaw = useMemo(() => tryParseJson<Pulse>(narrative), [narrative]);
   const pulse = useMemo((): Pulse | null => {
@@ -52,7 +63,7 @@ export function PortfolioPulse() {
   }
 
   return (
-    <div>
+    <div data-horizon-section="pulse">
       <div className="flex items-baseline justify-between">
         <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
@@ -87,6 +98,15 @@ export function PortfolioPulse() {
         </div>
       )}
 
+      {pulse?.kpis && pulse.kpis.length > 0 && (
+        <div className="mt-4">
+          <GhostPrompt
+            text="Which KPI moved the most vs last week — and why?"
+            context="The banker is viewing portfolio pulse KPIs."
+          />
+        </div>
+      )}
+
       {isLoading && (
         <div className="mt-6 space-y-4">
           <div className="h-5 w-[85%] rounded shimmer" />
@@ -106,7 +126,7 @@ export function PortfolioPulse() {
       )}
 
       {pulse?.kpis && pulse.kpis.length > 0 && (
-        <div className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-7 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] sm:grid sm:snap-none sm:grid-cols-3 sm:overflow-visible">
           {pulse.kpis.map((k, i) => (
             <KpiCard key={i} kpi={k} index={i} />
           ))}
@@ -152,7 +172,7 @@ function KpiCard({
   return (
     <div
       className={cn(
-        "group relative animate-fade-rise overflow-hidden rounded-xl border border-border-soft bg-surface p-5",
+        "group relative w-[min(88vw,280px)] shrink-0 snap-center animate-fade-rise overflow-hidden rounded-xl border border-border-soft bg-surface p-5 sm:w-auto sm:shrink",
         stagger
       )}
     >

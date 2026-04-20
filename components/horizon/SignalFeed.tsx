@@ -67,7 +67,7 @@ export function SignalFeed() {
   }, [fetchOnce]);
 
   return (
-    <div>
+    <div data-horizon-section="signals">
       <div className="flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { HORIZON_REFRESH_BRIEF } from "@/lib/client/horizonEvents";
+import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
 import {
   ChevronDown,
   ChevronRight,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ClientDetailSheet } from "./ClientDetailSheet";
+import { GhostPrompt } from "./GhostPrompt";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { useSpokenNarration } from "@/lib/client/useSpokenNarration";
 import { tryParseJson } from "@/lib/client/jsonStream";
@@ -80,7 +83,7 @@ function CtaIcon({ kind }: { kind: CtaKind }) {
 }
 
 export function MorningBrief() {
-  const { narrative, steps, state, error, start } = useAgentStream();
+  const { narrative, steps, state, error, start, reset } = useAgentStream();
   const { supported: voiceSupported, speaking, play, stop } =
     useSpokenNarration();
   const [snoozeTick, setSnoozeTick] = useState(0);
@@ -89,10 +92,22 @@ export function MorningBrief() {
     name?: string;
   } | null>(null);
   const [whyOpen, setWhyOpen] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
 
   useEffect(() => {
+    if (hasStarted) return;
+    setHasStarted(true);
     void start("/api/brief", {});
-  }, [start]);
+  }, [hasStarted, start]);
+
+  useEffect(() => {
+    const fn = () => {
+      reset();
+      void start("/api/brief", {});
+    };
+    window.addEventListener(HORIZON_REFRESH_BRIEF, fn);
+    return () => window.removeEventListener(HORIZON_REFRESH_BRIEF, fn);
+  }, [reset, start]);
 
   const brief = useMemo(
     () => normalizeBrief(tryParseJson<Brief>(narrative)),
@@ -135,7 +150,7 @@ export function MorningBrief() {
   const cta = heroItem ? inferCta(heroItem) : null;
 
   return (
-    <div className="relative">
+    <div className="relative" data-horizon-section="brief">
       <div
         className="pointer-events-none absolute -inset-x-8 -top-24 h-[280px] bg-hero-glow drift"
         aria-hidden
@@ -192,6 +207,15 @@ export function MorningBrief() {
         )}
       </div>
 
+      {isComplete && heroItem && (
+        <div className="relative mt-4">
+          <GhostPrompt
+            text="Why is my Right Now item the right first move?"
+            context="The banker is viewing the morning brief."
+          />
+        </div>
+      )}
+
       {heroItem && cta && (
         <section
           className="relative mt-12 animate-fade-rise rounded-2xl border border-border-soft/80 bg-surface2/50 p-6 shadow-[0_24px_60px_-40px_rgba(0,0,0,0.55)] md:p-8"
@@ -227,9 +251,14 @@ export function MorningBrief() {
               type="button"
               onClick={() => {
                 if (heroItem.client_id) {
+                  const name = extractNameHint(heroItem.headline);
+                  dispatchHorizonFocusClient({
+                    name: name ?? "Client",
+                    clientId: heroItem.client_id,
+                  });
                   setSheet({
                     clientId: heroItem.client_id,
-                    name: extractNameHint(heroItem.headline),
+                    name,
                   });
                   return;
                 }
@@ -249,9 +278,14 @@ export function MorningBrief() {
               disabled={!heroItem.client_id}
               onClick={() => {
                 if (!heroItem.client_id) return;
+                const name = extractNameHint(heroItem.headline);
+                dispatchHorizonFocusClient({
+                  name: name ?? "Client",
+                  clientId: heroItem.client_id,
+                });
                 setSheet({
                   clientId: heroItem.client_id,
-                  name: extractNameHint(heroItem.headline),
+                  name,
                 });
               }}
               className={cn(

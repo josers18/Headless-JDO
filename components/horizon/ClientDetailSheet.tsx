@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
+import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
 import { ArrowDownRight, ArrowUpRight, Minus, X } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
@@ -75,6 +76,13 @@ export function ClientDetailSheet({
       : `/api/client/${encodeURIComponent(clientId)}`;
     start(url, undefined, { method: "GET" }).catch(() => {});
   }, [clientId, clientName, start]);
+
+  useEffect(() => {
+    dispatchHorizonFocusClient({
+      name: clientName ?? "Client",
+      clientId,
+    });
+  }, [clientId, clientName]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

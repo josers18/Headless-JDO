@@ -12,7 +12,7 @@ import { validateAskThreadMessages } from "@/lib/ask/thread";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type AskBody = { messages?: unknown; q?: string };
+type AskBody = { messages?: unknown; q?: string; context?: string };
 
 export async function POST(req: NextRequest) {
   const cid = correlationId();
@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
     (m: ChatCompletionMessageParam) => m.role === "tool"
   );
 
+  const scrollContext =
+    typeof body.context === "string" ? body.context.trim() : "";
+
   const messagesForApi: ChatCompletionMessageParam[] = [
     ...priorSeed,
     {
@@ -56,6 +59,7 @@ export async function POST(req: NextRequest) {
       content: askAnythingPrompt(rawUtterance.trim(), {
         bankerUserId,
         hasPriorToolContext,
+        scrollContext: scrollContext || undefined,
       }),
     },
   ];

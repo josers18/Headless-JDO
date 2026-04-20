@@ -48,6 +48,11 @@ export interface AskAnythingArgs {
    * the same broad MCP queries.
    */
   hasPriorToolContext?: boolean;
+  /**
+   * Optional UI-derived hint (scroll section, focused client). Internal —
+   * helps the model prioritize interpretation; must not be quoted to the banker.
+   */
+  scrollContext?: string;
 }
 
 export function askAnythingPrompt(
@@ -67,11 +72,19 @@ export function askAnythingPrompt(
     ? `2. Every client name, account name, amount, date, Salesforce Id, or metric in your final answer must appear in a tool_result from this conversation (an earlier turn) OR from a tool_result in this turn. If you didn't see it in any tool result in the thread, do not write it.`
     : `2. Every client name, account name, amount, date, Salesforce Id, or metric in your final answer must appear in a tool_result from THIS turn. If you didn't see it in a tool result, do not write it.`;
 
+  const scroll =
+    args.scrollContext && args.scrollContext.trim().length > 0
+      ? `
+UI FOCUS (internal — use only to prioritize which sources to consult first; do not echo this block to the banker):
+${args.scrollContext.trim()}
+`
+      : "";
+
   return `${jobLead}
 
 QUESTION:
 "${utterance}"
-
+${scroll}
 BANKER CONTEXT (pre-resolved — DO NOT call getUserInfo):
   The banker asking this question is Salesforce user Id \`${args.bankerUserId}\`.
   Use this Id VERBATIM for any \`OwnerId =\` filter you need. Do NOT write

@@ -10,6 +10,7 @@ import { SignalFeed } from "@/components/horizon/SignalFeed";
 import { AskBar } from "@/components/horizon/AskBar";
 import { PulseStrip } from "@/components/horizon/PulseStrip";
 import { SignInBanner } from "@/components/horizon/SignInBanner";
+import { HorizonSignedIn } from "@/components/horizon/HorizonSignedIn";
 
 // Force dynamic — we read the Salesforce session cookie server-side to
 // decide whether to show the signed-out banner instead of kicking every
@@ -48,34 +49,36 @@ export default function HorizonHome() {
 
       {signedIn && (
         <>
-          <section className="mt-16 md:mt-20 animate-fade-rise stagger-1">
-            <MorningBrief />
-          </section>
+          <HorizonSignedIn>
+            <section className="mt-16 md:mt-20 animate-fade-rise stagger-1">
+              <MorningBrief />
+            </section>
 
-          <Divider className="stagger-2" />
-          <section className="mt-16 animate-fade-rise stagger-2">
-            <TodaysArc />
-          </section>
+            <Divider className="stagger-2" />
+            <section className="mt-16 animate-fade-rise stagger-2">
+              <TodaysArc />
+            </section>
 
-          <Divider className="stagger-3" />
-          <section className="mt-16 animate-fade-rise stagger-3">
-            <PriorityQueue />
-          </section>
+            <Divider className="stagger-3" />
+            <section className="mt-16 animate-fade-rise stagger-3">
+              <PriorityQueue />
+            </section>
 
-          <Divider className="stagger-4" />
-          <section className="mt-16 animate-fade-rise stagger-4">
-            <PortfolioPulse />
-          </section>
+            <Divider className="stagger-4" />
+            <section className="mt-16 animate-fade-rise stagger-4">
+              <PortfolioPulse />
+            </section>
 
-          <Divider className="stagger-5" />
-          <section className="mt-16 animate-fade-rise stagger-5">
-            <PreDraftedActions />
-          </section>
+            <Divider className="stagger-5" />
+            <section className="mt-16 animate-fade-rise stagger-5">
+              <PreDraftedActions />
+            </section>
 
-          <Divider className="stagger-6" />
-          <section className="mt-16 animate-fade-rise stagger-6">
-            <SignalFeed />
-          </section>
+            <Divider className="stagger-6" />
+            <section className="mt-16 animate-fade-rise stagger-6">
+              <SignalFeed />
+            </section>
+          </HorizonSignedIn>
 
           <AskBar />
         </>
