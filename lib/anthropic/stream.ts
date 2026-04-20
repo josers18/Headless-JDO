@@ -1,4 +1,5 @@
 import type { ReasoningStep, McpServerName } from "@/types/horizon";
+import type { AskThreadMessage } from "@/types/ask-thread";
 
 export type SseEvent =
   | { type: "text_delta"; text: string }
@@ -11,6 +12,7 @@ export type SseEvent =
       preview: string;
     }
   | { type: "reasoning"; step: ReasoningStep }
+  | { type: "thread_snapshot"; messages: AskThreadMessage[] }
   | { type: "done" }
   | { type: "error"; message: string };
 

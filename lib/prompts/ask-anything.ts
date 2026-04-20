@@ -42,13 +42,32 @@
 
 export interface AskAnythingArgs {
   bankerUserId: string;
+  /**
+   * True when the chat transcript already includes `role: tool` messages
+   * (prior turns). Follow-ups may answer from that context without repeating
+   * the same broad MCP queries.
+   */
+  hasPriorToolContext?: boolean;
 }
 
 export function askAnythingPrompt(
   utterance: string,
   args: AskAnythingArgs
 ): string {
-  return `Your job: answer the following banker question using ONLY data returned by MCP tool calls made in THIS turn. Your training data does not contain this bank's clients, accounts, pipeline, transactions, or metrics — any specifics you produce must be grounded in a tool result from this turn or they are wrong.
+  const prior = Boolean(args.hasPriorToolContext);
+  const jobLead = prior
+    ? `Your job: answer the banker's question using MCP tool results already present in this conversation when they are enough, and calling MCP tools only when the question needs NEW or FRESHER data. Your training data does not contain this bank's book — any specifics must still be grounded in tool results (from earlier turns in this thread and/or new calls this turn), never invented.`
+    : `Your job: answer the following banker question using ONLY data returned by MCP tool calls made in THIS turn. Your training data does not contain this bank's clients, accounts, pipeline, transactions, or metrics — any specifics you produce must be grounded in a tool result from this turn or they are wrong.`;
+
+  const hardContract1 = prior
+    ? `1. If prior tool messages in this thread already contain the rows or fields needed (e.g. "which of those have a maturity this month?"), filter or interpret that data first and answer without re-issuing the same broad listing queries. When you need facts that are NOT in prior tool output, call MCP tools before stating them.`
+    : `1. Before writing ANY prose, you MUST call at least one MCP tool. Your first model output for this turn is a tool_call, never assistant text.`;
+
+  const hardContract2 = prior
+    ? `2. Every client name, account name, amount, date, Salesforce Id, or metric in your final answer must appear in a tool_result from this conversation (an earlier turn) OR from a tool_result in this turn. If you didn't see it in any tool result in the thread, do not write it.`
+    : `2. Every client name, account name, amount, date, Salesforce Id, or metric in your final answer must appear in a tool_result from THIS turn. If you didn't see it in a tool result, do not write it.`;
+
+  return `${jobLead}
 
 QUESTION:
 "${utterance}"
@@ -63,8 +82,8 @@ BANKER CONTEXT (pre-resolved — DO NOT call getUserInfo):
   DIFFERENT user (e.g. "who on the team has the most open tasks").
 
 HARD CONTRACT (zero-tolerance — violations invalidate the answer)
-1. Before writing ANY prose, you MUST call at least one MCP tool. Your first model output for this turn is a tool_call, never assistant text.
-2. Every client name, account name, amount, date, Salesforce Id, or metric in your final answer must appear in a tool_result from THIS turn. If you didn't see it in a tool result, do not write it.
+${hardContract1}
+${hardContract2}
 3. If tools return nothing useful, say so in one honest paragraph ("I couldn't find the data — the relevant tables returned nothing") and STOP. Do not paper over empty results with plausible-sounding content.
 
 ANTI-PATTERNS — these tell us you skipped tools; stop and call a tool instead:

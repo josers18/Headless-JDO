@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { Step } from "@/components/horizon/ReasoningTrail";
+import type { AskThreadMessage } from "@/types/ask-thread";
 
 /**
  * Shared client hook for streaming `/api/ask`, `/api/brief`, and
@@ -13,7 +14,7 @@ import type { Step } from "@/components/horizon/ReasoningTrail";
  *
  * start(url)                → GET  (used for /api/priority)
  * start(url, body)          → POST (used for /api/ask, /api/brief)
- * start(url, body, {method}) → explicit override
+ * start(url, body, opts)    → optional `onThreadSnapshot` for /api/ask
  */
 export interface AgentStreamState {
   narrative: string;
@@ -24,7 +25,10 @@ export interface AgentStreamState {
   start: (
     url: string,
     body?: unknown,
-    opts?: { method?: "GET" | "POST" }
+    opts?: {
+      method?: "GET" | "POST";
+      onThreadSnapshot?: (messages: AskThreadMessage[]) => void;
+    }
   ) => Promise<void>;
   cancel: () => void;
   reset: () => void;
@@ -41,6 +45,7 @@ type IncomingEvent =
       preview: string;
     }
   | { type: "error"; message: string }
+  | { type: "thread_snapshot"; messages: AskThreadMessage[] }
   | { type: "done" };
 
 export function useAgentStream(): AgentStreamState {
@@ -69,7 +74,10 @@ export function useAgentStream(): AgentStreamState {
     async (
       url: string,
       body?: unknown,
-      opts?: { method?: "GET" | "POST" }
+      opts?: {
+        method?: "GET" | "POST";
+        onThreadSnapshot?: (messages: AskThreadMessage[]) => void;
+      }
     ) => {
       abortRef.current?.abort();
       const ctrl = new AbortController();
@@ -161,6 +169,8 @@ export function useAgentStream(): AgentStreamState {
         } else if (msg.type === "error") {
           setError(msg.message);
           setState("error");
+        } else if (msg.type === "thread_snapshot" && Array.isArray(msg.messages)) {
+          opts?.onThreadSnapshot?.(msg.messages);
         }
       };
 

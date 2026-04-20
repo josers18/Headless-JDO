@@ -41,7 +41,8 @@ export interface AgentEvent {
 
 export interface AgentRunArgs {
   system: string;
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  /** Conversation seed without the system message (system is prepended here). */
+  messages: ChatCompletionMessageParam[];
   registry: McpRegistry;
   maxIterations?: number;
   temperature?: number;
@@ -71,6 +72,8 @@ export interface AgentRunResult {
     preview: string;
   }>;
   iterations: number;
+  /** Full thread as seen by the model, excluding the system message. */
+  transcript: ChatCompletionMessageParam[];
 }
 
 let _openai: OpenAI | null = null;
@@ -294,7 +297,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
 
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: system },
-    ...seed.map((m) => ({ role: m.role, content: m.content })),
+    ...seed,
   ];
 
   const collectedCalls: AgentRunResult["toolCalls"] = [];
@@ -382,9 +385,18 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
 
     // No tool calls → assistant is done.
     if (calls.length === 0) {
+      messages.push({
+        role: "assistant",
+        content: assistantContent.trim() || " ",
+      });
       finalText = assistantContent.trim();
       onEvent({ type: "final", text: finalText });
-      return { text: finalText, toolCalls: collectedCalls, iterations: iteration };
+      return {
+        text: finalText,
+        toolCalls: collectedCalls,
+        iterations: iteration,
+        transcript: messages.slice(1),
+      };
     }
 
     // Record the assistant turn with the tool_calls before we execute them.
@@ -593,6 +605,10 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         }
       }
       lastAssistantText = forced;
+      messages.push({
+        role: "assistant",
+        content: forced.trim() || " ",
+      });
     } catch (e) {
       onEvent({
         type: "error",
@@ -616,6 +632,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     text: finalText || "(agent exceeded iteration cap without final answer)",
     toolCalls: collectedCalls,
     iterations: iteration - 1,
+    transcript: messages.slice(1),
   };
 }
 

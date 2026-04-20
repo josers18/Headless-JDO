@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUp,
   Check,
@@ -25,6 +25,8 @@ import { extractActions } from "@/lib/client/extractActions";
 import { stripDraftDisplayNoise } from "@/lib/client/stripSalesforceIds";
 import { MarkdownView } from "./MarkdownView";
 import type { DraftAction } from "@/types/horizon";
+import type { AskThreadMessage } from "@/types/ask-thread";
+import { ASK_THREAD_STORAGE_KEY } from "@/types/ask-thread";
 
 // The Ask bar is pinned to the bottom of every page. It has two jobs:
 //  1) Receive banker questions and stream the answer back inline above the
@@ -35,6 +37,7 @@ export function AskBar() {
   const [focus, setFocus] = useState(false);
   const [value, setValue] = useState("");
   const [lastQuestion, setLastQuestion] = useState("");
+  const [thread, setThread] = useState<AskThreadMessage[]>([]);
   const [actionStatus, setActionStatus] = useState<
     Record<string, InlineActionStatus>
   >({});
@@ -42,6 +45,42 @@ export function AskBar() {
   const { narrative, steps, state, error, start, cancel, reset } =
     useAgentStream();
   const speech = useSpeechInput();
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(ASK_THREAD_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          setThread(parsed as AskThreadMessage[]);
+        }
+      }
+    } catch {
+      /* ignore corrupt storage */
+    }
+  }, []);
+
+  const persistThreadFromServer = useCallback((messages: AskThreadMessage[]) => {
+    setThread(messages);
+    try {
+      sessionStorage.setItem(ASK_THREAD_STORAGE_KEY, JSON.stringify(messages));
+    } catch {
+      /* quota / private mode */
+    }
+  }, []);
+
+  const newConversation = useCallback(() => {
+    setThread([]);
+    try {
+      sessionStorage.removeItem(ASK_THREAD_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
+    reset();
+    setLastQuestion("");
+    setValue("");
+    setActionStatus({});
+  }, [reset]);
 
   // Pipe live dictation into the input. `interim` is the word-in-progress;
   // `transcript` is the finalized text. Concatenating gives the banker
@@ -62,14 +101,14 @@ export function AskBar() {
         e.preventDefault();
         inputRef.current?.focus();
       }
-      if (e.key === "Escape" && state !== "streaming") {
-        reset();
-        setValue("");
+      if (e.key === "Escape" && state === "streaming") {
+        e.preventDefault();
+        cancel();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [state, reset]);
+  }, [state, cancel]);
 
   async function submit() {
     const q = value.trim();
@@ -78,7 +117,13 @@ export function AskBar() {
     setLastQuestion(q);
     setValue("");
     setActionStatus({});
-    await start("/api/ask", { q });
+    const messages: AskThreadMessage[] = [
+      ...thread,
+      { role: "user", content: q },
+    ];
+    await start("/api/ask", { messages }, {
+      onThreadSnapshot: persistThreadFromServer,
+    });
   }
 
   function toggleMic() {
@@ -165,16 +210,26 @@ export function AskBar() {
                 />
                 Asked
               </div>
-              <button
-                onClick={() => {
-                  reset();
-                  setLastQuestion("");
-                }}
-                className="rounded-md p-1 text-text-muted hover:bg-surface2 hover:text-text"
-                aria-label="Dismiss"
-              >
-                <X size={14} />
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={newConversation}
+                  className="rounded-md px-2 py-1 text-[11px] text-text-muted hover:bg-surface2 hover:text-text"
+                >
+                  New conversation
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    reset();
+                    setLastQuestion("");
+                  }}
+                  className="rounded-md p-1 text-text-muted hover:bg-surface2 hover:text-text"
+                  aria-label="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
             <div className="px-5 py-4">
               <div className="text-[14px] font-medium text-text">{lastQuestion}</div>

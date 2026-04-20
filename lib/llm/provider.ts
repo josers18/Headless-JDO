@@ -10,6 +10,7 @@
  * Callers use `runAgentWithMcp` and never touch provider internals.
  */
 
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { connectMcpClients } from "@/lib/mcp/client";
 import { runAgent, type AgentEvent } from "./heroku";
 import type { McpServerName } from "@/types/horizon";
@@ -23,7 +24,7 @@ export function currentProvider(): LlmProvider {
 
 export interface RunAgentInput {
   system: string;
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  messages: ChatCompletionMessageParam[];
   salesforceToken: string;
   onEvent?: (e: AgentEvent) => void;
   maxIterations?: number;
@@ -43,6 +44,7 @@ export interface RunAgentOutput {
     preview: string;
   }>;
   iterations: number;
+  transcript: ChatCompletionMessageParam[];
 }
 
 /**
