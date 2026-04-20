@@ -24,3 +24,7 @@ tsconfig.tsbuildinfo
 .cursor/logs/
 .cursor/workspace-state/
 .cursor/sessions/
+
+# Local-only product spec and defect backlog — not published to remotes.
+CLAUDE.md
+FIX_PASS.md

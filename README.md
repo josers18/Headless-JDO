@@ -1,73 +1,120 @@
 # Horizon
 
-> The headless home page for the relationship banker. Built on Salesforce Headless 360 + Anthropic Claude Sonnet 4 with native MCP.
+Headless home page for the relationship banker: one surface, no nav rails, agent-first. Built for the DAX *So You Think You Can AI?* Innovation Contest (April 2026).
 
-This is the submission for the DAX "So You Think You Can AI?" Innovation Contest. The authoritative build spec lives in [`CLAUDE.md`](./CLAUDE.md). When in doubt, the spec wins.
+**Internal docs (local only, not in git):** keep `CLAUDE.md` and `FIX_PASS.md` in your clone root for the full build spec, MCP hygiene, design tokens, demo checklist, and prioritized defect list. They are **gitignored** so they are not pushed to GitHub or included in Heroku deploy commits from this workflow — copy them from your secure backup or maintain them only on your machine.
+
+---
+
+## What it does
+
+- **Morning brief**, **priority queue**, **portfolio pulse**, **pre-drafted actions**, **live signals**, and a fixed **Ask** bar — all on `/`.
+- The LLM orchestrates three **Salesforce-hosted MCP** servers (CRM SObject, Data 360 SQL, Tableau Next). The UI streams tokens and a collapsible **reasoning trail** of tool calls.
+- **Default LLM path:** Heroku Managed Inference (Claude 4.5 Sonnet, OpenAI-compatible API) with our own MCP tool loop in `lib/llm/heroku.ts`. **Optional fallback:** `LLM_PROVIDER=anthropic` (native `mcp_servers` on Anthropic).
+
+---
 
 ## Stack
 
-- Next.js 14 (App Router) · React 18 · TypeScript strict · Tailwind CSS
-- Anthropic Claude Sonnet 4 via Messages API with `mcp_servers`
-- Three Salesforce-hosted MCPs: SObject All, Data 360, Tableau Next
-- Heroku Postgres + Heroku Key-Value Store
-- Single Heroku `web` dyno, Node 22
+| Layer | Choice |
+|--------|--------|
+| App | Next.js 14 (App Router), React 18, TypeScript strict, Tailwind, shadcn-style UI |
+| Deploy | Single Heroku `web` dyno (`Procfile`: `npm start`) |
+| Data | Heroku Postgres (sessions / history), Redis (streaming signals where used) |
+| Auth | Salesforce OAuth 2.1 + PKCE (ECA, `mcp_api` scope) |
+| Voice | Web Speech API (TTS / STT); optional pre-rendered TTS (e.g. ElevenLabs + cache) per your local defect backlog |
 
-## Quickstart
+---
+
+## Repository layout (short)
+
+| Path | Role |
+|------|------|
+| `app/page.tsx` | Home — the whole app |
+| `app/api/*` | SSE-backed routes: `ask`, `brief`, `priority`, `pulse`, `drafts`, `signals`, Salesforce OAuth |
+| `lib/llm/heroku.ts` | Agent loop: model → tool calls → parallel MCP → repeat |
+| `lib/mcp/client.ts` | MCP SDK sessions to Salesforce + optional Heroku toolkit |
+| `lib/prompts/*` | Versioned prompts (treat as code) |
+| `components/horizon/*` | UI sections |
+| `scripts/verify-mcp.ts` | Smoke test all three Salesforce MCPs |
+| `docs/CURSOR_MCP_SETUP.md` | Optional: wire the same MCPs into Cursor for schema grounding |
+| `docs/SEED_DATA_SPEC.md` | Data / seeding notes for CRM vs Data Cloud |
+
+---
+
+## Quickstart (local)
 
 ```bash
-# 1. Install
 npm install
-
-# 2. Copy env template and fill in the blanks
 cp .env.example .env
-# edit .env → add ANTHROPIC_API_KEY, DEMO_BANKER_USER_ID, etc.
+# Edit .env: see “Environment variables” below. Never commit .env.
 
-# 3. Apply the DB schema (local or Heroku)
-psql "$DATABASE_URL" -f lib/db/schema.sql
+# Optional: apply DB schema when using Postgres features locally
+# psql "$DATABASE_URL" -f lib/db/schema.sql
 
-# 4. Smoke-test all 3 MCPs (Day 1 done-when)
-npm run verify:mcp
-
-# 5. Run the dev server
-npm run dev  # http://localhost:3000
+npm run verify:mcp    # expects SF token + inference vars in .env
+npm run dev           # http://localhost:3000
 ```
 
-## Day 1 checklist (Apr 18)
+Sign in via Salesforce from the app; callback URL must match your ECA (e.g. `http://localhost:3000/callback` for local dev).
 
-- [x] Heroku app `headless-jdo` provisioned with Node buildpack + Postgres + Key-Value Store
-- [x] Salesforce Connected App credentials loaded into both Heroku config vars and `.env`
-- [x] Next.js scaffold in place, boots + builds
-- [x] `/api/connect` + `/callback` wired to PKCE OAuth
-- [ ] `npm run verify:mcp` prints PASS — requires `ANTHROPIC_API_KEY` and a Connected App with Client Credentials (or `SF_ACCESS_TOKEN`)
+---
 
-## Deploy to Heroku
+## NPM scripts
 
-The workspace currently sits inside the larger `~/Documents/Git` repo. When you're ready to deploy:
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | Next.js dev server |
+| `npm run build` / `npm start` | Production build / start (Heroku uses these) |
+| `npm run lint` / `npm run typecheck` | Quality gates |
+| `npm run verify:mcp` | End-to-end MCP smoke test |
+| `npm run sf:login` | PKCE login; refreshes tokens in `.env` for scripts |
+| `npm run smoke:api` | Hit deployed API health / smoke paths |
+| `npm run mcp:check` | Fast probe: userinfo + MCP `initialize` for all three servers |
+| `npm run mcp:refresh` | `sf:login` → export env for Cursor MCP → `mcp:check` |
+
+---
+
+## Environment variables
+
+Copy [`.env.example`](./.env.example) to `.env` and fill values locally or in Heroku config. **Do not paste real keys into issues, PRs, screenshots, or committed markdown.**
+
+| Area | Variables (names only) |
+|------|---------------------------|
+| LLM (Heroku) | `LLM_PROVIDER`, `INFERENCE_URL`, `INFERENCE_KEY`, `INFERENCE_MODEL_ID` |
+| LLM (fallback) | `ANTHROPIC_API_KEY` when `LLM_PROVIDER=anthropic` |
+| Salesforce OAuth | `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, `SF_LOGIN_URL`, `SF_REDIRECT_URI` |
+| App URLs | `APP_URL` — must match the public origin behind the proxy (important on Heroku for OAuth redirects) |
+| Demo / brief context | `DEMO_BANKER_USER_ID`, `DEMO_BANKER_NAME`, optional `DEMO_BANKER_TZ` (IANA zone for server-side brief time; header clock uses the browser) |
+| Data | `DATABASE_URL`, `REDIS_URL` |
+| Script-only SF token | Optional `SF_ACCESS_TOKEN`, `SF_INSTANCE_URL` after `npm run sf:login` |
+
+If any credential was ever exposed in chat or a public repo, **rotate it** in Salesforce, Heroku, and Anthropic — the repo and docs intentionally contain **no** real tokens.
+
+---
+
+## Deploy (Heroku)
+
+This repo is the app root. Typical flow:
 
 ```bash
-# from the Headless_JDO/ directory, initialize a clean repo:
-git init
-git add .
-git commit -m "Horizon — initial scaffold"
-heroku git:remote -a headless-jdo
-git push heroku HEAD:main
+heroku git:remote -a headless-jdo   # once
+git push heroku main                # build + release
 ```
 
-Heroku will auto-detect Node, run `npm install && npm run build`, and start via the `Procfile` (`web: npm start`).
+Set config vars on the app to match production URLs (`APP_URL`, `SF_REDIRECT_URI` including `https://…/callback`). GitHub remote (`origin`) is for source control; `heroku` is for releases.
 
-## Where things live
+---
 
-See `CLAUDE.md` §4 for the project layout. Key hot paths:
+## Security & secrets hygiene
 
-- `lib/anthropic/client.ts` — the one place that calls Claude
-- `lib/anthropic/mcp-servers.ts` — **the one place the MCP URLs live**
-- `lib/prompts/*` — versioned prompts, treated as code
-- `lib/salesforce/oauth.ts` — auth-code + refresh + client-credentials flows
-- `scripts/verify-mcp.ts` — the Day-1 smoke test
+- **`.env` is gitignored** — it must stay local / Heroku-only.
+- **`.cursor/mcp.json`** in this repo uses `${env:…}` placeholders only; real tokens live in the environment, not in JSON committed to Git.
+- **Never commit** API keys, refresh tokens, client secrets, or inference keys. If you add docs or examples, use placeholders like `sk-ant-…` or empty `INFERENCE_KEY=`.
+- Run `git grep -iE 'sk-ant-|inf-[a-f0-9-]{8,}|client_secret\\s*=' -- '*.md' '*.ts' '*.tsx' '*.json'` before pushing if you are unsure.
 
-## Anti-patterns (from CLAUDE.md §12 — do not break these)
+---
 
-- No direct MCP calls from the frontend. Everything goes through Claude.
-- No multi-page navigation. The home page is the app.
-- No spinners. Stream tokens or shimmer.
-- No Lightning chrome. Think Stripe/Arc/Linear/Mercury.
+## License
+
+No license file is checked in yet. Add one (e.g. MIT or your org’s standard) if you need explicit redistribution terms.
