@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { HorizonMark } from "@/components/brand/HorizonMark";
 import { HeaderClock } from "@/components/horizon/HeaderClock";
 import { MorningBrief } from "@/components/horizon/MorningBrief";
+import { TodaysArc } from "@/components/horizon/TodaysArc";
 import { PriorityQueue } from "@/components/horizon/PriorityQueue";
 import { PortfolioPulse } from "@/components/horizon/PortfolioPulse";
 import { PreDraftedActions } from "@/components/horizon/PreDraftedActions";
@@ -53,21 +54,26 @@ export default function HorizonHome() {
 
           <Divider className="stagger-2" />
           <section className="mt-16 animate-fade-rise stagger-2">
-            <PriorityQueue />
+            <TodaysArc />
           </section>
 
           <Divider className="stagger-3" />
           <section className="mt-16 animate-fade-rise stagger-3">
-            <PortfolioPulse />
+            <PriorityQueue />
           </section>
 
           <Divider className="stagger-4" />
           <section className="mt-16 animate-fade-rise stagger-4">
-            <PreDraftedActions />
+            <PortfolioPulse />
           </section>
 
           <Divider className="stagger-5" />
           <section className="mt-16 animate-fade-rise stagger-5">
+            <PreDraftedActions />
+          </section>
+
+          <Divider className="stagger-6" />
+          <section className="mt-16 animate-fade-rise stagger-6">
             <SignalFeed />
           </section>
 

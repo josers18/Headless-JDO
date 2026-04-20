@@ -68,12 +68,25 @@ Efficient plan (one pass — do not retry on errors):
 4. tableau_next (REQUIRED — must attempt): getSemanticModels (optional Sales/Service category filter ONLY to narrow the list). Then call the analytics tool (name contains "analyzeSemantic" or starts with "analyze") ONCE using a semantic model id copied verbatim from one row in that list — never pass "Sales"/"Service" as the model id. Ask one concrete metric question tied to this banker (e.g. pipeline change for OwnerId = ${a.bankerUserId} over the last 7 days). Use the result for ONE KPI-driven item, or skip Tableau for this item if the list is empty or analyze errors.
 5. data_360 (REQUIRED — must attempt): call the Data Cloud metadata tool (name starts with "getDcMetadata") to discover available DLOs/DMOs. THEN — before writing any SQL — pick ONE obviously-relevant DMO (transactions, engagement, profile, life events) and locate it in the metadata response's fields array. Confirm the 2–3 columns you intend to SELECT appear CHARACTER-FOR-CHARACTER in that array (case-sensitive, full prefix). Only then emit ONE narrow SQL call (SELECT specific columns, LIMIT 20, qualified by OwnerId where applicable). If the fields array doesn't contain the columns you want verbatim — do NOT submit bare variants like "name" or "id" when the real column is "ssot__Name__c" etc. — skip the SQL for this run and note "no usable Data Cloud columns" in the relevant brief item instead. The circuit breaker will block any second data_360 call after a schema miss, so the SQL must be right on the first try or not happen.
 
+RIGHT NOW SELECTION (UI v2 — mandatory field):
+After finalizing the 3 ranked items, set "right_now_index" to 0, 1, or 2 — the
+index inside the "items" array for the ONE item the banker should handle in
+the next ~15 minutes. Priority order:
+  - Shortest reversibility window (actionable TODAY > this week > later)
+  - Dated trigger (meeting today, maturity, deadline, scheduled touchpoint)
+  - Relationship risk (churn, competitive pressure, engagement cliff)
+
+If two items tie, prefer the one with the most specific human CTA (a named
+person to call or meet) over an abstract "review the pipeline" item.
+Always set right_now_index — default 0 only when item 0 is clearly the best.
+
 Return structured JSON ONLY (no prose, no markdown fences):
 {
   "greeting": "Good morning, ${firstName}.",
   "items": [
     { "headline": "...", "why": "...", "suggested_action": "...", "sources": ["data_360"|"salesforce_crm"|"tableau_next"], "client_id": "...?" }
   ],
-  "signoff": "One line, slightly personal, time-aware."
+  "signoff": "One line, slightly personal, time-aware.",
+  "right_now_index": 0
 }`;
 }

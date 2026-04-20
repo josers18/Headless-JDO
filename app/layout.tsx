@@ -13,6 +13,7 @@ export const viewport: Viewport = {
   themeColor: "#0A0B0D",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -22,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <body className="bg-bg text-text min-h-dvh">
+      <body className="bg-bg text-text min-h-dvh pb-[env(safe-area-inset-bottom,0px)]">
         {children}
       </body>
     </html>

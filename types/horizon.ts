@@ -16,6 +16,8 @@ export interface MorningBrief {
   greeting: string;
   items: BriefItem[];
   signoff: string;
+  /** UI v2 T0-2 — index into `items` for the dominant "Right Now" hero. */
+  right_now_index?: 0 | 1 | 2;
 }
 
 export interface PriorityClient {
@@ -71,4 +73,30 @@ export interface PulseStripPayload {
   flag_count: number;
   flag_deadline: "before EOD" | "this week" | "today" | null;
   strip_line: string;
+}
+
+/** UI v2 T0-3 — Today's Arc */
+export type ArcNodeType = "event" | "deadline" | "recommended" | "blocked";
+
+export interface ArcNodePayload {
+  id: string;
+  type: ArcNodeType;
+  start: string;
+  duration_minutes: number;
+  title: string;
+  client_id?: string;
+  context: string;
+}
+
+export interface ArcRecommendedWindow {
+  start: string;
+  duration_minutes: number;
+  suggestion: string;
+}
+
+export interface TodaysArcPayload {
+  now: string;
+  end_of_day: string;
+  nodes: ArcNodePayload[];
+  recommended_windows?: ArcRecommendedWindow[];
 }

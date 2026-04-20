@@ -6,6 +6,7 @@ import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "@/components/horizon/ReasoningTrail";
 import { cn } from "@/lib/utils";
+import { PULSE_REFRESH_EVENT } from "@/lib/client/rightNowSnooze";
 import type {
   PulseStripPayload,
   PulseStripTemperature,
@@ -112,6 +113,16 @@ export function PulseStrip() {
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [refetchSoft]);
+
+  useEffect(() => {
+    const onPulse = () => {
+      lastRefetchRef.current = 0;
+      reset();
+      runFetch();
+    };
+    window.addEventListener(PULSE_REFRESH_EVENT, onPulse);
+    return () => window.removeEventListener(PULSE_REFRESH_EVENT, onPulse);
+  }, [reset, runFetch]);
 
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 768px)");
