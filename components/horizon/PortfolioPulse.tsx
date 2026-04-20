@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Minus, Play, Square, Volume2 } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { useSpokenNarration } from "@/lib/client/useSpokenNarration";
+import { applyPulseHygieneToKpis } from "@/lib/client/pulseMetricHygiene";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { cn } from "@/lib/utils";
@@ -34,7 +35,12 @@ export function PortfolioPulse() {
     start("/api/pulse", undefined, { method: "GET" }).catch(() => {});
   }, [hasStarted, start]);
 
-  const pulse = useMemo(() => tryParseJson<Pulse>(narrative), [narrative]);
+  const pulseRaw = useMemo(() => tryParseJson<Pulse>(narrative), [narrative]);
+  const pulse = useMemo((): Pulse | null => {
+    if (!pulseRaw) return null;
+    if (!pulseRaw.kpis?.length) return pulseRaw;
+    return { ...pulseRaw, kpis: applyPulseHygieneToKpis(pulseRaw.kpis) };
+  }, [pulseRaw]);
   const isLoading = state === "streaming" && !pulse;
   const spokenText = useMemo(() => (pulse ? pulseToSpoken(pulse) : ""), [
     pulse,
@@ -177,14 +183,16 @@ function KpiCard({
           {kpi.value}
         </div>
 
-        <div
-          className={cn(
-            "mt-2 flex items-center gap-1.5 font-mono text-[11px]",
-            deltaClass
-          )}
-        >
-          {kpi.delta}
-        </div>
+        {kpi.delta !== "—" && (
+          <div
+            className={cn(
+              "mt-2 flex items-center gap-1.5 font-mono text-[11px]",
+              deltaClass
+            )}
+          >
+            {kpi.delta}
+          </div>
+        )}
 
         {kpi.explanation && (
           <div className="mt-3 text-[12px] leading-snug text-text-muted">

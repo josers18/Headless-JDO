@@ -14,6 +14,7 @@ import {
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { cn } from "@/lib/utils";
+import { stripDraftDisplayNoise } from "@/lib/client/stripSalesforceIds";
 import { ReasoningTrail } from "./ReasoningTrail";
 import type { DraftAction } from "@/types/horizon";
 
@@ -232,16 +233,19 @@ function DraftCard({
               )}
             </div>
           </div>
-          <div className="font-mono text-[10px] text-text-muted/60">
-            {draft.target_object} · {draft.target_id}
+          <div
+            className="font-mono text-[10px] text-text-muted/60"
+            data-sf-record-id={draft.target_id}
+          >
+            {draft.target_object}
           </div>
         </div>
 
         <div className="mt-3 text-[15px] font-medium leading-snug text-text">
-          {draft.title}
+          {stripDraftDisplayNoise(draft.title)}
         </div>
         <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-text-muted">
-          {draft.body}
+          {stripDraftDisplayNoise(draft.body)}
         </p>
         {draft.rationale && (
           <div className="mt-3 flex items-start gap-2 text-[12px] italic text-text-muted/80">
@@ -249,7 +253,7 @@ function DraftCard({
               size={11}
               className="mt-[3px] shrink-0 text-accent-2/80"
             />
-            <span>{draft.rationale}</span>
+            <span>{stripDraftDisplayNoise(draft.rationale)}</span>
           </div>
         )}
 
@@ -280,10 +284,12 @@ function DraftCard({
             </span>
           )}
           {status.kind === "done" && (
-            <span className="flex items-center gap-2 text-[12px] text-emerald-300">
+            <span
+              className="flex items-center gap-2 text-[12px] text-emerald-300"
+              data-sf-record-id={status.recordId ?? undefined}
+            >
               <Check size={12} />
               Executed
-              {status.recordId ? ` · ${status.recordId}` : ""}
             </span>
           )}
           {status.kind === "error" && (

@@ -87,6 +87,7 @@ Copy [`.env.example`](./.env.example) to `.env` and fill values locally or in He
 | App URLs | `APP_URL` — must match the public origin behind the proxy (important on Heroku for OAuth redirects) |
 | Demo / brief context | `DEMO_BANKER_USER_ID`, `DEMO_BANKER_NAME`, optional `DEMO_BANKER_TZ` (IANA zone for server-side brief time; header clock uses the browser) |
 | Data | `DATABASE_URL`, `REDIS_URL` |
+| Narration (optional) | `ELEVENLABS_API_KEY`, optional `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` — server MP3 at `POST /api/tts` (cached in Redis when `REDIS_URL` is set); without these, Listen uses Web Speech only |
 | Script-only SF token | Optional `SF_ACCESS_TOKEN`, `SF_INSTANCE_URL` after `npm run sf:login` |
 
 If any credential was ever exposed in chat or a public repo, **rotate it** in Salesforce, Heroku, and Anthropic — the repo and docs intentionally contain **no** real tokens.

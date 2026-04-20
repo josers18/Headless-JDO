@@ -22,6 +22,7 @@ import {
   stripActionsTail,
 } from "@/lib/client/sanitizeNarrative";
 import { extractActions } from "@/lib/client/extractActions";
+import { stripDraftDisplayNoise } from "@/lib/client/stripSalesforceIds";
 import { MarkdownView } from "./MarkdownView";
 import type { DraftAction } from "@/types/horizon";
 
@@ -377,7 +378,7 @@ function InlineActions({
                 </div>
                 {a.body && (
                   <p className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-text-muted">
-                    {a.body}
+                    {stripDraftDisplayNoise(a.body)}
                   </p>
                 )}
                 {st.kind === "error" && (
@@ -386,9 +387,11 @@ function InlineActions({
                   </p>
                 )}
                 {st.kind === "done" && (
-                  <p className="mt-1 text-[11.5px] text-emerald-300/90">
+                  <p
+                    className="mt-1 text-[11.5px] text-emerald-300/90"
+                    data-sf-record-id={st.recordId ?? undefined}
+                  >
                     Sent to Salesforce
-                    {st.recordId ? ` · ${st.recordId}` : ""}
                   </p>
                 )}
               </div>

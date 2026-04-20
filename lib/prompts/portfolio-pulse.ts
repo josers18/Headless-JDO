@@ -19,6 +19,13 @@ Efficient plan — do not loop on errors, do not guess custom fields:
 
 Derive 2-3 KPIs from these results. For each, pick a concrete direction by comparing against a prior window when you have one; otherwise mark direction "flat" and say "insufficient history" in the explanation.
 
+METRIC HYGIENE (mandatory — bankers lose trust on noisy tiles):
+1. MONEY COMPARISONS: Never put a period-over-period comparison in "delta" when BOTH the current-period total and the prior-period total are under USD 100,000. In that case set "delta" to "—", direction "flat", and explain briefly that movement is below the reporting threshold.
+2. RELATIVE NOISE: If the relative change between two compared money totals is under 20%, treat it the same way — "—", direction "flat", do not imply a trend.
+3. ZERO WINS: When the label is about closed wins (e.g. "Wins (30d)") and the value is $0, set direction "flat", delta exactly "No closed wins this period.", and do NOT show a negative dollar delta vs prior (that reads like fake drama).
+4. ZERO / TINY COUNTS: For Activity (7d) with a single task and no meaningful prior window, delta should be one short factual line such as "Single task created this week." Do NOT append "no prior-week comparison available" — that adds no value.
+5. Never invent prior-window numbers. If you cannot compute a honest delta, use "—" and direction "flat".
+
 Return JSON ONLY (no prose, no fences):
 {
   "narrative": "<= 60 words, lead with the most important number, plain prose, reads like an analyst summary",
