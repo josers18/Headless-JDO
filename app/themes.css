@@ -14,7 +14,7 @@
  * Original (4)
  * ===================================================================== */
 
-[data-theme="obsidian"] {
+html[data-theme="obsidian"] {
   color-scheme: dark;
   --hz-bg: #0c0a0f;
   --hz-surface: #110e09;
@@ -30,7 +30,7 @@
   --hz-accent-warm: #e0b184;
 }
 
-[data-theme="midnight"] {
+html[data-theme="midnight"] {
   color-scheme: dark;
   --hz-bg: #0a0d18;
   --hz-surface: #0e1224;
@@ -46,7 +46,7 @@
   --hz-accent-warm: #ffc58a;
 }
 
-[data-theme="graphite"] {
+html[data-theme="graphite"] {
   color-scheme: dark;
   --hz-bg: #121214;
   --hz-surface: #1a1a1d;
@@ -62,7 +62,7 @@
   --hz-accent-warm: #ffb894;
 }
 
-[data-theme="ivory"] {
+html[data-theme="ivory"] {
   color-scheme: light;
   --hz-bg: #f5f1e8;
   --hz-surface: #ffffff;
@@ -82,7 +82,7 @@
  * Elegant Neutrals (5)
  * ===================================================================== */
 
-[data-theme="dusk"] {
+html[data-theme="dusk"] {
   color-scheme: dark;
   --hz-bg: #15101a;
   --hz-surface: #1c1626;
@@ -98,7 +98,7 @@
   --hz-accent-warm: #e0ba7a;
 }
 
-[data-theme="slate"] {
+html[data-theme="slate"] {
   color-scheme: dark;
   --hz-bg: #12151a;
   --hz-surface: #181c22;
@@ -114,7 +114,7 @@
   --hz-accent-warm: #c8a888;
 }
 
-[data-theme="parchment"] {
+html[data-theme="parchment"] {
   color-scheme: light;
   --hz-bg: #f4ecd8;
   --hz-surface: #fbf6e6;
@@ -130,7 +130,7 @@
   --hz-accent-warm: #b8884a;
 }
 
-[data-theme="onyx"] {
+html[data-theme="onyx"] {
   color-scheme: dark;
   --hz-bg: #050506;
   --hz-surface: #0d0d0f;
@@ -146,7 +146,7 @@
   --hz-accent-warm: #d4ba8a;
 }
 
-[data-theme="fog"] {
+html[data-theme="fog"] {
   color-scheme: light;
   --hz-bg: #ecedef;
   --hz-surface: #ffffff;
@@ -166,7 +166,7 @@
  * Greens & Oranges (5)
  * ===================================================================== */
 
-[data-theme="forest"] {
+html[data-theme="forest"] {
   color-scheme: dark;
   --hz-bg: #0a120d;
   --hz-surface: #0f1a14;
@@ -182,7 +182,7 @@
   --hz-accent-warm: #e0a870;
 }
 
-[data-theme="ember"] {
+html[data-theme="ember"] {
   color-scheme: dark;
   --hz-bg: #120c08;
   --hz-surface: #1a110b;
@@ -198,7 +198,7 @@
   --hz-accent-warm: #ffc080;
 }
 
-[data-theme="sage"] {
+html[data-theme="sage"] {
   color-scheme: light;
   --hz-bg: #eef0e8;
   --hz-surface: #f7f8f1;
@@ -214,7 +214,7 @@
   --hz-accent-warm: #a0784a;
 }
 
-[data-theme="copper"] {
+html[data-theme="copper"] {
   color-scheme: dark;
   --hz-bg: #120a06;
   --hz-surface: #1c1108;
@@ -230,7 +230,7 @@
   --hz-accent-warm: #f0b880;
 }
 
-[data-theme="verdant"] {
+html[data-theme="verdant"] {
   color-scheme: light;
   --hz-bg: #f1f3ec;
   --hz-surface: #ffffff;
@@ -250,7 +250,7 @@
  * Blues & Greys (5)
  * ===================================================================== */
 
-[data-theme="steel"] {
+html[data-theme="steel"] {
   color-scheme: dark;
   --hz-bg: #10131a;
   --hz-surface: #171c24;
@@ -266,7 +266,7 @@
   --hz-accent-warm: #c8a26e;
 }
 
-[data-theme="mercury"] {
+html[data-theme="mercury"] {
   color-scheme: dark;
   --hz-bg: #0e1116;
   --hz-surface: #141821;
@@ -282,7 +282,7 @@
   --hz-accent-warm: #d2b48a;
 }
 
-[data-theme="arctic"] {
+html[data-theme="arctic"] {
   color-scheme: light;
   --hz-bg: #eff3f7;
   --hz-surface: #ffffff;
@@ -298,7 +298,7 @@
   --hz-accent-warm: #b87a3a;
 }
 
-[data-theme="indigo"] {
+html[data-theme="indigo"] {
   color-scheme: dark;
   --hz-bg: #0c0f22;
   --hz-surface: #131634;
@@ -314,7 +314,7 @@
   --hz-accent-warm: #ffb084;
 }
 
-[data-theme="glacier"] {
+html[data-theme="glacier"] {
   color-scheme: light;
   --hz-bg: #eaf1f7;
   --hz-surface: #f8fbfe;
@@ -334,7 +334,7 @@
  * Mid-Tones (5)
  * ===================================================================== */
 
-[data-theme="bordeaux"] {
+html[data-theme="bordeaux"] {
   color-scheme: dark;
   --hz-bg: #13090c;
   --hz-surface: #1c0e12;
@@ -350,7 +350,7 @@
   --hz-accent-warm: #f0b884;
 }
 
-[data-theme="pewter"] {
+html[data-theme="pewter"] {
   color-scheme: dark;
   --hz-bg: #15161a;
   --hz-surface: #1e2026;
@@ -366,7 +366,7 @@
   --hz-accent-warm: #d4a480;
 }
 
-[data-theme="walnut"] {
+html[data-theme="walnut"] {
   color-scheme: dark;
   --hz-bg: #13100c;
   --hz-surface: #1d1913;
@@ -382,7 +382,7 @@
   --hz-accent-warm: #f0c088;
 }
 
-[data-theme="denim"] {
+html[data-theme="denim"] {
   color-scheme: dark;
   --hz-bg: #10161f;
   --hz-surface: #161e2a;
@@ -398,7 +398,7 @@
   --hz-accent-warm: #e0b884;
 }
 
-[data-theme="moss"] {
+html[data-theme="moss"] {
   color-scheme: dark;
   --hz-bg: #0e120d;
   --hz-surface: #141a13;
@@ -418,7 +418,7 @@
  * SF Light Optimised (6) — all light mode
  * ===================================================================== */
 
-[data-theme="birch"] {
+html[data-theme="birch"] {
   color-scheme: light;
   --hz-bg: #f5f2e9;
   --hz-surface: #fffefa;
@@ -434,7 +434,7 @@
   --hz-accent-warm: #a8783a;
 }
 
-[data-theme="mist"] {
+html[data-theme="mist"] {
   color-scheme: light;
   --hz-bg: #eceef2;
   --hz-surface: #fbfcfe;
@@ -450,7 +450,7 @@
   --hz-accent-warm: #b07a48;
 }
 
-[data-theme="cashew"] {
+html[data-theme="cashew"] {
   color-scheme: light;
   --hz-bg: #f4ece0;
   --hz-surface: #fffcf4;
@@ -466,7 +466,7 @@
   --hz-accent-warm: #c89058;
 }
 
-[data-theme="mineral"] {
+html[data-theme="mineral"] {
   color-scheme: light;
   --hz-bg: #eef0f0;
   --hz-surface: #fafcfc;
@@ -482,7 +482,7 @@
   --hz-accent-warm: #a8734a;
 }
 
-[data-theme="blush"] {
+html[data-theme="blush"] {
   color-scheme: light;
   --hz-bg: #f7ecec;
   --hz-surface: #fffafa;
@@ -498,7 +498,7 @@
   --hz-accent-warm: #b88a4a;
 }
 
-[data-theme="chamois"] {
+html[data-theme="chamois"] {
   color-scheme: light;
   --hz-bg: #f4efe2;
   --hz-surface: #fffaec;
@@ -518,7 +518,7 @@
  * Wealth Management (6) — institution-matched, dark mode
  * ===================================================================== */
 
-[data-theme="bullion"] {
+html[data-theme="bullion"] {
   color-scheme: dark;
   --hz-bg: #12100a;
   --hz-surface: #1c180c;
@@ -534,7 +534,7 @@
   --hz-accent-warm: #f0c878;
 }
 
-[data-theme="prussian"] {
+html[data-theme="prussian"] {
   color-scheme: dark;
   --hz-bg: #0c1422;
   --hz-surface: #13203a;
@@ -550,7 +550,7 @@
   --hz-accent-warm: #e6b878;
 }
 
-[data-theme="coutts"] {
+html[data-theme="coutts"] {
   color-scheme: dark;
   --hz-bg: #0e0a10;
   --hz-surface: #170e14;
@@ -566,7 +566,7 @@
   --hz-accent-warm: #d89a6a;
 }
 
-[data-theme="vault"] {
+html[data-theme="vault"] {
   color-scheme: dark;
   --hz-bg: #0a0e10;
   --hz-surface: #101418;
@@ -582,7 +582,7 @@
   --hz-accent-warm: #c89878;
 }
 
-[data-theme="endowment"] {
+html[data-theme="endowment"] {
   color-scheme: dark;
   --hz-bg: #0a1210;
   --hz-surface: #0f1a17;
@@ -598,7 +598,7 @@
   --hz-accent-warm: #dca470;
 }
 
-[data-theme="trust"] {
+html[data-theme="trust"] {
   color-scheme: dark;
   --hz-bg: #0d0a0c;
   --hz-surface: #180e10;
@@ -618,7 +618,7 @@
  * Traditional Banking (6) — institution-matched, dark mode
  * ===================================================================== */
 
-[data-theme="cobalt"] {
+html[data-theme="cobalt"] {
   color-scheme: dark;
   --hz-bg: #081224;
   --hz-surface: #0e1e36;
@@ -634,7 +634,7 @@
   --hz-accent-warm: #e0a270;
 }
 
-[data-theme="heritage"] {
+html[data-theme="heritage"] {
   color-scheme: dark;
   --hz-bg: #100608;
   --hz-surface: #1c0a0e;
@@ -650,7 +650,7 @@
   --hz-accent-warm: #e8c070;
 }
 
-[data-theme="civic"] {
+html[data-theme="civic"] {
   color-scheme: dark;
   --hz-bg: #091224;
   --hz-surface: #0e1b36;
@@ -666,7 +666,7 @@
   --hz-accent-warm: #d8a26e;
 }
 
-[data-theme="cardinal"] {
+html[data-theme="cardinal"] {
   color-scheme: dark;
   --hz-bg: #0f0608;
   --hz-surface: #1e0a10;
@@ -682,7 +682,7 @@
   --hz-accent-warm: #e0a270;
 }
 
-[data-theme="meridian"] {
+html[data-theme="meridian"] {
   color-scheme: dark;
   --hz-bg: #0c0607;
   --hz-surface: #180a0c;
@@ -698,7 +698,7 @@
   --hz-accent-warm: #d99a6a;
 }
 
-[data-theme="union"] {
+html[data-theme="union"] {
   color-scheme: dark;
   --hz-bg: #0a0d16;
   --hz-surface: #11162a;

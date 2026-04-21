@@ -5,14 +5,24 @@
 @tailwind utilities;
 
 /*
- * THEMES A-1 — CSS variable system. All brand surfaces are expressed as
- * `--hz-*` tokens so a theme file (or runtime toggle) can swap the entire
- * palette by overriding these on a `[data-theme="…"]` attribute on <html>.
+ * THEMES A-1 — CSS variable system. All brand surfaces use `--hz-*` on <html>.
  *
- * Default = Horizon Dark (original product aesthetic).
+ * IMPORTANT: Do not use bare `:root { --hz-bg: … }` for the full Horizon
+ * palette — `:root` always matches <html> and would tie with `[data-theme]`
+ * in some engines. Defaults apply only when there is no `data-theme` yet
+ * (SSR) or when the theme is explicitly `horizon-dark`.
+ *
+ * Shared semantic tokens (success / warn / danger) stay on `:root` so every
+ * catalog theme inherits them unless a theme block overrides.
  */
-:root,
-[data-theme="horizon-dark"] {
+:root {
+  --hz-success: #4ade80;
+  --hz-warn: #f5a524;
+  --hz-danger: #f87171;
+}
+
+:root:not([data-theme]),
+html[data-theme="horizon-dark"] {
   color-scheme: dark;
   --hz-bg: #0a0b0d;
   --hz-surface: #111316;
@@ -26,9 +36,6 @@
   --hz-accent-dim: #3a5fa8;
   --hz-accent-2: #a78bfa;
   --hz-accent-warm: #f0b37a;
-  --hz-success: #4ade80;
-  --hz-warn: #f5a524;
-  --hz-danger: #f87171;
 
   /* Legacy aliases — older rules in this file still reference --bg etc. */
   --bg: var(--hz-bg);

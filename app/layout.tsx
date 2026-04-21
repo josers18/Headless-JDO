@@ -33,13 +33,11 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning className="dark">
       <body className="bg-bg text-text min-h-dvh pb-[env(safe-area-inset-bottom,0px)]">
         {/*
-          Set `data-theme` before React hydrates so first paint + CSS
-          `[data-theme=…]` blocks match. Client `ThemeProvider` then keeps
-          the attribute in sync and owns localStorage.
+          Loads synchronously before interactive hydration so first paint sees
+          the correct `[data-theme]` overrides. Implemented as a static asset to
+          satisfy eslint (no raw sync script tags in JSX).
         */}
-        <Script id="hz-theme-boot" strategy="beforeInteractive">
-          {`(function(){try{var k="hz-theme",DEF="horizon-dark",L="ivory",d=document.documentElement,t=localStorage.getItem(k);if(!t){t=window.matchMedia("(prefers-color-scheme: light)").matches?L:DEF;}d.setAttribute("data-theme",t);}catch(e){}})();`}
-        </Script>
+        <Script src="/hz-theme-boot.js" strategy="beforeInteractive" />
         <ThemeProvider>
           <SfInstanceProvider instanceUrl={sf?.instance_url ?? null}>
             {children}
