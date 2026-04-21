@@ -13,7 +13,14 @@ import {
 import { tryParseJson } from "@/lib/client/jsonStream";
 import type { Signal } from "@/types/horizon";
 import { cn } from "@/lib/utils";
-import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
+import { BriefRichText } from "./BriefRichText";
+import { ClientDetailSheet } from "./ClientDetailSheet";
+import {
+  inferSalesforceObjectFromId,
+  lightningRecordViewUrl,
+} from "@/lib/salesforce/recordLink";
+import { useSfInstanceUrl } from "./SfInstanceProvider";
+import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
 
 const POLL_INTERVAL_MS = 45_000;
 
@@ -26,6 +33,10 @@ export function SignalFeed() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<{
+    clientId: string;
+    clientName?: string;
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchOnce = useCallback(async () => {
@@ -125,9 +136,32 @@ export function SignalFeed() {
       {signals.length > 0 && (
         <ul className="mt-6 space-y-2">
           {signals.map((s, idx) => (
-            <SignalRow signal={s} key={s.id} index={idx} />
+            <SignalRow
+              signal={s}
+              key={s.id}
+              index={idx}
+              onOpenDetail={() => {
+                if (!s.client_id) return;
+                dispatchHorizonFocusClient({
+                  name: s.client_name ?? "Client",
+                  clientId: s.client_id,
+                });
+                setSheet({
+                  clientId: s.client_id,
+                  clientName: s.client_name,
+                });
+              }}
+            />
           ))}
         </ul>
+      )}
+
+      {sheet && (
+        <ClientDetailSheet
+          clientId={sheet.clientId}
+          clientName={sheet.clientName}
+          onClose={() => setSheet(null)}
+        />
       )}
     </div>
   );
@@ -137,7 +171,23 @@ export function SignalFeed() {
 // glow gives bankers an instant visual read. The kind icon on the right
 // adds a second layer of pattern recognition (transaction, engagement,
 // life event, KPI, risk).
-function SignalRow({ signal, index }: { signal: Signal; index: number }) {
+function SignalRow({
+  signal,
+  index,
+  onOpenDetail,
+}: {
+  signal: Signal;
+  index: number;
+  onOpenDetail: () => void;
+}) {
+  const base = useSfInstanceUrl();
+  const clientHref =
+    signal.client_id &&
+    base &&
+    inferSalesforceObjectFromId(signal.client_id)
+      ? lightningRecordViewUrl(base, signal.client_id)
+      : null;
+
   const severityBar =
     signal.severity === "high"
       ? "bg-red-400"
@@ -153,13 +203,28 @@ function SignalRow({ signal, index }: { signal: Signal; index: number }) {
   const stagger =
     index < 6 ? ["stagger-1", "stagger-2", "stagger-3", "stagger-4", "stagger-5", "stagger-6"][index] : "stagger-6";
 
+  const interactive = Boolean(signal.client_id);
+
   return (
     <li
       className={cn(
         "group relative animate-fade-rise flex items-center gap-4 overflow-hidden rounded-lg border border-border-soft bg-surface px-4 py-3 transition-colors duration-med hover:border-border",
+        interactive && "cursor-pointer",
         glowClass,
         stagger
       )}
+      tabIndex={interactive ? 0 : undefined}
+      role={interactive ? "button" : undefined}
+      onClick={() => {
+        if (interactive) onOpenDetail();
+      }}
+      onKeyDown={(e) => {
+        if (!interactive) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenDetail();
+        }
+      }}
     >
       <span
         className={cn("absolute left-0 top-0 h-full w-[2px]", severityBar, signal.severity === "high" && "animate-glow-pulse")}
@@ -168,15 +233,31 @@ function SignalRow({ signal, index }: { signal: Signal; index: number }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate text-[13px] text-text">
-            <TextWithSalesforceIds text={signal.summary} />
+            <BriefRichText
+              text={signal.summary}
+              clientId={signal.client_id}
+              clientName={signal.client_name}
+            />
           </span>
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
           {signal.client_name && (
             <>
-              <span className="normal-case tracking-normal text-text-muted">
-                {signal.client_name}
-              </span>
+              {clientHref ? (
+                <a
+                  href={clientHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="normal-case tracking-normal text-accent underline decoration-accent/35 underline-offset-2 hover:decoration-accent"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {signal.client_name}
+                </a>
+              ) : (
+                <span className="normal-case tracking-normal text-text-muted">
+                  {signal.client_name}
+                </span>
+              )}
               <span>·</span>
             </>
           )}

@@ -1,4 +1,5 @@
 import { ensureFreshToken } from "@/lib/salesforce/token";
+import { sameSalesforceRecordId } from "@/lib/salesforce/sameRecordId";
 import { log } from "@/lib/log";
 
 const API_VER = "v59.0";
@@ -70,15 +71,20 @@ export async function POST(req: Request) {
         records?: Array<{ Id?: string; Name?: string; Subject?: string }>;
       };
       for (const r of json.records ?? []) {
-        const id = r.Id;
-        if (!id) continue;
+        const rid = r.Id;
+        if (!rid) continue;
         const name =
           typeof r.Name === "string"
             ? r.Name
             : typeof r.Subject === "string"
               ? r.Subject
               : "";
-        if (name.trim()) labels[id] = name.trim();
+        const label = name.trim();
+        if (!label) continue;
+        labels[rid] = label;
+        for (const req of ids) {
+          if (sameSalesforceRecordId(rid, req)) labels[req] = label;
+        }
       }
     } catch (e) {
       log.warn("sf_labels_fetch_error", {

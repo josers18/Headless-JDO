@@ -16,6 +16,7 @@ async function fetchLabelsFor(ids: string[]): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids }),
+    credentials: "include",
   });
   if (!res.ok) return;
   const body = (await res.json()) as { labels?: Record<string, string> };

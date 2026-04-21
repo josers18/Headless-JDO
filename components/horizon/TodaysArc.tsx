@@ -7,6 +7,7 @@ import { ReasoningTrail } from "./ReasoningTrail";
 import { ArcNode } from "./ArcNode";
 import { GhostPrompt } from "./GhostPrompt";
 import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
+import { BriefRichText } from "./BriefRichText";
 import { cn } from "@/lib/utils";
 import type { ArcNodePayload, TodaysArcPayload } from "@/types/horizon";
 import { HORIZON_REFRESH_ARC } from "@/lib/client/horizonEvents";
@@ -70,6 +71,19 @@ function formatTick(
   });
 }
 
+/** Normalize odd model `type` values (e.g. WINDOW) for the small badge chip. */
+function displayArcNodeType(type: string): string {
+  const key = type.trim().toLowerCase().replace(/\s+/g, "_");
+  const map: Record<string, string> = {
+    event: "Event",
+    deadline: "Deadline",
+    recommended: "Focus",
+    blocked: "Blocked",
+    window: "Focus window",
+  };
+  return map[key] ?? type.replace(/_/g, " ");
+}
+
 function formatArcWhen(iso: string, tz?: string): string {
   const d = Date.parse(iso);
   if (Number.isNaN(d)) return iso;
@@ -114,14 +128,14 @@ function ArcLookaheadSection({
                 {formatArcWhen(n.start, tz)}
               </span>
               <span className="rounded border border-border-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-text-muted/80">
-                {n.type}
+                {displayArcNodeType(n.type)}
               </span>
             </div>
             <div className="mt-1.5 text-[13px] font-medium text-text">
               {n.title}
             </div>
             <div className="mt-1 text-[12px] leading-snug text-text-muted">
-              <TextWithSalesforceIds text={n.context} />
+              <BriefRichText text={n.context} clientId={n.client_id} />
             </div>
           </li>
         ))}
@@ -308,12 +322,13 @@ export function TodaysArc() {
                 <div className="mt-4 rounded-lg border border-border-soft bg-surface2/50 px-4 py-3 text-[13px] leading-relaxed animate-fade-in">
                   <div className="font-medium text-text">{selected.title}</div>
                   <p className="mt-1.5 text-text-muted">
-                    <TextWithSalesforceIds text={selected.context} />
+                    <BriefRichText text={selected.context} clientId={selected.client_id} />
                   </p>
                   {selected.client_id && (
                     <p className="mt-2 font-mono text-[10px] text-text-muted/70">
-                      <TextWithSalesforceIds
+                      <BriefRichText
                         text={`Client: ${selected.client_id}`}
+                        clientId={selected.client_id}
                       />
                     </p>
                   )}
@@ -328,7 +343,7 @@ export function TodaysArc() {
                       className="rounded-md border border-border-soft/60 bg-black/15 px-3 py-2 text-[12px] text-text-muted"
                     >
                       <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent/90">
-                        Window
+                        Suggested focus
                       </span>
                       <p className="mt-1 text-text/90">
                         <TextWithSalesforceIds text={w.suggestion} />

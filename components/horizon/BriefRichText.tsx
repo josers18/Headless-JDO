@@ -10,14 +10,20 @@ import { resolveSfLabels } from "@/lib/client/sfLabelsCache";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import { cn } from "@/lib/utils";
 
-function splitByClientName(
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Longest names first so "Okafor Capital Holdings" wins over "Okafor Capital". */
+function splitByAnyNames(
   text: string,
-  name: string | undefined
+  names: string[]
 ): Array<{ kind: "text" | "name"; value: string }> {
-  const n = name?.trim();
-  if (!n) return [{ kind: "text", value: text }];
-  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(esc, "gi");
+  const uniq = [
+    ...new Set(names.map((n) => n.trim()).filter((n) => n.length > 1)),
+  ].sort((a, b) => b.length - a.length);
+  if (uniq.length === 0) return [{ kind: "text", value: text }];
+  const re = new RegExp(`(?:${uniq.map(escapeRegExp).join("|")})`, "gi");
   const out: Array<{ kind: "text" | "name"; value: string }> = [];
   let last = 0;
   for (const match of text.matchAll(re)) {
@@ -44,8 +50,8 @@ function collectIdsFromText(text: string): string[] {
 
 /**
  * Brief / hero copy: Salesforce Id links show resolved labels when possible;
- * optional `client_id` + `client_name` turn matching name substrings into
- * record links (same Id as client_id).
+ * when `client_id` is set, also resolve that record's Name and link every
+ * occurrence of known display strings (model `client_name` + API label).
  */
 export function BriefRichText({
   text,
@@ -57,7 +63,6 @@ export function BriefRichText({
   text: string;
   className?: string;
   linkClassName?: string;
-  /** When set with clientName, occurrences of clientName link to this record. */
   clientId?: string;
   clientName?: string;
 }) {
@@ -70,19 +75,50 @@ export function BriefRichText({
   const [labels, setLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const ids = collectIdsFromText(text);
-    if (ids.length === 0) {
+    const ids = new Set(collectIdsFromText(text));
+    if (clientId?.trim()) ids.add(clientId.trim());
+    const list = [...ids];
+    if (list.length === 0) {
       setLabels({});
       return;
     }
     let cancelled = false;
-    void resolveSfLabels(ids).then((map) => {
+    void resolveSfLabels(list).then((map) => {
       if (!cancelled) setLabels(map);
     });
     return () => {
       cancelled = true;
     };
-  }, [text]);
+  }, [text, clientId]);
+
+  const namesToLink = useMemo(() => {
+    const n = new Set<string>();
+    const cn = clientName?.trim();
+    if (cn) n.add(cn);
+    const cid = clientId?.trim();
+    if (cid && labels[cid]) {
+      const resolved = labels[cid]!;
+      n.add(resolved);
+      const beforeComma = resolved.split(",")[0]?.trim();
+      if (
+        beforeComma &&
+        beforeComma.length >= 2 &&
+        beforeComma !== resolved
+      ) {
+        n.add(beforeComma);
+      }
+      const firstToken = resolved.match(/^[\w'.&-]+/u)?.[0];
+      if (
+        firstToken &&
+        firstToken.length >= 3 &&
+        firstToken !== resolved &&
+        !n.has(firstToken)
+      ) {
+        n.add(firstToken);
+      }
+    }
+    return [...n].sort((a, b) => b.length - a.length);
+  }, [clientName, clientId, labels]);
 
   const topSegs = useMemo(() => segmentTextWithSalesforceIds(text), [text]);
 
@@ -124,13 +160,8 @@ export function BriefRichText({
         }
         return (
           <span key={i}>
-            {splitByClientName(seg.value, clientName).map((piece, j) => {
-              if (
-                piece.kind === "name" &&
-                clientHref &&
-                clientId &&
-                clientName
-              ) {
+            {splitByAnyNames(seg.value, namesToLink).map((piece, j) => {
+              if (piece.kind === "name" && clientHref) {
                 return (
                   <a
                     key={`${i}-${j}-n`}

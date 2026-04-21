@@ -5,6 +5,12 @@ import { cn } from "@/lib/utils";
 import { stripDraftDisplayNoise } from "@/lib/client/stripSalesforceIds";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import type { DraftAction } from "@/types/horizon";
+import {
+  inferSalesforceObjectFromId,
+  lightningRecordViewUrl,
+} from "@/lib/salesforce/recordLink";
+import { BriefRichText } from "./BriefRichText";
+import { useSfInstanceUrl } from "./SfInstanceProvider";
 
 export interface StreamedDraft extends DraftAction {
   rationale?: string;
@@ -48,6 +54,12 @@ export function DraftActionCard({
   onDismiss: () => void;
   compact?: boolean;
 }) {
+  const base = useSfInstanceUrl();
+  const targetHref =
+    base && inferSalesforceObjectFromId(draft.target_id)
+      ? lightningRecordViewUrl(base, draft.target_id)
+      : null;
+
   const stagger =
     index === 0 ? "stagger-1" : index === 1 ? "stagger-2" : "stagger-3";
   const kindColor =
@@ -82,7 +94,10 @@ export function DraftActionCard({
             </span>
             <div className="min-w-0">
               <div className="truncate text-[12px] font-medium text-text">
-                {stripDraftDisplayNoise(draft.title)}
+                <BriefRichText
+                  text={stripDraftDisplayNoise(draft.title)}
+                  clientId={draft.target_id}
+                />
               </div>
               <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-text-muted/70">
                 {draft.kind}
@@ -170,19 +185,37 @@ export function DraftActionCard({
               )}
             </div>
           </div>
-          <div
-            className="font-mono text-[10px] text-text-muted/60"
-            data-sf-record-id={draft.target_id}
-          >
-            {draft.target_object}
-          </div>
+          {targetHref ? (
+            <a
+              href={targetHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 font-mono text-[10px] text-accent underline decoration-accent/35 underline-offset-2 hover:decoration-accent"
+              data-sf-record-id={draft.target_id}
+            >
+              {draft.target_object}
+            </a>
+          ) : (
+            <div
+              className="font-mono text-[10px] text-text-muted/60"
+              data-sf-record-id={draft.target_id}
+            >
+              {draft.target_object}
+            </div>
+          )}
         </div>
 
         <div className="mt-3 text-[15px] font-medium leading-snug text-text">
-          {stripDraftDisplayNoise(draft.title)}
+          <BriefRichText
+            text={stripDraftDisplayNoise(draft.title)}
+            clientId={draft.target_id}
+          />
         </div>
         <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-text-muted">
-          {stripDraftDisplayNoise(draft.body)}
+          <BriefRichText
+            text={stripDraftDisplayNoise(draft.body)}
+            clientId={draft.target_id}
+          />
         </p>
         {draft.rationale && (
           <div className="mt-3 flex items-start gap-2 text-[12px] italic text-text-muted/80">
@@ -190,7 +223,12 @@ export function DraftActionCard({
               size={11}
               className="mt-[3px] shrink-0 text-accent-2/80"
             />
-            <span>{stripDraftDisplayNoise(draft.rationale)}</span>
+            <span>
+              <BriefRichText
+                text={stripDraftDisplayNoise(draft.rationale)}
+                clientId={draft.target_id}
+              />
+            </span>
           </div>
         )}
 

@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { PriorityClient } from "@/types/horizon";
 import { useAgentStream } from "@/lib/client/useAgentStream";
@@ -18,12 +11,16 @@ import { ClientDetailSheet } from "./ClientDetailSheet";
 import { GhostPrompt } from "./GhostPrompt";
 import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
 import {
+  inferSalesforceObjectFromId,
+  lightningRecordViewUrl,
+} from "@/lib/salesforce/recordLink";
+import { useSfInstanceUrl } from "./SfInstanceProvider";
+import {
   DraftActionCard,
   type DraftCardStatus,
   type StreamedDraft,
 } from "./DraftActionCard";
 import { useDrafts } from "./DraftsContext";
-import { vibrateLight } from "@/lib/gestures";
 import {
   dispatchHorizonFocusClient,
   HORIZON_REFRESH_PRIORITY,
@@ -316,46 +313,44 @@ function PriorityGroup({
         <ul className="space-y-1 border-t border-border-soft/30 px-2 pb-2 pt-1">
           {clients.map((c, idx) => (
             <li key={c.client_id} className="animate-fade-rise">
-              <SwipePriorityRow>
-                <button
-                  type="button"
-                  onClick={() => onOpenClient(c)}
-                  className="group relative grid w-full grid-cols-[56px_1fr_auto] items-center gap-5 rounded-lg border border-transparent px-4 py-4 text-left transition-colors duration-med ease-out hover:border-border-soft hover:bg-surface/60 focus:outline-none focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/30"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
-                    {String(idx + 1).padStart(2, "0")}
-                  </div>
+              <button
+                type="button"
+                onClick={() => onOpenClient(c)}
+                className="group relative grid w-full grid-cols-[56px_1fr_auto] items-center gap-5 rounded-lg border border-transparent px-4 py-4 text-left transition-colors duration-med ease-out hover:border-border-soft hover:bg-surface/60 focus:outline-none focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/30"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
+                  {String(idx + 1).padStart(2, "0")}
+                </div>
 
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-[15px] font-medium text-text group-hover:text-text">
-                        {c.name}
-                      </span>
-                      <ChevronRight
-                        size={13}
-                        className="shrink-0 text-text-muted/40 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:text-accent/80"
-                      />
-                    </div>
-                    <div className="mt-1 truncate text-[13px] leading-relaxed text-text-muted">
-                      <TextWithSalesforceIds text={c.reason} />
-                    </div>
-                    {c.sources && c.sources.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
-                        {c.sources.map((s) => (
-                          <span
-                            key={s}
-                            className="rounded border border-border-soft px-1.5 py-0.5"
-                          >
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-[15px] font-medium text-text group-hover:text-text">
+                      <PriorityClientNameLink name={c.name} clientId={c.client_id} />
+                    </span>
+                    <ChevronRight
+                      size={13}
+                      className="shrink-0 text-text-muted/40 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:text-accent/80"
+                    />
                   </div>
+                  <div className="mt-1 truncate text-[13px] leading-relaxed text-text-muted">
+                    <TextWithSalesforceIds text={c.reason} />
+                  </div>
+                  {c.sources && c.sources.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
+                      {c.sources.map((s) => (
+                        <span
+                          key={s}
+                          className="rounded border border-border-soft px-1.5 py-0.5"
+                        >
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-                  <ScorePill score={c.score} />
-                </button>
-              </SwipePriorityRow>
+                <ScorePill score={c.score} />
+              </button>
               {drafts
                 .filter((d) => d.target_id === c.client_id)
                 .map((d, j) => {
@@ -378,61 +373,6 @@ function PriorityGroup({
         </ul>
       )}
     </section>
-  );
-}
-
-function SwipePriorityRow({ children }: { children: ReactNode }) {
-  const dxRef = useRef(0);
-  const startX = useRef(0);
-  const active = useRef(false);
-  const [dx, setDx] = useState(0);
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    active.current = true;
-    startX.current = e.clientX;
-    dxRef.current = 0;
-    setDx(0);
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!active.current) return;
-    const next = Math.max(-72, Math.min(72, e.clientX - startX.current));
-    dxRef.current = next;
-    setDx(next);
-  };
-  const end = (e: React.PointerEvent) => {
-    if (!active.current) return;
-    active.current = false;
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-    const finalDx = dxRef.current;
-    if (Math.abs(finalDx) > 44) {
-      vibrateLight();
-    }
-    dxRef.current = 0;
-    setDx(0);
-  };
-
-  return (
-    <div className="overflow-hidden rounded-lg">
-      <div
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={end}
-        onPointerCancel={end}
-        style={{ transform: `translateX(${dx}px)` }}
-        className={cn(
-          "touch-pan-y transition-[transform] duration-fast ease-out",
-          dx !== 0 && "transition-none"
-        )}
-      >
-        {children}
-      </div>
-    </div>
   );
 }
 
@@ -492,6 +432,34 @@ function ScorePill({ score }: { score: number }) {
 interface PriorityPayload {
   clients: PriorityClient[];
   note: string | null;
+}
+
+function PriorityClientNameLink({
+  name,
+  clientId,
+}: {
+  name: string;
+  clientId: string;
+}) {
+  const base = useSfInstanceUrl();
+  const href =
+    base && inferSalesforceObjectFromId(clientId)
+      ? lightningRecordViewUrl(base, clientId)
+      : null;
+  if (!href) {
+    return <span>{name}</span>;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="hover:text-accent"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {name}
+    </a>
+  );
 }
 
 function parsePriorityPayload(text: string): PriorityPayload {
