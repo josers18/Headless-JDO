@@ -101,6 +101,13 @@ export interface ArcNodePayload {
   start: string;
   duration_minutes: number;
   title: string;
+  /**
+   * FINAL-3 — short distinct axis caption (≤ 14 chars, Title Case).
+   * Must be unique within a given nodes/lookahead array. The arc
+   * prompt now requires it; older cached payloads may omit it, in
+   * which case the client falls back to a type-derived label.
+   */
+  label?: string;
   client_id?: string;
   context: string;
 }

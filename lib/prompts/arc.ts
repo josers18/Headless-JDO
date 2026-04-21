@@ -1,6 +1,6 @@
 // Today's Arc — structured remainder-of-workday view (UI v2 T0-3).
 
-export const ARC_PROMPT_VERSION = "v1.2.0-2026-04-21";
+export const ARC_PROMPT_VERSION = "v1.3.0-final-3-2026-04-21";
 
 export interface ArcPromptArgs {
   bankerUserId: string;
@@ -33,6 +33,22 @@ NODE TYPES (map each item to one):
 - recommended — suggested focus window from gaps
 - blocked — only if evidence exists; otherwise omit
 
+NODE LABELING (FINAL-3 — required per node):
+Every node MUST carry a "label" — the short axis caption shown under the
+dot on the timeline. Labels MUST be distinct across the rest-of-today nodes
+array; two nodes labeled "Focus" is a defect. Rules:
+- ≤ 14 characters, Title Case.
+- For "recommended" nodes (suggested focus windows), use 1–3 specific words
+  drawn from the focus content: "Wellspring Prep", "Backlog Clear",
+  "Chen Outreach", "Omega Close" — NEVER the generic word "Focus" repeated.
+- For "event" nodes, use 1–3 words from the Subject (drop filler like
+  "Call with", "Meeting re") — e.g. "Patel 1:1", "Odom Review".
+- For "deadline" nodes, anchor to what is due: "Omega Close", "Odom SOW",
+  "Task: Maturity".
+- For "blocked" nodes, use "Blocked" or a short reason ("Travel", "OOO").
+- If two candidate labels collide (two "Patel" meetings back-to-back), add
+  a disambiguator: "Patel 1:1" vs "Patel prep".
+
 Return JSON ONLY (no fences, no prose):
 {
   "now": "ISO-8601 with offset for banker wall clock",
@@ -44,15 +60,16 @@ Return JSON ONLY (no fences, no prose):
       "start": "ISO-8601",
       "duration_minutes": number,
       "title": "max 5 words",
+      "label": "≤ 14 chars — distinct among same-day nodes",
       "client_id": "optional Salesforce Id",
       "context": "one sentence"
     }
   ],
   "lookahead_week": [
-    { "id": "...", "type": "event" | "deadline" | "recommended" | "blocked", "start": "ISO-8601", "duration_minutes": number, "title": "max 5 words", "client_id": "optional", "context": "one sentence" }
+    { "id": "...", "type": "event" | "deadline" | "recommended" | "blocked", "start": "ISO-8601", "duration_minutes": number, "title": "max 5 words", "label": "≤ 14 chars", "client_id": "optional", "context": "one sentence" }
   ],
   "lookahead_month": [
-    { "id": "...", "type": "event" | "deadline" | "recommended" | "blocked", "start": "ISO-8601", "duration_minutes": number, "title": "max 5 words", "client_id": "optional", "context": "one sentence" }
+    { "id": "...", "type": "event" | "deadline" | "recommended" | "blocked", "start": "ISO-8601", "duration_minutes": number, "title": "max 5 words", "label": "≤ 14 chars", "client_id": "optional", "context": "one sentence" }
   ],
   "recommended_windows": [
     {
@@ -64,6 +81,7 @@ Return JSON ONLY (no fences, no prose):
 }
 
 Rules:
+- LABEL UNIQUENESS (FINAL-3): within each of nodes / lookahead_week / lookahead_month, no two entries may share the same "label". If collisions would occur, disambiguate (e.g. "Patel 1:1" + "Patel prep", or "Backlog Clear" + "Backlog QA"). Never return three nodes all labeled "Focus".
 - BANKER-FACING COPY (title, context, suggestion): use human names (Account.Name, Contact names from WhoId joins). NEVER embed raw Salesforce Ids like "001am00000qvjsAAAQ" in prose. Ids belong in the structured "client_id" field only. If you do not have a resolved name, use a generic phrase ("two overdue tasks", "an at-risk opportunity").
 - "nodes" = only items whose start falls on TODAY between now and end_of_day (rest of workday). If none left today, nodes may be [].
 - "lookahead_week" = next 7 calendar days after today through day 7 ahead (tool-backed Events/Tasks/Opportunity closes). Omit duplicates already in nodes.

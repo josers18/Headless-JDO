@@ -5,6 +5,13 @@ import type { ArcNodePayload, ArcNodeType } from "@/types/horizon";
 import { cn } from "@/lib/utils";
 import { ARC_TRACK_LINE_PX } from "./ArcTimeline";
 
+// FINAL-3 — "recommended" nodes were rendering as dashed-ring empty
+// circles, which read as loading/pending spinners in video. All four
+// node types are now SOLID FILLED DOTS, differentiated only by color
+// (and shape-family for deadlines, which keep their diamond to stay
+// readable without color alone). The NOW marker in ArcTimeline is
+// already a pulsing vertical line, so the "suggested dot vs NOW"
+// visual ambiguity goes away.
 const typeStyles: Record<
   ArcNodeType,
   { shape: string; ring: string; label: string; fill?: string }
@@ -22,9 +29,9 @@ const typeStyles: Record<
     label: "Deadline",
   },
   recommended: {
-    shape: "h-3 w-3 rounded-full border-2 border-dashed border-emerald-400/70 bg-transparent",
-    ring: "",
-    fill: "bg-transparent",
+    shape: "h-3 w-3 rounded-full",
+    ring: "ring-2 ring-emerald-400/40",
+    fill: "bg-emerald-400/85",
     label: "Suggested",
   },
   blocked: {
@@ -42,25 +49,31 @@ function titleShort(s: string): string {
   return all.length > 3 ? `${w.join(" ")}…` : w.join(" ");
 }
 
-// "Focus window" / "Deadline" / "Meeting" make much cleaner axis tick
-// labels than a 3-word truncation of a prose sentence — which often reads
-// as "Clear afternoon to…" or "Open window to…" and wraps awkwardly at
-// 92px. We use the node type to pick a short label for the axis caption;
-// the full title + context is still shown in the hover tooltip and in the
-// selected detail card below the timeline.
-function axisLabelFor(type: string, title: string): string {
-  switch (type) {
-    case "recommended":
-      return "Focus";
-    case "deadline":
-      return "Due";
-    case "event":
-      return titleShort(title) || "Meeting";
-    case "blocked":
-      return "Blocked";
-    default:
-      return titleShort(title);
-  }
+// FINAL-3 — the prompt now emits a per-node `label` that is required
+// to be unique within the nodes array. We trust it when present. For
+// older cached payloads that predate the labeling rule, fall back to
+// a per-node derivation from the title (NOT a generic "Focus" /
+// "Due" constant — those produced the "three identical FOCUS
+// labels" defect seen in pre-film QA). The old type-generic fallback
+// is kept only for blocked nodes where we genuinely have no other
+// signal.
+const LABEL_MAX_CHARS = 14;
+
+function clampLabel(s: string): string {
+  const t = s.trim();
+  if (t.length <= LABEL_MAX_CHARS) return t;
+  return `${t.slice(0, LABEL_MAX_CHARS - 1).trimEnd()}…`;
+}
+
+function axisLabelFor(node: ArcNodePayload): string {
+  const fromAgent = node.label?.trim();
+  if (fromAgent) return clampLabel(fromAgent);
+  if (node.type === "blocked") return "Blocked";
+  const short = titleShort(node.title);
+  if (short) return clampLabel(short);
+  if (node.type === "recommended") return "Focus";
+  if (node.type === "deadline") return "Due";
+  return "Meeting";
 }
 
 function oneLineContext(s: string, max = 140): string {
@@ -91,7 +104,7 @@ export function ArcNode({
   const lastDx = useRef(0);
   const suppressClick = useRef(false);
   const shortTitle = titleShort(node.title);
-  const axisLabel = axisLabelFor(node.type, node.title);
+  const axisLabel = axisLabelFor(node);
 
   return (
     <div
