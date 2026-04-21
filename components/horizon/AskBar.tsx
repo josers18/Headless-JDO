@@ -7,6 +7,7 @@ import {
   HORIZON_FOCUS_CLIENT,
   HORIZON_PREP_SUBMIT,
   HORIZON_SIGN_OUT,
+  dispatchHorizonAskSubmit,
   type HorizonAskSubmitDetail,
   type HorizonPrepSubmitDetail,
 } from "@/lib/client/horizonEvents";
@@ -32,6 +33,7 @@ import {
   stripActionsTail,
 } from "@/lib/client/sanitizeNarrative";
 import { extractActions } from "@/lib/client/extractActions";
+import { extractFollowUps } from "@/lib/client/extractFollowUps";
 import { stripDraftDisplayNoise } from "@/lib/client/stripSalesforceIds";
 import { MarkdownView } from "./MarkdownView";
 import { PrepBriefingPanel } from "./PrepBriefingPanel";
@@ -266,11 +268,33 @@ export function AskBar() {
   // or malformed `{"actions":[...]}` block that extractActions couldn't
   // parse yet. Without this, the JSON leaks as visible text during the
   // stream — exactly the Q1 demo failure mode.
-  const { prose: rawProse, actions } = useMemo(
+  const { prose: afterActions, actions } = useMemo(
     () => extractActions(cleanNarrative),
     [cleanNarrative]
   );
+  // Follow-up suggestions live in a SECOND optional ```json fence that
+  // the Ask Bar prompt can append after the actions block. We parse it
+  // off the prose remnant (already has the actions block removed) so
+  // both tails are peeled cleanly in order.
+  const { prose: rawProse, suggestions: followUps } = useMemo(
+    () => extractFollowUps(afterActions),
+    [afterActions]
+  );
   const prose = useMemo(() => stripActionsTail(rawProse), [rawProse]);
+  // Count completed assistant turns in the persisted thread. The live
+  // streaming response is NOT in `thread` yet (it's committed on
+  // thread_snapshot at stream end), so this counts prior turns only.
+  // We gate follow-ups on `< 3` so the 3rd committed turn is the last
+  // one to show pills; turn 4 renders with none.
+  const assistantTurnCount = useMemo(
+    () => thread.filter((m) => m.role === "assistant").length,
+    [thread]
+  );
+  const showFollowUps =
+    state !== "streaming" &&
+    followUps.length > 0 &&
+    assistantTurnCount < 3 &&
+    !prepSession;
 
   const prepPayload = useMemo((): PrepBriefingPayload | null => {
     if (!prepSession) return null;
@@ -431,6 +455,7 @@ export function AskBar() {
                   onDismiss={dismissAction}
                 />
               )}
+              {showFollowUps && <FollowUpPills suggestions={followUps} />}
               {steps.length > 0 && (
                 <div className="mt-4">
                   <ReasoningTrail steps={steps} defaultOpen={false} />
@@ -542,6 +567,38 @@ export function AskBar() {
           )}
         </form>
       </div>
+    </div>
+  );
+}
+
+// Quiet, italic continuation pills rendered below the agent's answer (and
+// below any InlineActions) inside the Ask response panel. Click sends the
+// pill text as a new turn on the SAME thread via HORIZON_ASK_SUBMIT —
+// same submission path GhostPrompt uses, so prior tool context is
+// preserved and we don't duplicate plumbing.
+//
+// Visual treatment is deliberately dimmer than InlineActions or
+// GhostPrompt: transparent bg, italic, text-muted. These read as
+// "thoughts the agent has" rather than buttons.
+function FollowUpPills({ suggestions }: { suggestions: string[] }) {
+  return (
+    <div
+      className="mt-4 flex flex-wrap items-center gap-2"
+      role="group"
+      aria-label="Suggested follow-ups"
+    >
+      {suggestions.map((s, i) => (
+        <button
+          key={`${i}:${s}`}
+          type="button"
+          title={s}
+          onClick={() => dispatchHorizonAskSubmit({ q: s })}
+          style={{ animationDelay: `${i * 80}ms` }}
+          className="animate-fade-rise inline-flex max-w-full items-center gap-1.5 rounded-full border border-border-soft/60 bg-transparent px-3 py-1.5 text-left text-[12px] italic leading-snug text-text-muted/90 transition-colors duration-fast hover:border-accent/40 hover:bg-surface2/40 hover:text-text"
+        >
+          <span className="truncate">{s}</span>
+        </button>
+      ))}
     </div>
   );
 }

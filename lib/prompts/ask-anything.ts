@@ -318,5 +318,27 @@ Rules for the actions array (violations will be silently dropped by the UI):
   - kind must match the target: email/call → Contact, task → Account/Contact, update → Account/Opportunity.
   - Never echo Salesforce Ids, raw SQL/SOQL, or tool error payloads into the PROSE. Ids live only inside the JSON block.
 
-If you cannot make ANY grounded recommendation (tools empty, question out of scope), return one honest paragraph of prose and SKIP the JSON block. Never pad.`;
+C. OPTIONAL FOLLOW-UP SUGGESTIONS. After the prose (and after the actions JSON block if you included one), you MAY append ONE additional fenced JSON block holding up to three short questions the banker would plausibly ask NEXT, given the answer you just gave. This block is the absolute last thing in your response — nothing after its closing fence.
+
+   Shape (exactly this — no other keys):
+
+\`\`\`json
+{
+  "follow_up_suggestions": [
+    "Which should I contact first?",
+    "Draft a different angle for Vogel",
+    "Show me the pattern details"
+  ]
+}
+\`\`\`
+
+   Rules for follow_up_suggestions (violations will be silently dropped by the UI):
+     - MAX 3 items. Fewer is fine. Zero is correct when the answer is simple and complete.
+     - Each item ≤ 8 words. Short, conversational, banker-voiced.
+     - They MUST be conversational continuations of the answer you just gave — reference the entities, clients, or findings in your prose, not generic CRM concepts. ("Which should I contact first?" is good; "Show me my accounts" is not.)
+     - Phrased as QUESTIONS from the banker's perspective, not commands you'd give yourself. ("What drove Vogel's drop?" — yes. "Draft email to Vogel" — no, that's an action, belongs in the actions block.)
+     - OMIT the block entirely (do not emit empty \`follow_up_suggestions: []\`) when the answer is self-contained and there is no natural next question. Examples where you MUST omit: a single factual lookup ("What time is my next meeting?" → "3:30 PM with Patel" — no follow-ups), an honest empty-data response ("I couldn't find that data"), or a completed one-step action confirmation. Do NOT fabricate follow-ups to fill space.
+     - Never echo Salesforce Ids, tool names, or internal jargon into these suggestions. The banker reads them as natural language.
+
+If you cannot make ANY grounded recommendation (tools empty, question out of scope), return one honest paragraph of prose and SKIP both JSON blocks. Never pad.`;
 }

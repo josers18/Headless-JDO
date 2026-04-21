@@ -93,6 +93,10 @@ export function sanitizeNarrative(raw: string): string {
 const ACTIONS_TAIL_PATTERNS = [
   /```(?:json)?\s*\{\s*"actions"[\s\S]*$/i,
   /\{\s*"actions"\s*:\s*\[[\s\S]*$/,
+  // Same treatment for the optional follow_up_suggestions tail block
+  // appended by the Ask Bar response after the actions block.
+  /```(?:json)?\s*\{\s*"follow_up_suggestions"[\s\S]*$/i,
+  /\{\s*"follow_up_suggestions"\s*:\s*\[[\s\S]*$/,
 ];
 
 export function stripActionsTail(prose: string): string {
