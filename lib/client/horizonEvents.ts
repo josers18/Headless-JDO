@@ -7,6 +7,8 @@ export const HORIZON_REFRESH_PRIORITY = "horizon:refresh-priority";
 export const HORIZON_REFRESH_DRAFTS = "horizon:refresh-drafts";
 
 export const HORIZON_ASK_SUBMIT = "horizon:ask-submit";
+/** C-2 — fires `POST /api/prep` from the Ask surface (Prep me everywhere). */
+export const HORIZON_PREP_SUBMIT = "horizon:prep-submit";
 export const HORIZON_FOCUS_CLIENT = "horizon:focus-client";
 
 export type HorizonAskSubmitDetail = { q: string; context?: string };
@@ -14,6 +16,20 @@ export type HorizonAskSubmitDetail = { q: string; context?: string };
 export function dispatchHorizonAskSubmit(detail: HorizonAskSubmitDetail): void {
   window.dispatchEvent(
     new CustomEvent<HorizonAskSubmitDetail>(HORIZON_ASK_SUBMIT, { detail })
+  );
+}
+
+export type HorizonPrepSubmitDetail = {
+  clientId: string;
+  clientName?: string;
+  reason?: string;
+};
+
+export function dispatchHorizonPrepSubmit(
+  detail: HorizonPrepSubmitDetail
+): void {
+  window.dispatchEvent(
+    new CustomEvent<HorizonPrepSubmitDetail>(HORIZON_PREP_SUBMIT, { detail })
   );
 }
 

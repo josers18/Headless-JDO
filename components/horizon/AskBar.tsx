@@ -5,8 +5,11 @@ import { useViewportSection } from "@/hooks/useViewportSection";
 import {
   HORIZON_ASK_SUBMIT,
   HORIZON_FOCUS_CLIENT,
+  HORIZON_PREP_SUBMIT,
   type HorizonAskSubmitDetail,
+  type HorizonPrepSubmitDetail,
 } from "@/lib/client/horizonEvents";
+import { validateAskThreadMessages } from "@/lib/ask/thread";
 import {
   ArrowUp,
   Check,
@@ -151,7 +154,7 @@ export function AskBar() {
       setLastQuestion(q);
       setValue("");
       setActionStatus({});
-      const messages: AskThreadMessage[] = [
+      let messages: AskThreadMessage[] = [
         ...thread,
         { role: "user", content: q },
       ];
@@ -159,6 +162,17 @@ export function AskBar() {
         [askContext, ghostContext]
           .filter((x) => x && String(x).trim().length > 0)
           .join("\n") || undefined;
+      const check = validateAskThreadMessages(messages);
+      if (!check.ok) {
+        /** Session thread can drift from strict OpenAI shape → POST /api/ask 400. */
+        messages = [{ role: "user", content: q }];
+        setThread([]);
+        try {
+          sessionStorage.removeItem(ASK_THREAD_STORAGE_KEY);
+        } catch {
+          /* ignore */
+        }
+      }
       await start(
         "/api/ask",
         merged ? { messages, context: merged } : { messages },
@@ -166,6 +180,26 @@ export function AskBar() {
       );
     },
     [askContext, persistThreadFromServer, speech, start, state, thread]
+  );
+
+  const submitPrep = useCallback(
+    async (detail: HorizonPrepSubmitDetail) => {
+      const id = detail.clientId?.trim();
+      if (!id || state === "streaming") return;
+      if (speech.listening) speech.stop();
+      const label = detail.clientName?.trim() ?? id;
+      setLastQuestion(
+        `Prep briefing · ${label}${detail.reason ? ` (${detail.reason})` : ""}`
+      );
+      setValue("");
+      setActionStatus({});
+      await start("/api/prep", {
+        clientId: id,
+        clientName: detail.clientName,
+        reason: detail.reason,
+      });
+    },
+    [speech, start, state]
   );
 
   useEffect(() => {
@@ -179,6 +213,17 @@ export function AskBar() {
     return () =>
       window.removeEventListener(HORIZON_ASK_SUBMIT, onAsk as EventListener);
   }, [state, submitWithQuestion]);
+
+  useEffect(() => {
+    const onPrep = (e: Event) => {
+      const ce = e as CustomEvent<HorizonPrepSubmitDetail>;
+      if (!ce.detail?.clientId?.trim()) return;
+      void submitPrep(ce.detail);
+    };
+    window.addEventListener(HORIZON_PREP_SUBMIT, onPrep as EventListener);
+    return () =>
+      window.removeEventListener(HORIZON_PREP_SUBMIT, onPrep as EventListener);
+  }, [submitPrep]);
 
   async function submit() {
     await submitWithQuestion(value, undefined);

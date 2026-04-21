@@ -11,6 +11,7 @@
 
 import {
   dispatchHorizonAskSubmit,
+  dispatchHorizonPrepSubmit,
   dispatchHorizonFocusClient,
   HORIZON_REFRESH_BRIEF,
   HORIZON_REFRESH_ARC,
@@ -403,12 +404,10 @@ async function runAction(
       return;
     }
     case "prep": {
-      const q = action.meetingHint
-        ? `Prep me for my ${action.meetingHint} with ${action.clientName ?? "this client"}. What's changed since our last touch, what's the agenda I should lead with, and what are the two risks I shouldn't miss?`
-        : `Prep me for my next touch with ${action.clientName ?? "this client"}. What's changed since our last interaction, what should I lead with, and what risks should I surface?`;
-      dispatchHorizonAskSubmit({
-        q,
-        context: `Client id: ${action.clientId}`,
+      dispatchHorizonPrepSubmit({
+        clientId: action.clientId,
+        clientName: action.clientName,
+        reason: action.meetingHint,
       });
       return;
     }
