@@ -5,12 +5,17 @@ import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ArcNode } from "./ArcNode";
+import { ArcTimeline, arcLeftPct } from "./ArcTimeline";
+import { ClientDetailSheet } from "./ClientDetailSheet";
 import { GhostPrompt } from "./GhostPrompt";
 import { BriefRichText } from "./BriefRichText";
 import { extractFirstSalesforceId } from "@/lib/salesforce/recordLink";
 import { cn } from "@/lib/utils";
 import type { ArcNodePayload, TodaysArcPayload } from "@/types/horizon";
-import { HORIZON_REFRESH_ARC } from "@/lib/client/horizonEvents";
+import {
+  dispatchHorizonFocusClient,
+  HORIZON_REFRESH_ARC,
+} from "@/lib/client/horizonEvents";
 import { vibrateLight } from "@/lib/gestures";
 
 function isArcNodePayload(o: unknown): o is ArcNodePayload {
@@ -49,28 +54,6 @@ function isArcPayload(v: unknown): v is TodaysArcPayload {
   return true;
 }
 
-function leftPct(nowMs: number, endMs: number, startIso: string): number {
-  const s = Date.parse(startIso);
-  if (Number.isNaN(s)) return 50;
-  const span = endMs - nowMs;
-  if (span <= 0) return 50;
-  return ((s - nowMs) / span) * 100;
-}
-
-function formatTick(
-  nowMs: number,
-  endMs: number,
-  frac: number,
-  tz?: string
-): string {
-  const t = new Date(nowMs + (endMs - nowMs) * frac);
-  return t.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: tz,
-  });
-}
-
 function arcRowClientId(n: { client_id?: string; context: string; title: string }):
   | string
   | undefined {
@@ -81,10 +64,21 @@ function arcRowClientId(n: { client_id?: string; context: string; title: string 
   );
 }
 
+function titleShort(s: string): string {
+  const w = s.trim().split(/\s+/).filter(Boolean).slice(0, 3);
+  const all = s.trim().split(/\s+/).filter(Boolean);
+  if (w.length === 0) return "";
+  return all.length > 3 ? `${w.join(" ")}…` : w.join(" ");
+}
+
 export function TodaysArc() {
   const { narrative, steps, state, error, start, reset } = useAgentStream();
   const [hasStarted, setHasStarted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sheet, setSheet] = useState<{
+    clientId: string;
+    name?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (hasStarted) return;
@@ -144,13 +138,54 @@ export function TodaysArc() {
     };
   }, [arc]);
 
-  const selected = useMemo(
-    () => arc?.nodes.find((x) => x.id === selectedId) ?? null,
-    [arc, selectedId]
-  );
-
   const weekNodes = arc?.lookahead_week ?? [];
   const monthNodes = arc?.lookahead_month ?? [];
+
+  const displayNodes = useMemo((): ArcNodePayload[] => {
+    if (!arc) return [];
+    const base = [...arc.nodes];
+    const wins = arc.recommended_windows ?? [];
+    for (let i = 0; i < wins.length; i++) {
+      const w = wins[i];
+      if (!w) continue;
+      const t = Date.parse(w.start);
+      if (Number.isNaN(t)) continue;
+      const dup = base.some(
+        (n) => Math.abs(Date.parse(n.start) - t) < 120_000
+      );
+      if (dup) continue;
+      base.push({
+        id: `rw-${i}-${w.start}`,
+        type: "recommended",
+        start: w.start,
+        duration_minutes: w.duration_minutes,
+        title: titleShort(w.suggestion) || "Focus window",
+        context: w.suggestion,
+      });
+    }
+    return sortArcNodesByStart(base).slice(0, 8);
+  }, [arc]);
+
+  const selected = useMemo(
+    () => displayNodes.find((x) => x.id === selectedId) ?? null,
+    [displayNodes, selectedId]
+  );
+
+  const activateNode = useCallback(
+    (node: ArcNodePayload) => {
+      const scid = arcRowClientId(node);
+      if (scid) {
+        const name = titleShort(node.title) || "Client";
+        dispatchHorizonFocusClient({ name, clientId: scid });
+        setSheet({ clientId: scid, name });
+        setSelectedId(null);
+      } else {
+        setSheet(null);
+        setSelectedId((id) => (id === node.id ? null : node.id));
+      }
+    },
+    []
+  );
 
   const nowRailPct = useMemo(() => {
     const span = endMs - nowMs;
@@ -211,49 +246,34 @@ export function TodaysArc() {
       {arc && nowMs && endMs && (
         <div className="mt-6 animate-fade-rise">
           <div className="overflow-x-auto overscroll-x-contain pb-2 [-webkit-overflow-scrolling:touch] snap-x snap-mandatory md:snap-none md:overflow-visible">
-            <div className="relative min-h-[120px] min-w-[520px] snap-center md:min-w-0">
-              <div className="flex justify-between px-1 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/80">
-                <span>Now</span>
-                <span className="hidden sm:inline">
-                  {formatTick(nowMs, endMs, 0.33, tz)}
-                </span>
-                <span className="hidden md:inline">
-                  {formatTick(nowMs, endMs, 0.55, tz)}
-                </span>
-                <span>{formatTick(nowMs, endMs, 1, tz)}</span>
-              </div>
-
-              <div className="relative mt-3 h-[72px] rounded-xl border border-border-soft/60 bg-surface/30">
-                <div
-                  className="pointer-events-none absolute bottom-0 left-0 right-0 top-8 border-t border-border-soft/50"
-                  aria-hidden
-                />
-                <div
-                  className="pointer-events-none absolute bottom-0 left-0 top-8 w-px bg-accent/70 shadow-[0_0_12px_rgba(91,141,239,0.45)] animate-pulse"
-                  style={{
-                    left: `${Math.min(98, Math.max(2, nowRailPct))}%`,
-                    transform: "translateX(-50%)",
-                  }}
-                  aria-hidden
-                />
-                {arc.nodes.map((node, i) => (
-                  <div
-                    key={node.id}
-                    className="animate-fade-rise"
-                    style={{ animationDelay: `${i * 50}ms` }}
-                  >
+            <div className="relative min-w-[min(100%,520px)] snap-center md:min-w-0">
+              <ArcTimeline
+                nowMs={nowMs}
+                endMs={endMs}
+                nowRailPct={nowRailPct}
+                tz={tz}
+              >
+                {displayNodes.map((node) => {
+                  const ev = Date.parse(node.start);
+                  const lp = arcLeftPct(nowMs, endMs, ev);
+                  return (
                     <ArcNode
+                      key={node.id}
                       node={node}
-                      leftPct={leftPct(nowMs, endMs, node.start)}
+                      leftPct={lp}
                       selected={selectedId === node.id}
-                      onSelect={() =>
-                        setSelectedId((id) => (id === node.id ? null : node.id))
-                      }
+                      onActivate={() => activateNode(node)}
                       onRescheduleIntent={onRescheduleIntent}
                     />
-                  </div>
-                ))}
-              </div>
+                  );
+                })}
+              </ArcTimeline>
+
+              {displayNodes.length === 0 && (
+                <p className="mt-2 text-center text-[11px] text-text-muted/80">
+                  No timed items on the arc yet — suggested focus below.
+                </p>
+              )}
 
               {selected &&
                 (() => {
@@ -335,6 +355,14 @@ export function TodaysArc() {
         <div className="mt-6">
           <ReasoningTrail steps={steps} defaultOpen={false} />
         </div>
+      )}
+
+      {sheet && (
+        <ClientDetailSheet
+          clientId={sheet.clientId}
+          clientName={sheet.name}
+          onClose={() => setSheet(null)}
+        />
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { ArcNodePayload, ArcNodeType } from "@/types/horizon";
 import { cn } from "@/lib/utils";
+import { ARC_TRACK_LINE_PX } from "./ArcTimeline";
 
 const typeStyles: Record<
   ArcNodeType,
@@ -34,17 +35,30 @@ const typeStyles: Record<
   },
 };
 
+function titleShort(s: string): string {
+  const w = s.trim().split(/\s+/).filter(Boolean).slice(0, 3);
+  const all = s.trim().split(/\s+/).filter(Boolean);
+  if (w.length === 0) return "";
+  return all.length > 3 ? `${w.join(" ")}…` : w.join(" ");
+}
+
+function oneLineContext(s: string, max = 140): string {
+  const t = s.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
+}
+
 export function ArcNode({
   node,
   leftPct,
   selected,
-  onSelect,
+  onActivate,
   onRescheduleIntent,
 }: {
   node: ArcNodePayload;
   leftPct: number;
   selected: boolean;
-  onSelect: () => void;
+  onActivate: () => void;
   /** Fires after a horizontal drag gesture (best-effort reschedule intent). */
   onRescheduleIntent?: (node: ArcNodePayload, deltaX: number) => void;
 }) {
@@ -55,12 +69,30 @@ export function ArcNode({
   const startX = useRef(0);
   const lastDx = useRef(0);
   const suppressClick = useRef(false);
+  const shortTitle = titleShort(node.title);
 
   return (
     <div
-      className="absolute top-[38px] z-20 -translate-x-1/2"
-      style={{ left: `${clamped}%` }}
+      className="group pointer-events-auto absolute z-20"
+      style={{
+        left: `${clamped}%`,
+        top: ARC_TRACK_LINE_PX,
+        transform: "translate(-50%, -50%)",
+      }}
     >
+      <div
+        className={cn(
+          "pointer-events-none invisible absolute bottom-[calc(100%+10px)] left-1/2 z-40 w-max max-w-[min(240px,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-border-soft bg-surface2/95 px-3 py-2 text-left text-[11.5px] leading-snug text-text shadow-lg opacity-0 shadow-black/40 transition duration-fast",
+          "group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+        )}
+        role="tooltip"
+      >
+        <span className="block font-medium text-text">{shortTitle}</span>
+        <span className="mt-1 block text-text-muted">
+          {oneLineContext(node.context)}
+        </span>
+      </div>
+
       <button
         type="button"
         onClick={(e) => {
@@ -69,7 +101,7 @@ export function ArcNode({
             e.preventDefault();
             return;
           }
-          onSelect();
+          onActivate();
         }}
         onPointerDown={(e) => {
           if (e.pointerType === "mouse" && e.button !== 0) return;
@@ -110,7 +142,7 @@ export function ArcNode({
           setTx(0);
         }}
         className={cn(
-          "group flex min-h-[44px] min-w-[44px] flex-col items-center gap-1.5 rounded-md px-0.5 py-1 transition duration-med ease-out md:min-h-0 md:min-w-0",
+          "flex min-h-[44px] min-w-[44px] flex-col items-center gap-1 rounded-md px-0.5 py-1 transition duration-med ease-out md:min-h-0 md:min-w-0",
           selected && "scale-105"
         )}
         style={{ transform: `translateX(${tx}px)` }}
@@ -125,8 +157,8 @@ export function ArcNode({
             st.ring
           )}
         />
-        <span className="max-w-[88px] text-center font-mono text-[9px] uppercase leading-tight tracking-tight text-text-muted group-hover:text-text/90">
-          {node.title}
+        <span className="max-w-[92px] text-center font-mono text-[9px] uppercase leading-tight tracking-tight text-text-muted group-hover:text-text/90">
+          {shortTitle}
         </span>
       </button>
     </div>
