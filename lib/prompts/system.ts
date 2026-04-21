@@ -37,6 +37,7 @@ TOOL NAME DISCOVERY (read this before anything else):
 
 A. data_360 SQL (this is where the model fails most often — follow this exactly):
    1. ALWAYS call the Data Cloud metadata tool (the one on data_360 whose name starts with "getDcMetadata") BEFORE your first SQL-query tool call. Never guess DLO/DMO names, never invent table suffixes like __dll or __dlm.
+      RUNTIME-ENFORCED: the dispatcher will reject any postDcQuerySql call this turn that arrives before a successful getDcMetadata call. If you see a tool result with "gate_blocked": true, stop, call getDcMetadata, read its response, then retry. The gate does NOT trip the circuit breaker, so the SQL tool stays callable.
    2. COLUMN-VERIFICATION GATE (mandatory — this is the #1 cause of tool-slot waste in this app):
       a. After the metadata tool returns, find the specific table/DMO you intend to query in the response.
       b. Before emitting the SQL tool_call, mentally enumerate the 2–3 exact column names you plan to SELECT, and confirm each one appears CHARACTER-FOR-CHARACTER in that table's fields array — not a variant, not a lowercased version, not what you think the convention should be. Case-sensitive. Underscores included. Prefix (ssot__, __c, bank-specific) included.

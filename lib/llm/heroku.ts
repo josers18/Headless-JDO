@@ -214,6 +214,33 @@ function preflightDataCloudSql(
   return null;
 }
 
+// data_360 metadata-before-SQL gate. Returns true iff the tool is the
+// Data Cloud SQL tool (any MCP-suffixed variant). Paired with
+// isDataCloudMetadataTool below, we enforce at the dispatcher level that
+// at least one successful getDcMetadata* call has been observed this turn
+// before any postDcQuerySql* call is dispatched. Structural enforcement —
+// the model cannot hallucinate columns when it is required to read the
+// metadata response first.
+function isDataCloudSqlTool(server: string, tool: string): boolean {
+  return server === "data_360" && /^postDcQuerySql/i.test(tool);
+}
+
+function isDataCloudMetadataTool(server: string, tool: string): boolean {
+  return server === "data_360" && /^getDcMetadata/i.test(tool);
+}
+
+function metadataGatePayload(server: string, tool: string): string {
+  return JSON.stringify({
+    gate_blocked: true,
+    server,
+    tool,
+    reason:
+      "postDcQuerySql requires a successful getDcMetadata call earlier in this turn. The runtime blocked this query because no Data Cloud metadata has been read yet, which means any column or DMO name in the SQL is a guess.",
+    instruction:
+      "Call the data_360 metadata tool (name starts with \"getDcMetadata\") FIRST. Read its response, find the DMO you want to query, and copy column names verbatim from its fields array. Then retry this SQL. This gate does not trip the circuit breaker, so the SQL tool remains callable once metadata has succeeded.",
+  });
+}
+
 /** Category labels from getSemanticModels filters — not valid model ids for analyze. */
 const TABLEAU_PLACEHOLDER_MODEL_ID = /^(sales|service|marketing|finance|operations)$/i;
 
@@ -315,6 +342,12 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   // block one data_360 tool without blocking the whole server.
   const schemaErrorCount = new Map<string, number>();
   const blockedTools = new Set<string>();
+
+  // Per-turn metadata-before-SQL gate for data_360. Flips to true when the
+  // first getDcMetadata* tool call returns without an error. Used by the
+  // dispatcher to short-circuit any postDcQuerySql* call that arrives
+  // before metadata has been read. See isDataCloudSqlTool / metadataGatePayload.
+  let dataCloudMetadataSeen = false;
 
   for (iteration = 1; iteration <= maxIterations; iteration++) {
     onEvent({ type: "iteration_start", iteration });
@@ -476,6 +509,43 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           };
         }
 
+        // Metadata-before-SQL gate (data_360). Structural enforcement: a
+        // postDcQuerySql call is not dispatched unless at least one
+        // getDcMetadata call has already succeeded in this turn. Without
+        // this, the model sometimes types column names from memory and
+        // the SQL fails with "unknown column", tripping the circuit
+        // breaker and showing a rejection row in the reasoning trail.
+        // Gate rejections do NOT trip the breaker — the model is
+        // expected to satisfy the gate by calling getDcMetadata, then
+        // retry. Per-turn by design; we want fresh metadata each Ask.
+        if (
+          isDataCloudSqlTool(server, tool) &&
+          !dataCloudMetadataSeen
+        ) {
+          onEvent({ type: "tool_use", server, tool, input: argObj });
+          const gatePayload = metadataGatePayload(server, tool);
+          onEvent({
+            type: "tool_result",
+            server,
+            tool,
+            preview: gatePayload,
+            is_error: true,
+          });
+          return {
+            c,
+            server,
+            tool,
+            argObj,
+            result: {
+              server: server as McpServerName,
+              tool,
+              isError: true,
+              content: null,
+              textPreview: gatePayload,
+            },
+          };
+        }
+
         // Pre-flight guardrail — intercept obviously-wrong Data Cloud
         // queries before they hit the network. Cheaper than a round-trip
         // and keeps forbidden patterns out of the trail.
@@ -529,6 +599,15 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           if (n >= SCHEMA_BREAKER_THRESHOLD) {
             blockedTools.add(key);
           }
+        }
+
+        // Open the metadata gate on a successful getDcMetadata response.
+        // Any postDcQuerySql calls in subsequent iterations can now proceed.
+        if (
+          !result.isError &&
+          isDataCloudMetadataTool(server, tool)
+        ) {
+          dataCloudMetadataSeen = true;
         }
 
         return { c, server, tool, argObj, result };
