@@ -12,6 +12,13 @@ export const SECTION_INSIGHT_PROMPT_VERSION = "v1.0.0-2026-04-20";
 
 export type SectionKind = "priority" | "pulse" | "drafts" | "signals";
 
+/** One editorial banner row (parsed JSON from `/api/insights`). */
+export type InsightPayload = {
+  tone: "calm" | "attention" | "urgent";
+  headline: string;
+  action_hint: string | null;
+};
+
 const SECTION_CONTEXT: Record<SectionKind, string> = {
   priority:
     "The Priority Queue ranks up to 10 clients needing attention today, grouped by urgency (today / this week / watch).",
@@ -60,6 +67,54 @@ OUTPUT:
   "tone": "calm" | "attention" | "urgent",
   "headline": "string — 1 sentence, lead with the takeaway. E.g. 'Three HNW follow-ups all slipped past 14 days — oldest is Patel.'",
   "action_hint": "string — 1 short suggested next step, OR null if nothing actionable. E.g. 'Start with Patel: a brief 2-line nudge is drafted below.'"
+}
+`;
+}
+
+const ALL_SECTIONS: SectionKind[] = [
+  "priority",
+  "pulse",
+  "drafts",
+  "signals",
+];
+
+export function sectionInsightBatchSections(): readonly SectionKind[] {
+  return ALL_SECTIONS;
+}
+
+/**
+ * Single agent turn that replaces N parallel /api/insights calls — critical for
+ * home-page performance (one MCP connect + one tool wave vs four).
+ */
+export function sectionInsightBatchPrompt({
+  bankerName,
+}: {
+  bankerName: string;
+}): string {
+  const blocks = ALL_SECTIONS.map((section) => {
+    return `### ${section.toUpperCase()}
+CONTEXT: ${SECTION_CONTEXT[section]}
+FOCUS: ${SECTION_FOCUS[section]}`;
+  }).join("\n\n");
+
+  return `You are writing four one-line editorial banners for ${bankerName}'s Horizon home page — one above Priority Queue, Portfolio Pulse, Pre-drafted Actions, and Live Signals.
+
+${blocks}
+
+PERFORMANCE: Prefer ONE coordinated wave of parallel MCP tool calls that gathers enough real data to assess all four sections (don't repeat redundant listTools/describe passes). If a source errors, acknowledge unknowns briefly — don't retry the same failing query pattern.
+
+HARD RULES:
+- Output a single JSON object only — no markdown fence, no prose outside the object.
+- Each section's headline + action_hint combined ≤ 24 words.
+- Never include raw Salesforce Ids — use names or generic phrasing.
+- If a section is empty or quiet, say so plainly for that section and set action_hint to null.
+
+OUTPUT SHAPE:
+{
+  "priority": { "tone": "calm" | "attention" | "urgent", "headline": "string", "action_hint": "string | null" },
+  "pulse": { "tone": "...", "headline": "...", "action_hint": "..." },
+  "drafts": { "tone": "...", "headline": "...", "action_hint": "..." },
+  "signals": { "tone": "...", "headline": "...", "action_hint": "..." }
 }
 `;
 }

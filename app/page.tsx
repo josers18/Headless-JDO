@@ -15,6 +15,7 @@ import { AskBar } from "@/components/horizon/AskBar";
 import { PulseStrip } from "@/components/horizon/PulseStrip";
 import { SignInBanner } from "@/components/horizon/SignInBanner";
 import { HorizonSignedIn } from "@/components/horizon/HorizonSignedIn";
+import { InsightsBatchProvider } from "@/components/horizon/InsightsBatchProvider";
 
 // Force dynamic — we read the Salesforce session cookie server-side to
 // decide whether to show the signed-out banner instead of kicking every
@@ -64,12 +65,13 @@ export default function HorizonHome() {
       {signedIn && (
         <>
           <HorizonSignedIn>
-            {/* B-3 — at >=1280px we pull Signal Feed into a sticky right rail
-                so the banker can see ambient awareness while scrolling the
-                main briefing column. Below 1280px the layout stays single-
-                column with Signals at the bottom (original rhythm). */}
-            <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-12">
-              <div className="min-w-0">
+            <InsightsBatchProvider>
+              {/* B-3 — at >=1280px we pull Signal Feed into a sticky right rail
+                  so the banker can see ambient awareness while scrolling the
+                  main briefing column. Below 1280px the layout stays single-
+                  column with Signals at the bottom (original rhythm). */}
+              <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-12">
+                <div className="min-w-0">
                 <section className="mt-16 md:mt-20 animate-fade-rise stagger-1">
                   <MorningBrief />
                 </section>
@@ -120,6 +122,7 @@ export default function HorizonHome() {
             <div className="xl:hidden">
               <AgentLog />
             </div>
+            </InsightsBatchProvider>
           </HorizonSignedIn>
 
           <AskBar />

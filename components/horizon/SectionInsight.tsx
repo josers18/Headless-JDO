@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles, AlertTriangle, Zap } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
-import type { SectionKind } from "@/lib/prompts/section-insight";
+import type {
+  InsightPayload,
+  SectionKind,
+} from "@/lib/prompts/section-insight";
+import { useInsightsBatch } from "./InsightsBatchProvider";
 import { cn } from "@/lib/utils";
 import { sanitizeProseLite } from "@/lib/safety/sanitize";
 
@@ -15,12 +19,6 @@ import { sanitizeProseLite } from "@/lib/safety/sanitize";
  *
  * Streams from `/api/insights`, parses the final JSON once streaming is done.
  */
-
-interface InsightPayload {
-  tone: "calm" | "attention" | "urgent";
-  headline: string;
-  action_hint: string | null;
-}
 
 function parseInsight(raw: string): InsightPayload | null {
   if (!raw) return null;
@@ -77,19 +75,30 @@ export function SectionInsight({
   label: string;
   className?: string;
 }) {
-  const { narrative, state, start } = useAgentStream();
-  const [payload, setPayload] = useState<InsightPayload | null>(null);
+  const batch = useInsightsBatch();
+  const legacy = useAgentStream();
+  const [legacyPayload, setLegacyPayload] = useState<InsightPayload | null>(
+    null
+  );
 
   useEffect(() => {
-    void start("/api/insights", { section });
+    if (batch) return;
+    void legacy.start("/api/insights", { section });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section]);
+  }, [section, batch]);
 
   useEffect(() => {
-    if (state !== "done") return;
-    const parsed = parseInsight(narrative);
-    if (parsed) setPayload(parsed);
-  }, [state, narrative]);
+    if (batch) return;
+    if (legacy.state !== "done") return;
+    const parsed = parseInsight(legacy.narrative);
+    if (parsed) setLegacyPayload(parsed);
+  }, [batch, legacy.state, legacy.narrative]);
+
+  const payload = batch?.payloads[section] ?? legacyPayload;
+  const state = batch?.state ?? legacy.state;
+  const streaming =
+    state === "streaming" &&
+    !(batch?.payloads[section] ?? legacyPayload);
 
   const style = useMemo(() => TONE[payload?.tone ?? "calm"], [payload]);
   const Icon = style.icon;
@@ -109,7 +118,7 @@ export function SectionInsight({
         className={cn(
           "mt-[3px] inline-flex h-1.5 w-1.5 shrink-0 rounded-full",
           style.dot,
-          state === "streaming" && "animate-pulse"
+          streaming && "animate-pulse"
         )}
         aria-hidden
       />
@@ -131,7 +140,7 @@ export function SectionInsight({
           </p>
         ) : (
           <p className="text-text-muted/70">
-            {state === "streaming"
+            {streaming
               ? `Reading the ${label.toLowerCase()}…`
               : `Gathering context for ${label.toLowerCase()}…`}
           </p>
