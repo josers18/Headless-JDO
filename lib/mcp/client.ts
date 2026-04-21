@@ -343,8 +343,18 @@ export async function connectMcpClients(
 }
 
 function extractTextPreview(content: unknown, maxChars: number): string {
-  if (!Array.isArray(content))
-    return JSON.stringify(content).slice(0, Math.min(maxChars, 500));
+  const raw = flattenTextContent(content);
+  if (raw.length <= maxChars) return raw;
+  // Silent truncation is the exact failure we spent today fixing — the
+  // model ends up guessing at schema because it thinks the response is
+  // complete. Append an explicit marker so the model knows more data
+  // exists and can narrow the next call (e.g. by DMO category).
+  const truncatedNote = `\n\n[RESPONSE TRUNCATED at ${maxChars.toLocaleString()} chars — ${raw.length.toLocaleString()} total. Re-call this tool with narrower arguments (e.g. a category filter or a specific object name) to see the remainder.]`;
+  return raw.slice(0, maxChars - truncatedNote.length) + truncatedNote;
+}
+
+function flattenTextContent(content: unknown): string {
+  if (!Array.isArray(content)) return JSON.stringify(content);
   const texts: string[] = [];
   for (const part of content) {
     const p = part as { type?: string; text?: string };
@@ -352,20 +362,38 @@ function extractTextPreview(content: unknown, maxChars: number): string {
       texts.push(p.text);
     }
   }
-  if (texts.length === 0)
-    return JSON.stringify(content).slice(0, Math.min(maxChars, 500));
-  return texts.join("\n").slice(0, maxChars);
+  if (texts.length === 0) return JSON.stringify(content);
+  return texts.join("\n");
 }
 
 // Per-tool model-text budget. Schema-introspection responses (getDcMetadata,
 // describeSObject, list-DMOs, etc.) contain dense, non-redundant structure
 // the model must read in full to avoid hallucinating tables and columns.
-// All other tools keep the original 2KB cap to protect the context window.
+// All other tools keep a small cap to protect the context window.
+//
+// Sizing: Claude 4.5 Sonnet on Heroku Inference supports a 200K-token context
+// window. ~4 chars/token for JSON-dense metadata responses gives ~800K chars
+// of raw budget. We reserve 80% for everything else (system prompt,
+// per-turn user message, prior-turn tool results, model output) and let a
+// single schema-introspection response consume up to the remainder.
+// 160K chars ≈ 40K tokens — enough for an org with thousands of DMOs and
+// every field on each. If a single response exceeds that, it will be
+// truncated with a trailing marker so the model knows to narrow its next
+// metadata call by category/dataspace. Non-schema tools stay at 2KB so
+// no query ever exhausts the context by surprise.
+const METADATA_BUDGET_CHARS = 160_000;
+const SCHEMA_BUDGET_CHARS = 64_000;
+const DEFAULT_BUDGET_CHARS = 2_000;
+
 function modelBudgetFor(server: McpServerName, tool: string): number {
-  if (server === "data_360" && /^getDcMetadata/i.test(tool)) return 32_000;
-  if (server === "salesforce_crm" && /^(describeSObject|getObjectSchema)/i.test(tool))
-    return 16_000;
-  return 2_000;
+  if (server === "data_360" && /^getDcMetadata/i.test(tool))
+    return METADATA_BUDGET_CHARS;
+  if (
+    server === "salesforce_crm" &&
+    /^(describeSObject|getObjectSchema)/i.test(tool)
+  )
+    return SCHEMA_BUDGET_CHARS;
+  return DEFAULT_BUDGET_CHARS;
 }
 
 export const MCP_TOOL_SEP = TOOL_SEP;

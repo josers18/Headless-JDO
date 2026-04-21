@@ -20,6 +20,16 @@ import type { McpRegistry } from "@/lib/mcp/client";
 import { toOpenAiTools, parseToolName } from "@/lib/mcp/tools";
 import type { McpServerName } from "@/types/horizon";
 import { requireEnv } from "@/lib/utils";
+import {
+  emptyDcSnapshot,
+  ingestDcMetadata,
+  hasTable as dcHasTable,
+  getTable as dcGetTable,
+  suggestTables as dcSuggestTables,
+  suggestColumns as dcSuggestColumns,
+  type DcSnapshot,
+} from "@/lib/llm/dataCloudSchema";
+import { extractSqlRefs } from "@/lib/llm/sqlRefs";
 
 export interface AgentEvent {
   type:
@@ -160,9 +170,10 @@ const FORBIDDEN_DC_SQL_PATTERNS: Array<{ re: RegExp; reason: string }> = [
   // by nature, but each entry here maps 1:1 to an actual INVALID_ARGUMENT
   // we've seen in the trail. Add new entries as new variants surface.
   //
-  // Note: ssot__*__c columns are handled separately in
-  // preflightDataCloudSql via metadataExposesSsot, because whether they
-  // are valid depends on what the CURRENT org's metadata exposes.
+  // Note: ssot__*__c columns are no longer handled here — the
+  // schema-grounded column check in preflightDataCloudSql rejects
+  // them naturally when the current org's metadata doesn't expose
+  // any ssot__ columns.
   {
     // Bare unquoted lowercase identifiers in SELECT/WHERE that the
     // model sometimes produces as "normalized" versions of quoted
@@ -185,7 +196,7 @@ function preflightDataCloudSql(
   server: string,
   tool: string,
   args: Record<string, unknown>,
-  ctx: { metadataExposesSsot: boolean }
+  ctx: { snapshot: DcSnapshot }
 ): string | null {
   if (server !== "data_360") return null;
   // OpenAI tool names are sanitized + max 64 chars; the MCP leaf name is
@@ -193,6 +204,11 @@ function preflightDataCloudSql(
   if (!/^postDcQuerySql/i.test(tool)) return null;
   const sql = typeof args.sql === "string" ? args.sql : "";
   if (!sql) return null;
+
+  // Pattern-based rejections (information_schema, SELECT *, bare
+  // lowercase column references). These are still useful as a first
+  // line of defense — they don't require the metadata snapshot to
+  // make a decision.
   for (const { re, reason } of FORBIDDEN_DC_SQL_PATTERNS) {
     if (re.test(sql)) {
       return JSON.stringify({
@@ -205,22 +221,95 @@ function preflightDataCloudSql(
       });
     }
   }
-  // Observability-driven guard: reject any ssot__* column reference when
-  // THIS turn's getDcMetadata response exposed zero ssot__ columns. The
-  // model pulls ssot__ from training memory for orgs that use DMO-specific
-  // prefixes instead. Scoped by metadata observation so orgs that DO
-  // expose ssot__ columns are unaffected.
-  if (!ctx.metadataExposesSsot && /\bssot__[A-Za-z0-9_]+__c\b/.test(sql)) {
+
+  // Schema-grounded rejections. Only run when we actually have a
+  // metadata snapshot — without one we have no ground truth to check
+  // against, and the earlier metadata-before-SQL gate will have
+  // blocked execution anyway.
+  if (!ctx.snapshot.hasData) return null;
+
+  const refs = extractSqlRefs(sql);
+  if (refs.complexity === "complex") {
+    // Query shape is past our conservative parser's comfort zone.
+    // Allow it through — the network will reject it if the references
+    // don't resolve, which is strictly better than a false positive
+    // blocking a legitimate advanced query.
+    return null;
+  }
+
+  // D1 — Table-existence. If the query names a table that is not in
+  // any getDcMetadata response we've ingested, reject and cite real
+  // candidate tables from the snapshot.
+  for (const table of refs.tables) {
+    if (dcHasTable(ctx.snapshot, table)) continue;
+    // Snapshot may be truncated if the metadata response exceeded
+    // our budget. When that happens, unknown tables could legitimately
+    // exist past the truncation point. Advise the model to narrow
+    // its next metadata call rather than block — there's no way for
+    // us to know for sure.
+    if (ctx.snapshot.truncated) continue;
+    const suggestions = dcSuggestTables(ctx.snapshot, table, 5);
     return JSON.stringify({
       rejected: true,
       server,
       tool,
-      reason:
-        "This query references ssot__*__c columns, but the getDcMetadata response you just read for this org does not expose any ssot__ columns. Those column names are coming from training memory, not from the metadata in context.",
+      reason: `Table "${table}" does not exist in this org's Data Cloud metadata. The getDcMetadata response you just read lists every available DMO; "${table}" is not one of them, so it is a guess, not a real object.`,
       instruction:
-        "Re-read the fields[].name values in the metadata response you just received. Copy real column names verbatim (they will end in __c but use DMO-specific prefixes, not ssot__). Common shapes in this org: Acc_*, FinServ_*, Id__c, DataSource__c. Do NOT retry with ssot__ prefixes.",
+        suggestions.length > 0
+          ? `Rewrite the query against one of these real tables from the metadata response (closest matches first): ${suggestions.map((s) => `"${s}"`).join(", ")}. If none of these are the right object for the question, the data you are looking for is not in Data Cloud — say so honestly and finish with the tools you have.`
+          : "Re-read the metadata response carefully — no table in it matched the name you queried. If the data you need is not in Data Cloud for this org, say so honestly and finish with the tools you have.",
     });
   }
+
+  // D2 — Column-existence. For each named table in the query, verify
+  // that every column the query references exists on that table in
+  // the snapshot. Columns that the parser couldn't attribute to a
+  // specific table (e.g. unqualified refs in a JOIN) are matched
+  // against ANY of the named tables — if no table has the column,
+  // reject. This avoids false positives on queries that use columns
+  // from either side of a JOIN without aliases.
+  const tablesInQuery = refs.tables
+    .map((t) => dcGetTable(ctx.snapshot, t))
+    .filter((t): t is NonNullable<typeof t> => Boolean(t));
+
+  if (tablesInQuery.length > 0 && refs.columns.length > 0) {
+    for (const col of refs.columns) {
+      // A column qualifier like "t.foo" comes through as "foo" in
+      // the refs list (we strip qualifiers during extraction). We
+      // accept the column if ANY referenced table has it.
+      const colLc = col.toLowerCase();
+      const matched = tablesInQuery.some((t) => t.fieldsLc.has(colLc));
+      if (matched) continue;
+
+      // Before rejecting, confirm: the column might be a Data Cloud
+      // function output (e.g. COUNT(*), DATE_TRUNC(...)) or a literal
+      // alias. Our extractor ignores function calls, but a raw alias
+      // like `AS foo` would slip through. We only reject bona-fide
+      // DMO-shaped columns (ending in __c) — anything else we pass
+      // through to the network.
+      if (!/__c$/i.test(col)) continue;
+
+      // Suggest closest matches across all tables named in the query.
+      const suggestions: string[] = [];
+      for (const t of tablesInQuery) {
+        for (const s of dcSuggestColumns(t, col, 3)) {
+          if (!suggestions.includes(s)) suggestions.push(s);
+        }
+      }
+      const tableList = refs.tables.map((t) => `"${t}"`).join(", ");
+      return JSON.stringify({
+        rejected: true,
+        server,
+        tool,
+        reason: `Column "${col}" does not exist on any of the tables in this query (${tableList}). The getDcMetadata response lists every column for each DMO; "${col}" is not one of them, so it is a guess.`,
+        instruction:
+          suggestions.length > 0
+            ? `Copy a real column name verbatim from the metadata response. Closest matches on the tables in this query: ${suggestions.slice(0, 5).map((s) => `"${s}"`).join(", ")}.`
+            : `Re-read the fields[] array for ${tableList} in the metadata response and pick a column whose name appears verbatim there.`,
+      });
+    }
+  }
+
   return null;
 }
 
@@ -288,7 +377,7 @@ function preflightRejection(
   server: string,
   tool: string,
   args: Record<string, unknown>,
-  ctx: { metadataExposesSsot: boolean }
+  ctx: { snapshot: DcSnapshot }
 ): string | null {
   return preflightDataCloudSql(server, tool, args, ctx) ??
     preflightTableauAnalyze(server, tool, args);
@@ -359,14 +448,15 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   // dispatcher to short-circuit any postDcQuerySql* call that arrives
   // before metadata has been read. See isDataCloudSqlTool / metadataGatePayload.
   let dataCloudMetadataSeen = false;
-  // Observability-driven hallucination guard. The model reliably writes
-  // SQL against ssot__* columns it remembers from training even when the
-  // current org exposes none. When this turn's getDcMetadata responses
-  // contain zero ssot__ columns, we reject any subsequent SQL that
-  // references ssot__* and cite real prefixes we did see. Flips to true
-  // only if a successful getDcMetadata response actually contains an
-  // ssot__ column name.
-  let dataCloudMetadataExposesSsot = false;
+
+  // Schema-grounded snapshot for D1/D2 preflight checks. Successful
+  // getDcMetadata responses get ingested here; postDcQuerySql calls
+  // have their table and column references verified against it before
+  // dispatch. Starts empty and grows monotonically within a turn —
+  // nothing is shared across turns, because schema can differ by
+  // dataspace and we should never reject on stale data from a prior
+  // request. See lib/llm/dataCloudSchema.ts.
+  const dcSnapshot = emptyDcSnapshot();
 
   for (iteration = 1; iteration <= maxIterations; iteration++) {
     onEvent({ type: "iteration_start", iteration });
@@ -570,9 +660,11 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
 
         // Pre-flight guardrail — intercept obviously-wrong Data Cloud
         // queries before they hit the network. Cheaper than a round-trip
-        // and keeps forbidden patterns out of the trail.
+        // and keeps forbidden patterns out of the trail. The snapshot
+        // carries this turn's ingested getDcMetadata responses; the
+        // preflight uses it to verify table and column references.
         const rejection = preflightRejection(server, tool, argObj, {
-          metadataExposesSsot: dataCloudMetadataExposesSsot,
+          snapshot: dcSnapshot,
         });
         if (rejection) {
           onEvent({ type: "tool_use", server, tool, input: argObj });
@@ -626,21 +718,15 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           }
         }
 
-        // Open the metadata gate on a successful getDcMetadata response.
-        // Any postDcQuerySql calls in subsequent iterations can now proceed.
+        // Open the metadata gate on a successful getDcMetadata response
+        // and ingest the response into the schema snapshot. Both the
+        // gate and the snapshot are per-turn — no cross-request state.
         if (
           !result.isError &&
           isDataCloudMetadataTool(server, tool)
         ) {
           dataCloudMetadataSeen = true;
-          // Observability check — does this org's metadata actually expose
-          // any ssot__ columns? Scan the full modelText (post-truncation-
-          // fix this can be 32KB, so we look for the substring pattern
-          // rather than parse). If not, the preflight below rejects any
-          // ssot__ SQL as a hallucination.
-          if (/\bssot__[A-Za-z0-9_]+__c\b/.test(result.modelText)) {
-            dataCloudMetadataExposesSsot = true;
-          }
+          ingestDcMetadata(dcSnapshot, result.modelText);
         }
 
         return { c, server, tool, argObj, result };
