@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/client/useTheme";
@@ -23,7 +24,19 @@ import {
 export function ThemeSwitcher() {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<"all" | "dark" | "light" | "bank">("all");
+  const [mounted, setMounted] = useState(false);
   const { theme, commit, startPreview, stopPreview } = useTheme();
+
+  // Portal target bookkeeping. The sheet is rendered into document.body
+  // so it escapes the sticky signed-in header's stacking context. The
+  // header at `app/page.tsx` line ~45 is `sticky top-0 z-40` + a
+  // `backdrop-blur-md`, which creates a new CSS stacking context —
+  // anything inside it (including a `fixed inset-0 z-[100]` dialog) is
+  // clamped to that context and ends up *below* siblings at z-40 on
+  // the page root. Portaling to body sidesteps that entirely.
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Stop any live preview when the sheet closes so we never leave the
   // banker on a different theme than they actually picked.
@@ -126,21 +139,23 @@ export function ThemeSwitcher() {
         <span className="hidden sm:inline">Theme</span>
       </button>
 
-      {open && (
+      {open && mounted && createPortal(
         <div
           // Anchored to the top of the viewport, not centered — so the
           // first family row is always visible even when the browser's
           // bookmarks bar or extension bars eat into `100vh`. The
           // backdrop itself scrolls, so if the dialog is taller than the
           // visible area the user can page through the whole sheet.
-          // z-[100] so the sheet beats every sticky header, the AskBar
-          // fixed at the bottom, the pulse strip, and the Reasoning
-          // Trail sticky summaries. The app's own stacking goes:
+          //
+          // Rendered via a portal to document.body (above) so it
+          // escapes the sticky signed-in header's stacking context.
+          // Once portalled, z-[100] beats every sticky header, the
+          // AskBar, the pulse strip, and the Reasoning Trail sticky
+          // summaries. App stacking goes:
           //   sticky top header .............. z-40
           //   fixed AskBar .................... z-40
           //   floating client detail sheet .... z-50
-          // so 100 is comfortably above all of them without being
-          // arbitrary-huge.
+          // so 100 is comfortably above all of them.
           className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/50 px-4 py-[max(3vh,16px)] backdrop-blur-sm"
           onClick={() => setOpen(false)}
           role="dialog"
@@ -218,7 +233,8 @@ export function ThemeSwitcher() {
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
