@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import {
@@ -16,6 +9,7 @@ import {
   type SectionKind,
 } from "@/lib/prompts/section-insight";
 import { sanitizeProseLite } from "@/lib/safety/sanitize";
+import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 
 function parseSlice(v: unknown): InsightPayload | null {
   if (!v || typeof v !== "object") return null;
@@ -55,14 +49,19 @@ const InsightsBatchContext = createContext<InsightsBatchContextValue | null>(
 
 export function InsightsBatchProvider({ children }: { children: ReactNode }) {
   const { narrative, state, error, start } = useAgentStream();
-  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    void start("/api/insights", {
-      sections: [...sectionInsightBatchSections()],
-    });
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      void start("/api/insights", {
+        sections: [...sectionInsightBatchSections()],
+      });
+    }, AGENT_STAGGER_MS.insightsBatch);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
   }, [start]);
 
   const payloads = useMemo(

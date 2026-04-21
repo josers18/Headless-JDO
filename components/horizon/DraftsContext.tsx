@@ -12,6 +12,7 @@ import {
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { HORIZON_REFRESH_DRAFTS } from "@/lib/client/horizonEvents";
+import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 import {
   extractRecordIdFromActionResult,
   type DraftCardStatus,
@@ -26,6 +27,8 @@ type DraftsContextValue = {
   steps: Step[];
   state: "idle" | "streaming" | "done" | "error";
   error: string | null;
+  /** True until the staggered first `/api/drafts` fetch begins. */
+  draftsKickoffPending: boolean;
   statuses: Record<string, DraftCardStatus>;
   setPriorityClientIds: (ids: string[]) => void;
   approve: (d: StreamedDraft) => Promise<void>;
@@ -36,7 +39,7 @@ const DraftsContext = createContext<DraftsContextValue | null>(null);
 
 export function DraftsProvider({ children }: { children: ReactNode }) {
   const { narrative, steps, state, error, start, reset } = useAgentStream();
-  const [hasStarted, setHasStarted] = useState(false);
+  const [draftsKickoffPending, setDraftsKickoffPending] = useState(true);
   const [priorityIds, setPriorityIds] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, DraftCardStatus>>({});
 
@@ -49,10 +52,17 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
   }, [start]);
 
   useEffect(() => {
-    if (hasStarted) return;
-    setHasStarted(true);
-    runFetch();
-  }, [hasStarted, runFetch]);
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      setDraftsKickoffPending(false);
+      runFetch();
+    }, AGENT_STAGGER_MS.drafts);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [runFetch]);
 
   useEffect(() => {
     const onRefresh = () => {
@@ -122,6 +132,7 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
       steps,
       state,
       error,
+      draftsKickoffPending,
       statuses,
       setPriorityClientIds,
       approve,
@@ -131,6 +142,7 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
       approve,
       dismiss,
       drafts,
+      draftsKickoffPending,
       orphanDrafts,
       error,
       setPriorityClientIds,

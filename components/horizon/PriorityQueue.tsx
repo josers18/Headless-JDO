@@ -27,6 +27,7 @@ import {
 } from "@/lib/client/horizonEvents";
 import { ActionRow, type ActionSpec } from "./ActionRow";
 import { dispatchAction, isSnoozed } from "@/lib/client/actions/registry";
+import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 
 const PQ_GROUPS_KEY = "hz:pq-groups:v1";
 
@@ -64,7 +65,8 @@ function writeGroupOpen(next: Record<string, boolean>) {
 
 export function PriorityQueue() {
   const { narrative, steps, state, error, start, reset } = useAgentStream();
-  const [hasStarted, setHasStarted] = useState(false);
+  /** True until the staggered first fetch is handed to `start` (skeleton vs idle). */
+  const [awaitingKickoff, setAwaitingKickoff] = useState(true);
   const [selectedClient, setSelectedClient] = useState<PriorityClient | null>(
     null
   );
@@ -83,10 +85,17 @@ export function PriorityQueue() {
   } = useDrafts();
 
   useEffect(() => {
-    if (hasStarted) return;
-    setHasStarted(true);
-    void start("/api/priority", undefined, { method: "GET" }).catch(() => {});
-  }, [hasStarted, start]);
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      setAwaitingKickoff(false);
+      void start("/api/priority", undefined, { method: "GET" }).catch(() => {});
+    }, AGENT_STAGGER_MS.priority);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [start]);
 
   useEffect(() => {
     const fn = () => {
@@ -119,7 +128,7 @@ export function PriorityQueue() {
   }, [clients]);
 
   const isLoading =
-    state === "streaming" || (state === "idle" && !hasStarted);
+    state === "streaming" || (state === "idle" && awaitingKickoff);
   const emptyMessage =
     state === "error"
       ? error ?? "Priority queue unavailable."

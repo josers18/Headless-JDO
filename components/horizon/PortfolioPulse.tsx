@@ -10,6 +10,7 @@ import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { GhostPrompt } from "./GhostPrompt";
 import { cn } from "@/lib/utils";
+import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 import { sanitizeBankerFacingPulseCopy } from "@/lib/client/pulseCopySanitize";
 import { PulseTile } from "./PulseTile";
 
@@ -31,13 +32,20 @@ export function PortfolioPulse() {
   const { narrative, steps, state, error, start, reset } = useAgentStream();
   const { supported: voiceSupported, speaking, play, stop } =
     useSpokenNarration();
-  const [hasStarted, setHasStarted] = useState(false);
+  const [awaitingKickoff, setAwaitingKickoff] = useState(true);
 
   useEffect(() => {
-    if (hasStarted) return;
-    setHasStarted(true);
-    start("/api/pulse", undefined, { method: "GET" }).catch(() => {});
-  }, [hasStarted, start]);
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      setAwaitingKickoff(false);
+      void start("/api/pulse", undefined, { method: "GET" }).catch(() => {});
+    }, AGENT_STAGGER_MS.portfolioPulse);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [start]);
 
   useEffect(() => {
     const fn = () => {
@@ -54,7 +62,8 @@ export function PortfolioPulse() {
     if (!pulseRaw.kpis?.length) return pulseRaw;
     return { ...pulseRaw, kpis: applyPulseHygieneToKpis(pulseRaw.kpis) };
   }, [pulseRaw]);
-  const isLoading = state === "streaming" && !pulse;
+  const isLoading =
+    (state === "streaming" || (state === "idle" && awaitingKickoff)) && !pulse;
   const spokenText = useMemo(() => (pulse ? pulseToSpoken(pulse) : ""), [
     pulse,
   ]);

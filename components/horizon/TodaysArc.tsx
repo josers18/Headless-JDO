@@ -11,6 +11,7 @@ import { GhostPrompt } from "./GhostPrompt";
 import { BriefRichText } from "./BriefRichText";
 import { extractFirstSalesforceId } from "@/lib/salesforce/recordLink";
 import { cn } from "@/lib/utils";
+import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 import type { ArcNodePayload, TodaysArcPayload } from "@/types/horizon";
 import {
   dispatchHorizonFocusClient,
@@ -73,7 +74,7 @@ function titleShort(s: string): string {
 
 export function TodaysArc() {
   const { narrative, steps, state, error, start, reset } = useAgentStream();
-  const [hasStarted, setHasStarted] = useState(false);
+  const [awaitingKickoff, setAwaitingKickoff] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<{
     clientId: string;
@@ -81,10 +82,17 @@ export function TodaysArc() {
   } | null>(null);
 
   useEffect(() => {
-    if (hasStarted) return;
-    setHasStarted(true);
-    void start("/api/arc", undefined, { method: "GET" });
-  }, [hasStarted, start]);
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      setAwaitingKickoff(false);
+      void start("/api/arc", undefined, { method: "GET" });
+    }, AGENT_STAGGER_MS.arc);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [start]);
 
   useEffect(() => {
     const fn = () => {
@@ -125,7 +133,8 @@ export function TodaysArc() {
     };
   }, [narrative]);
 
-  const isLoading = state === "streaming" && !arc;
+  const isLoading =
+    (state === "streaming" || (state === "idle" && awaitingKickoff)) && !arc;
 
   const { nowMs, endMs, tz } = useMemo(() => {
     if (!arc) return { nowMs: 0, endMs: 0, tz: undefined as string | undefined };

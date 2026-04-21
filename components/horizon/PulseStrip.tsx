@@ -8,6 +8,7 @@ import { ReasoningTrail } from "@/components/horizon/ReasoningTrail";
 import { cn } from "@/lib/utils";
 import { PULSE_REFRESH_EVENT } from "@/lib/client/rightNowSnooze";
 import { dispatchAction } from "@/lib/client/actions/registry";
+import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 import type {
   PulseStripPayload,
   PulseStripTemperature,
@@ -93,7 +94,6 @@ function temperatureStyles(t: PulseStripTemperature): {
  */
 export function PulseStrip() {
   const { narrative, steps, state, error, start, reset } = useAgentStream();
-  const [hasStarted, setHasStarted] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const lastRefetchRef = useRef(0);
 
@@ -102,10 +102,16 @@ export function PulseStrip() {
   }, [start]);
 
   useEffect(() => {
-    if (hasStarted) return;
-    setHasStarted(true);
-    runFetch();
-  }, [hasStarted, runFetch]);
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      runFetch();
+    }, AGENT_STAGGER_MS.pulseStrip);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [runFetch]);
 
   const refetchSoft = useCallback(() => {
     const now = Date.now();

@@ -29,6 +29,7 @@ import {
 import { rightNowGhostAskContext } from "@/lib/prompts/right-now-ghost";
 import type { BriefItem, MorningBrief as Brief } from "@/types/horizon";
 import { cn } from "@/lib/utils";
+import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 
 function normalizeBrief(raw: Brief | null): Brief | null {
   if (!raw || !raw.items?.length) return raw;
@@ -94,13 +95,17 @@ export function MorningBrief() {
     name?: string;
   } | null>(null);
   const [whyOpen, setWhyOpen] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
-
   useEffect(() => {
-    if (hasStarted) return;
-    setHasStarted(true);
-    void start("/api/brief", {});
-  }, [hasStarted, start]);
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) return;
+      void start("/api/brief", {});
+    }, AGENT_STAGGER_MS.brief);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [start]);
 
   useEffect(() => {
     const fn = () => {

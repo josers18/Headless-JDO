@@ -15,12 +15,15 @@ export function PreDraftedActions() {
     steps,
     state,
     error,
+    draftsKickoffPending,
     statuses,
     approve,
     dismiss,
   } = useDrafts();
 
-  const isLoading = state === "streaming" && drafts.length === 0;
+  const isLoading =
+    (state === "streaming" || (state === "idle" && draftsKickoffPending)) &&
+    drafts.length === 0;
 
   return (
     <div data-horizon-section="drafts">
@@ -29,7 +32,8 @@ export function PreDraftedActions() {
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-accent/80",
-              state === "streaming" && "animate-glow-pulse"
+              (state === "streaming" || draftsKickoffPending) &&
+                "animate-glow-pulse"
             )}
           />
           Pre-drafted actions
