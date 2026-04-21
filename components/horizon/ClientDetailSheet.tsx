@@ -8,12 +8,46 @@ import { tryParseJson } from "@/lib/client/jsonStream";
 import { cn } from "@/lib/utils";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
+import { BriefRichText } from "./BriefRichText";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import {
   inferSalesforceObjectFromId,
   lightningRecordViewUrl,
 } from "@/lib/salesforce/recordLink";
 import type { McpServerName } from "@/types/horizon";
+
+function RecordNameLink({
+  id,
+  label,
+  base,
+  className,
+}: {
+  id: string;
+  label: string;
+  base: string | null;
+  className?: string;
+}) {
+  const href =
+    base && inferSalesforceObjectFromId(id)
+      ? lightningRecordViewUrl(base, id)
+      : null;
+  if (!href) {
+    return <span className={cn("text-text", className)}>{label}</span>;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "text-[0.95em] text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent",
+        className
+      )}
+    >
+      {label}
+    </a>
+  );
+}
 
 // ClientDetailSheet opens from the Priority Queue. It streams /api/client/[id]
 // live so the banker sees MCP activity immediately; when the JSON object
@@ -108,6 +142,8 @@ export function ClientDetailSheet({
     [narrative]
   );
 
+  const sheetAccountId = detail?.client_id ?? clientId;
+
   const initials = useMemo(() => {
     const n = detail?.name ?? clientName ?? "";
     return n
@@ -189,7 +225,12 @@ export function ClientDetailSheet({
               </div>
               {detail?.summary ? (
                 <p className="mt-2 max-w-prose text-[14px] leading-relaxed text-text-muted">
-                  <TextWithSalesforceIds text={detail.summary} />
+                  <BriefRichText
+                    text={detail.summary}
+                    clientId={sheetAccountId}
+                    clientName={detail.name ?? clientName}
+                    probeCoListedNames
+                  />
                 </p>
               ) : state === "streaming" && !detail ? (
                 <div className="mt-3 space-y-2">
@@ -256,7 +297,12 @@ export function ClientDetailSheet({
                 {detail.opportunities.map((o) => (
                   <li key={o.id} className="flex items-start justify-between gap-4 py-3">
                     <div>
-                      <div className="text-[14px] text-text">{o.name}</div>
+                      <RecordNameLink
+                        id={o.id}
+                        label={o.name}
+                        base={base}
+                        className="text-[14px]"
+                      />
                       <div className="mt-0.5 text-[12px] text-text-muted">
                         {o.stage}
                         {o.close_date ? ` · closes ${o.close_date}` : ""}
@@ -281,7 +327,12 @@ export function ClientDetailSheet({
                     key={t.id}
                     className="flex items-start justify-between gap-3 text-[13px]"
                   >
-                    <span className="text-text">{t.subject}</span>
+                    <RecordNameLink
+                      id={t.id}
+                      label={t.subject}
+                      base={base}
+                      className="text-[13px]"
+                    />
                     <span className="shrink-0 font-mono text-[11px] text-text-muted">
                       {t.status}
                       {t.due_date ? ` · ${t.due_date}` : ""}
@@ -300,7 +351,12 @@ export function ClientDetailSheet({
                     key={c.id}
                     className="flex items-start justify-between gap-3 text-[13px]"
                   >
-                    <span className="text-text">{c.subject}</span>
+                    <RecordNameLink
+                      id={c.id}
+                      label={c.subject}
+                      base={base}
+                      className="text-[13px]"
+                    />
                     <span className="shrink-0 font-mono text-[11px] text-text-muted">
                       {c.status}
                       {c.priority ? ` · ${c.priority}` : ""}
@@ -331,7 +387,14 @@ export function ClientDetailSheet({
                       aria-hidden
                     />
                     <div className="flex-1">
-                      <div className="text-text">{s.summary}</div>
+                      <div className="text-text">
+                        <BriefRichText
+                          text={s.summary}
+                          clientId={sheetAccountId}
+                          clientName={detail.name ?? clientName}
+                          probeCoListedNames
+                        />
+                      </div>
                       <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
                         {s.kind} · {s.source}
                       </div>
@@ -356,10 +419,21 @@ export function ClientDetailSheet({
                         <span>{a.kind}</span>
                       </div>
                       <div className="mt-1 text-[14px] font-medium text-text">
-                        {a.title}
+                        <BriefRichText
+                          text={a.title}
+                          clientId={sheetAccountId}
+                          clientName={detail.name ?? clientName}
+                          linkClassName="font-medium"
+                          probeCoListedNames
+                        />
                       </div>
                       <div className="mt-1 text-[12px] text-text-muted">
-                        {a.rationale}
+                        <BriefRichText
+                          text={a.rationale}
+                          clientId={sheetAccountId}
+                          clientName={detail.name ?? clientName}
+                          probeCoListedNames
+                        />
                       </div>
                     </div>
                   </li>

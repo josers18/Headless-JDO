@@ -4,6 +4,16 @@ export interface ClientDetailArgs {
   bankerUserId: string;
 }
 
+function sq(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
+function isLikelySalesforceUserId(id: string): boolean {
+  const clean = id.replace(/[^0-9a-zA-Z]/g, "");
+  if (clean.length !== 15 && clean.length !== 18) return false;
+  return clean.slice(0, 3) === "005";
+}
+
 /**
  * Client Detail prompt — a streaming 360° view triggered by clicking a row
  * in the Priority Queue. We deliberately lean on all three Salesforce MCPs
@@ -11,24 +21,31 @@ export interface ClientDetailArgs {
  * signals, and the KPI context in one glance.
  */
 export function clientDetailPrompt(a: ClientDetailArgs): string {
+  const cid = sq(a.clientId.trim());
+  const bid = sq(a.bankerUserId.trim());
   const nameHint = a.clientName
     ? ` The client's display name is "${a.clientName}".`
     : "";
-  return `Produce a 360° snapshot of Account ${a.clientId} for banker user id ${a.bankerUserId}.${nameHint}
+  const bankerStep = isLikelySalesforceUserId(a.bankerUserId)
+    ? `0. salesforce_crm.soqlQuery: SELECT Id, Name FROM User WHERE Id = '${bid}' LIMIT 1`
+    : "0. (Skip banker User lookup — no valid User Id.)";
+  return `Produce a 360° snapshot of Account '${cid}' for the authenticated banker.${nameHint}
+Use this User Id only inside SOQL filters, never in human-readable JSON fields: '${bid}'.
 
 Plan — one pass, no retries on errors, use getObjectSchema before any custom field (__c):
-1. salesforce_crm.soqlQuery: SELECT Id, Name, Industry, AnnualRevenue, Type, LastActivityDate, OwnerId FROM Account WHERE Id = '${a.clientId}' LIMIT 1
-2. salesforce_crm.soqlQuery: SELECT Id, Name, StageName, Amount, CloseDate, Probability, LastActivityDate FROM Opportunity WHERE AccountId = '${a.clientId}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 10
-3. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, ActivityDate, Priority, WhoId, Who.Name FROM Task WHERE AccountId = '${a.clientId}' AND CreatedDate = LAST_N_DAYS:60 ORDER BY ActivityDate DESC NULLS LAST LIMIT 10
-4. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, Priority, CreatedDate FROM Case WHERE AccountId = '${a.clientId}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 10
-5. (Optional) data_360: getDcMetadata to find a Profile or Engagement DMO; if one exists, ONE postDcQuerySql WHERE a client identifier matches '${a.clientId}'. Skip on errors — do not guess.
+${bankerStep}
+1. salesforce_crm.soqlQuery: SELECT Id, Name, Industry, AnnualRevenue, Type, LastActivityDate, OwnerId, Owner.Name FROM Account WHERE Id = '${cid}' LIMIT 1
+2. salesforce_crm.soqlQuery: SELECT Id, Name, StageName, Amount, CloseDate, Probability, LastActivityDate FROM Opportunity WHERE AccountId = '${cid}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 10
+3. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, ActivityDate, Priority, WhoId, Who.Name FROM Task WHERE AccountId = '${cid}' AND CreatedDate = LAST_N_DAYS:60 ORDER BY ActivityDate DESC NULLS LAST LIMIT 10
+4. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, Priority, CreatedDate FROM Case WHERE AccountId = '${cid}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 10
+5. (Optional) data_360: getDcMetadata to find a Profile or Engagement DMO; if one exists, ONE postDcQuerySql WHERE a client identifier matches '${cid}'. Skip on errors — do not guess.
 6. (Optional) tableau_next: getSemanticModels, then ONE analyzeSemanticData with target bound to a real model id from the list (not "Sales"/"Service"). Skip on errors or empty list.
 
 Return JSON ONLY (no prose, no fences):
 {
   "client_id": "${a.clientId}",
   "name": "<resolved name>",
-  "summary": "<= 2 sentences, lead with the insight",
+  "summary": "<= 2 sentences, lead with the insight; use Owner.Name from step 1 for the relationship owner and the banker's Name from step 0 when you mention them — never paste raw User Ids (005…) in summary text",
   "profile": {
     "segment": "<string or null>",
     "relationship_since": "<yyyy-mm-dd or null>",
