@@ -19,6 +19,14 @@ export interface BriefItem {
   client_name?: string;
   /** Other Accounts/Contacts named in this item (multi-account copy). */
   entity_links?: BriefEntityLink[];
+  /**
+   * FINAL-1 — short, specific imperative verb phrase ("Call",
+   * "Update stage", "Mark closed-lost", "Book 20m", "Draft outreach",
+   * "Schedule") extracted from `suggested_action`. Required on the
+   * item referenced by `right_now_index`; optional on others. Used
+   * as the Right Now primary button label. Must be ≤ 14 characters.
+   */
+  right_now_cta?: string;
 }
 
 export interface MorningBrief {

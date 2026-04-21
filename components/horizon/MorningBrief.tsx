@@ -6,10 +6,6 @@ import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
 import {
   ChevronDown,
   ChevronRight,
-  FileText,
-  ListTodo,
-  Mail,
-  Phone,
   Play,
   Square,
   Volume2,
@@ -26,6 +22,7 @@ import {
   readRightNowSnooze,
   writeRightNowSnooze,
 } from "@/lib/client/rightNowSnooze";
+import { resolveRightNowCta } from "@/lib/client/rightNowCta";
 import { rightNowGhostAskContext } from "@/lib/prompts/right-now-ghost";
 import type { BriefItem, MorningBrief as Brief } from "@/types/horizon";
 import { cn } from "@/lib/utils";
@@ -56,33 +53,6 @@ function resolveHeroIndex(brief: Brief): number {
     return i;
   }
   return preferred;
-}
-
-type CtaKind = "call" | "email" | "task" | "review";
-
-function inferCta(item: BriefItem): { kind: CtaKind; label: string } {
-  const t = `${item.headline} ${item.suggested_action}`.toLowerCase();
-  if (/\b(call|phone|ring|dial)\b/i.test(t)) {
-    return { kind: "call", label: "Call" };
-  }
-  if (/\b(email|e-mail|send|write|draft)\b/i.test(t)) {
-    return { kind: "email", label: "Email" };
-  }
-  if (/\b(meet|meeting|schedule|calendar|visit)\b/i.test(t)) {
-    return { kind: "task", label: "Schedule" };
-  }
-  if (/\b(task|todo|follow[- ]?up|remind)\b/i.test(t)) {
-    return { kind: "task", label: "Task" };
-  }
-  return { kind: "review", label: "Review" };
-}
-
-function CtaIcon({ kind }: { kind: CtaKind }) {
-  const cls = "size-4 shrink-0";
-  if (kind === "call") return <Phone className={cls} aria-hidden />;
-  if (kind === "email") return <Mail className={cls} aria-hidden />;
-  if (kind === "task") return <ListTodo className={cls} aria-hidden />;
-  return <FileText className={cls} aria-hidden />;
 }
 
 export function MorningBrief() {
@@ -149,7 +119,7 @@ export function MorningBrief() {
 
   const greeting = brief?.greeting ?? "";
   const { lead, rest } = splitGreeting(greeting);
-  const cta = heroItem ? inferCta(heroItem) : null;
+  const cta = heroItem ? resolveRightNowCta(heroItem) : null;
 
   return (
     <div className="relative" data-horizon-section="brief">
@@ -292,8 +262,9 @@ export function MorningBrief() {
                   ?.focus();
               }}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent-sheen px-4 py-2.5 text-[13px] font-medium text-bg shadow-glow transition hover:brightness-110"
+              aria-label={`${cta.label} — primary action for this Right Now item`}
             >
-              <CtaIcon kind={cta.kind} />
+              <cta.Icon className="size-4 shrink-0" aria-hidden />
               {cta.label}
             </button>
             <button

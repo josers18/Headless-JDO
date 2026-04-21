@@ -8,6 +8,14 @@ export interface MorningBriefPromptArgs {
   localHour24: number;
 }
 
+/**
+ * Bumped whenever the JSON schema or a HARD RULE changes so caches
+ * (Redis, browser, etc.) invalidate automatically. FINAL-1
+ * (2026-04-21) added the per-item `right_now_cta` field and the
+ * "RIGHT NOW CTA VERB" rule block.
+ */
+export const MORNING_BRIEF_PROMPT_VERSION = "v1.1.0-final-1-2026-04-21";
+
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
   const h = a.localHour24;
@@ -104,11 +112,46 @@ SIGNOFF (field "signoff") — HARD RULES (I-1):
 - OFF-HOURS band (before 6 or after 19 local): NEUTRAL only — e.g. "Two items flagged for tomorrow — everything else can wait." FORBIDDEN: rest, sleep, wellness, "get some rest", "go to sleep", "first thing in the morning", scolding about lateness. Do NOT use "morning" or "Good morning".
 - The substring "morning" (any case) may appear in signoff ONLY in the MORNING band.
 
+RIGHT NOW CTA VERB (FINAL-1 — mandatory on the item selected by right_now_index):
+For the item you select as right_now_index, include a "right_now_cta" field — a
+short, specific imperative verb phrase extracted from suggested_action. All three
+items MAY include it (harmless), but it is only REQUIRED on the one referenced by
+right_now_index. This string becomes the primary button label on the hero card;
+it MUST read as a concrete next move, not a filler word.
+
+HARD RULES:
+- 1–2 words (hyphenated compounds like "closed-lost" count as one word), ≤ 18 characters, Title Case.
+- The verb must match the dominant action in suggested_action.
+- NEVER emit the generic word "Review" UNLESS suggested_action literally asks the
+  banker to READ or STUDY something (e.g. "Review the Patel proposal before the
+  3pm meeting."). If the action is to UPDATE a record or MARK a deal closed-lost,
+  that is NOT a review — use the update/mark verb instead.
+- FORBIDDEN generic verbs unless suggested_action genuinely calls for them:
+  "Review", "Take action", "Continue", "Proceed", "Handle", "Manage", "Open",
+  "See", "Look at", "Check". Prefer the specific verb from suggested_action.
+- If multiple verbs appear, pick the MORE DEFINITIVE one (close > update,
+  call > message, mark > review, book > schedule).
+
+Examples:
+  suggested_action: "Call Chen before his 3pm board meeting."
+    → right_now_cta: "Call"
+  suggested_action: "Update the close date and stage, or mark closed-lost to
+                     clean your pipeline forecast."
+    → right_now_cta: "Mark closed-lost"   (more definitive than "Update stage")
+  suggested_action: "Book a 20-minute review for Wednesday."
+    → right_now_cta: "Book 20m"
+  suggested_action: "Draft outreach for these three lookalikes."
+    → right_now_cta: "Draft outreach"
+  suggested_action: "Schedule a portfolio review this week."
+    → right_now_cta: "Schedule"
+  suggested_action: "Review the Patel proposal before the 3pm meeting."
+    → right_now_cta: "Review"   (literal reading — legitimate)
+
 Return structured JSON ONLY (no prose, no markdown fences):
 {
   "greeting": "Good morning, ${firstName}.",
   "items": [
-    { "headline": "...", "why": "...", "suggested_action": "...", "sources": ["data_360"|"salesforce_crm"|"tableau_next"], "client_id": "...?", "client_name": "...?", "entity_links": [{"client_id":"...","client_name":"..."}] }
+    { "headline": "...", "why": "...", "suggested_action": "...", "right_now_cta": "Update stage", "sources": ["data_360"|"salesforce_crm"|"tableau_next"], "client_id": "...?", "client_name": "...?", "entity_links": [{"client_id":"...","client_name":"..."}] }
   ],
   "signoff": "One line, slightly personal, time-aware.",
   "right_now_index": 0
