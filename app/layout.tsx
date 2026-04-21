@@ -4,10 +4,10 @@ import { getTokenCookie } from "@/lib/salesforce/token";
 import { SfInstanceProvider } from "@/components/horizon/SfInstanceProvider";
 
 export const metadata: Metadata = {
-  title: "Cumulus Bank Horizon",
+  title: "Horizon",
   description:
     "The headless home page for the relationship banker. Built on Salesforce Headless 360.",
-  applicationName: "Cumulus Bank Horizon",
+  applicationName: "Horizon",
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },

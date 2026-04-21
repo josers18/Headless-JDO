@@ -25,6 +25,8 @@ import {
   dispatchHorizonFocusClient,
   HORIZON_REFRESH_PRIORITY,
 } from "@/lib/client/horizonEvents";
+import { ActionRow, type ActionSpec } from "./ActionRow";
+import { dispatchAction, isSnoozed } from "@/lib/client/actions/registry";
 
 const PQ_GROUPS_KEY = "hz:pq-groups:v1";
 
@@ -286,94 +288,200 @@ function PriorityGroup({
   onOpenClient: (c: PriorityClient) => void;
 }) {
   if (clients.length === 0) return null;
+  const visibleIds = clients
+    .filter((c) => !isSnoozed(`priority:${c.client_id}`))
+    .map((c) => c.client_id);
+  const batchNames = clients
+    .filter((c) => visibleIds.includes(c.client_id))
+    .map((c) => c.name)
+    .slice(0, 6);
   return (
     <section aria-labelledby={`pq-${id}-h`} className="rounded-xl border border-border-soft/40 bg-surface/20">
-      <button
-        type="button"
-        id={`pq-${id}-h`}
-        onClick={onToggle}
-        className="flex w-full min-h-[44px] items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface/40"
-      >
-        <span className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-text-muted">
-          {open ? (
-            <ChevronDown size={14} className="opacity-70" />
-          ) : (
-            <ChevronRight size={14} className="opacity-70" />
-          )}
-          {label}
-          <span className="rounded-full border border-border-soft px-2 py-0.5 font-mono text-[9px] text-text-muted/80">
-            {clients.length}
+      <div className="flex items-stretch justify-between gap-2">
+        <button
+          type="button"
+          id={`pq-${id}-h`}
+          onClick={onToggle}
+          className="flex flex-1 min-h-[44px] items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface/40"
+        >
+          <span className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-text-muted">
+            {open ? (
+              <ChevronDown size={14} className="opacity-70" />
+            ) : (
+              <ChevronRight size={14} className="opacity-70" />
+            )}
+            {label}
+            <span className="rounded-full border border-border-soft px-2 py-0.5 font-mono text-[9px] text-text-muted/80">
+              {clients.length}
+            </span>
           </span>
-        </span>
-        <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted/60">
-          {hint}
-        </span>
-      </button>
+          <span className="text-[10px] uppercase tracking-[0.12em] text-text-muted/60">
+            {hint}
+          </span>
+        </button>
+        {/* B-4 — batch actions on the group header. "Prep all" routes one
+            AskBar call that briefs every visible client in this tier, so
+            the banker can get a group-level picture with one tap instead
+            of clicking Prep on each row. */}
+        {visibleIds.length > 1 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void dispatchAction({
+                kind: "investigate",
+                label: `Prep all ${visibleIds.length}`,
+                question: `Prep me for the ${visibleIds.length} clients in my ${label.toLowerCase()} tier: ${batchNames.join(", ")}. For each, give me the 1-sentence situation + 1-sentence next step.`,
+              });
+            }}
+            className="mr-2 my-2 rounded-md border border-border-soft px-3 text-[11px] text-text-muted transition hover:border-accent/40 hover:text-text"
+          >
+            Prep all {visibleIds.length}
+          </button>
+        )}
+      </div>
       {open && (
         <ul className="space-y-1 border-t border-border-soft/30 px-2 pb-2 pt-1">
-          {clients.map((c, idx) => (
-            <li key={c.client_id} className="animate-fade-rise">
-              <button
-                type="button"
-                onClick={() => onOpenClient(c)}
-                className="group relative grid w-full grid-cols-[56px_1fr_auto] items-center gap-5 rounded-lg border border-transparent px-4 py-4 text-left transition-colors duration-med ease-out hover:border-border-soft hover:bg-surface/60 focus:outline-none focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/30"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
-                  {String(idx + 1).padStart(2, "0")}
-                </div>
+          {clients
+            .filter((c) => !isSnoozed(`priority:${c.client_id}`))
+            .map((c, idx) => {
+              const primary: ActionSpec = {
+                label: "Prep me",
+                action: {
+                  kind: "prep",
+                  label: "Prep me",
+                  clientId: c.client_id,
+                  clientName: c.name,
+                },
+              };
+              const secondary: ActionSpec = {
+                label: "Why?",
+                action: {
+                  kind: "investigate",
+                  label: "Why?",
+                  question: `Why is ${c.name} ranked here in my priority queue today? Quote the specific signals.`,
+                  context: `Client id: ${c.client_id}. Score: ${c.score}.`,
+                },
+              };
+              const overflow: ActionSpec[] = [
+                {
+                  label: "Draft email",
+                  action: {
+                    kind: "draft_email",
+                    label: "Draft email",
+                    clientId: c.client_id,
+                    clientName: c.name,
+                    reason: c.reason,
+                  },
+                },
+                {
+                  label: "Draft call script",
+                  action: {
+                    kind: "draft_call",
+                    label: "Draft call script",
+                    clientId: c.client_id,
+                    clientName: c.name,
+                    reason: c.reason,
+                  },
+                },
+                {
+                  label: "Create task",
+                  action: {
+                    kind: "create_task",
+                    label: "Create task",
+                    clientId: c.client_id,
+                    clientName: c.name,
+                    subject: `Follow up with ${c.name}`,
+                    dueHint: "this week",
+                  },
+                },
+                {
+                  label: "Snooze 1 hour",
+                  action: {
+                    kind: "snooze",
+                    label: "Snooze 1 hour",
+                    itemKey: `priority:${c.client_id}`,
+                    minutes: 60,
+                  },
+                },
+                {
+                  label: "Dismiss",
+                  action: {
+                    kind: "dismiss",
+                    label: "Dismiss",
+                    itemKey: `priority:${c.client_id}`,
+                  },
+                },
+              ];
 
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[15px] font-medium text-text group-hover:text-text">
-                      <PriorityClientNameLink name={c.name} clientId={c.client_id} />
-                    </span>
-                    <ChevronRight
-                      size={13}
-                      className="shrink-0 text-text-muted/40 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:text-accent/80"
-                    />
-                  </div>
-                  <div className="mt-1 truncate text-[13px] leading-relaxed text-text-muted">
-                    <BriefRichText
-                      text={c.reason}
-                      clientId={c.client_id}
-                      clientName={c.name}
-                    />
-                  </div>
-                  {c.sources && c.sources.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
-                      {c.sources.map((s) => (
-                        <span
-                          key={s}
-                          className="rounded border border-border-soft px-1.5 py-0.5"
-                        >
-                          {s}
-                        </span>
-                      ))}
+              return (
+                <li key={c.client_id} className="animate-fade-rise">
+                  <ActionRow
+                    onRowClick={() => onOpenClient(c)}
+                    primary={primary}
+                    secondary={secondary}
+                    overflow={overflow}
+                  >
+                    <div className="grid grid-cols-[56px_1fr_auto] items-center gap-5">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
+                        {String(idx + 1).padStart(2, "0")}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-[15px] font-medium text-text">
+                            <PriorityClientNameLink
+                              name={c.name}
+                              clientId={c.client_id}
+                            />
+                          </span>
+                          <ChevronRight
+                            size={13}
+                            className="shrink-0 text-text-muted/40 transition-transform duration-fast group-hover:translate-x-0.5 group-hover:text-accent/80"
+                          />
+                        </div>
+                        <div className="mt-1 truncate text-[13px] leading-relaxed text-text-muted">
+                          <BriefRichText
+                            text={c.reason}
+                            clientId={c.client_id}
+                            clientName={c.name}
+                          />
+                        </div>
+                        {c.sources && c.sources.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/70">
+                            {c.sources.map((s) => (
+                              <span
+                                key={s}
+                                className="rounded border border-border-soft px-1.5 py-0.5"
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <ScorePill score={c.score} />
                     </div>
-                  )}
-                </div>
-
-                <ScorePill score={c.score} />
-              </button>
-              {drafts
-                .filter((d) => d.target_id === c.client_id)
-                .map((d, j) => {
-                  const st = statuses[d.id] ?? { kind: "idle" as const };
-                  if (st.kind === "dismissed") return null;
-                  return (
-                    <DraftActionCard
-                      key={d.id}
-                      draft={d}
-                      index={j}
-                      status={st}
-                      compact
-                      onApprove={() => void onApprove(d)}
-                      onDismiss={() => onDismiss(d)}
-                    />
-                  );
-                })}
-            </li>
-          ))}
+                  </ActionRow>
+                  {drafts
+                    .filter((d) => d.target_id === c.client_id)
+                    .map((d, j) => {
+                      const st = statuses[d.id] ?? { kind: "idle" as const };
+                      if (st.kind === "dismissed") return null;
+                      return (
+                        <DraftActionCard
+                          key={d.id}
+                          draft={d}
+                          index={j}
+                          status={st}
+                          compact
+                          onApprove={() => void onApprove(d)}
+                          onDismiss={() => onDismiss(d)}
+                        />
+                      );
+                    })}
+                </li>
+              );
+            })}
         </ul>
       )}
     </section>

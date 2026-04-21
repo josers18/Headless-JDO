@@ -1,8 +1,15 @@
+/**
+ * HorizonMark — the product wordmark.
+ *
+ * F-4 (UI_V3_FIX): the header renders **Horizon** only. The tenant
+ * ("Cumulus Bank" today, another institution under institution-demo mode)
+ * is surfaced separately — in the user menu, the theme switcher, and the
+ * B-1 institution overlay — so the wordmark stays stable as themes cycle.
+ */
 export function HorizonMark({ className = "" }: { className?: string }) {
   return (
     <div className={`flex items-center gap-2.5 ${className}`}>
       <span className="relative inline-flex h-[26px] w-[26px] items-center justify-center">
-        {/* Soft accent halo behind the mark */}
         <span
           className="pointer-events-none absolute inset-0 rounded-full bg-accent/25 blur-[10px] animate-glow-pulse"
           aria-hidden
@@ -38,9 +45,8 @@ export function HorizonMark({ className = "" }: { className?: string }) {
           />
         </svg>
       </span>
-      <span className="font-display text-[12px] leading-tight tracking-tight text-text sm:text-[14px] md:text-[15px]">
-        <span className="text-text-muted">Cumulus Bank</span>{" "}
-        <span className="text-text">Horizon</span>
+      <span className="font-display text-[13px] leading-tight tracking-tight text-text sm:text-[15px] md:text-[16px]">
+        Horizon
       </span>
     </div>
   );

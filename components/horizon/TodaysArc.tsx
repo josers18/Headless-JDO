@@ -71,19 +71,6 @@ function formatTick(
   });
 }
 
-/** Normalize odd model `type` values (e.g. WINDOW) for the small badge chip. */
-function displayArcNodeType(type: string): string {
-  const key = type.trim().toLowerCase().replace(/\s+/g, "_");
-  const map: Record<string, string> = {
-    event: "Event",
-    deadline: "Deadline",
-    recommended: "Focus",
-    blocked: "Blocked",
-    window: "Focus window",
-  };
-  return map[key] ?? type.replace(/_/g, " ");
-}
-
 function arcRowClientId(n: { client_id?: string; context: string; title: string }):
   | string
   | undefined {
@@ -91,74 +78,6 @@ function arcRowClientId(n: { client_id?: string; context: string; title: string 
     n.client_id ??
     extractFirstSalesforceId(n.context) ??
     extractFirstSalesforceId(n.title)
-  );
-}
-
-function formatArcWhen(iso: string, tz?: string): string {
-  const d = Date.parse(iso);
-  if (Number.isNaN(d)) return iso;
-  return new Date(d).toLocaleString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: tz,
-  });
-}
-
-function ArcLookaheadSection({
-  title,
-  subtitle,
-  nodes,
-  tz,
-}: {
-  title: string;
-  subtitle: string;
-  nodes: ArcNodePayload[];
-  tz?: string;
-}) {
-  if (!nodes.length) return null;
-  return (
-    <section className="mt-8 border-t border-border-soft/40 pt-6">
-      <h3 className="text-[10px] font-medium uppercase tracking-[0.2em] text-text-muted">
-        {title}
-      </h3>
-      <p className="mt-1 text-[11px] leading-relaxed text-text-muted/80">
-        {subtitle}
-      </p>
-      <ul className="mt-3 space-y-2">
-        {nodes.map((n) => (
-          <li
-            key={n.id}
-            className="rounded-lg border border-border-soft/50 bg-surface/35 px-3 py-2.5"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-mono text-[10px] text-text-muted">
-                {formatArcWhen(n.start, tz)}
-              </span>
-              <span className="rounded border border-border-soft px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-text-muted/80">
-                {displayArcNodeType(n.type)}
-              </span>
-            </div>
-            <div className="mt-1.5 text-[13px] font-medium text-text">
-              <BriefRichText
-                text={n.title}
-                clientId={arcRowClientId(n)}
-                probeCoListedNames
-              />
-            </div>
-            <div className="mt-1 text-[12px] leading-snug text-text-muted">
-              <BriefRichText
-                text={n.context}
-                clientId={arcRowClientId(n)}
-                probeCoListedNames
-              />
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
@@ -390,18 +309,11 @@ export function TodaysArc() {
                 </ul>
               )}
 
-              <ArcLookaheadSection
-                title="This week"
-                subtitle="Next 7 days after today — meetings, tasks, and closes from your tools."
-                nodes={weekNodes}
-                tz={tz}
-              />
-              <ArcLookaheadSection
-                title="This month"
-                subtitle="Further out (about days 8–30) so late days still show momentum."
-                nodes={monthNodes}
-                tz={tz}
-              />
+              {/* B-2 — "This week" and "This month" lookaheads moved into
+                  the Priority Queue's tiered groups below (Today /
+                  This week / Watch). Keeping them here duplicated the
+                  data and added scroll noise. The Arc stays about *today's*
+                  shape only. */}
             </div>
           </div>
         </div>

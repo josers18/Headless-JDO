@@ -124,11 +124,6 @@ export function MorningBrief() {
   }, [brief, snoozeTick]);
 
   const heroItem = brief?.items[heroIndex];
-  const items = brief?.items;
-  const alsoItems = useMemo(() => {
-    if (!items?.length) return [];
-    return items.filter((_, i) => i !== heroIndex);
-  }, [items, heroIndex]);
 
   const spokenText = useMemo(() => {
     const b = normalizeBrief(tryParseJson<Brief>(narrative));
@@ -380,60 +375,11 @@ export function MorningBrief() {
         </section>
       )}
 
-      {alsoItems.length > 0 && (
-        <div className="relative mt-10 animate-fade-rise stagger-2">
-          <h3 className="text-[10px] font-medium uppercase tracking-[0.2em] text-text-muted">
-            Also today
-          </h3>
-          <ul className="mt-4 space-y-4 border-l border-border-soft/60 pl-4">
-            {alsoItems.map((item) => (
-              <li key={briefItemKey(item)} className="relative">
-                <div className="text-[15px] font-medium leading-snug text-text/95">
-                  <BriefRichText
-                    text={item.headline}
-                    clientId={item.client_id}
-                    clientName={item.client_name}
-                    entityLinks={item.entity_links}
-                    probeCoListedNames
-                  />
-                </div>
-                <p className="mt-1.5 max-w-[620px] text-[13px] leading-relaxed text-text-muted">
-                  <BriefRichText
-                    text={item.why}
-                    clientId={item.client_id}
-                    clientName={item.client_name}
-                    entityLinks={item.entity_links}
-                    probeCoListedNames
-                  />
-                </p>
-                {item.suggested_action && (
-                  <p className="mt-2 text-[12.5px] text-accent/90">
-                    <BriefRichText
-                      text={item.suggested_action}
-                      clientId={item.client_id}
-                      clientName={item.client_name}
-                      entityLinks={item.entity_links}
-                      probeCoListedNames
-                    />
-                  </p>
-                )}
-                {item.sources && item.sources.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-text-muted/60">
-                    {item.sources.map((s) => (
-                      <span
-                        key={s}
-                        className="rounded border border-border-soft/80 px-1.5 py-0.5"
-                      >
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* B-1 — "Also today" items are collapsed into the Priority Queue
+          below. Keeping both here created vertical redundancy (same
+          backing data, two renderings). The Morning Brief now stays
+          focused on the single Right-Now hero; everything else lives in
+          the Priority Queue. */}
 
       {brief?.signoff && (
         <div className="relative mt-12 max-w-prose text-[13px] italic leading-relaxed text-text-muted">

@@ -11,6 +11,7 @@ import {
 } from "@/lib/salesforce/recordLink";
 import { BriefRichText } from "./BriefRichText";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
+import { dispatchAction } from "@/lib/client/actions/registry";
 
 export interface StreamedDraft extends DraftAction {
   rationale?: string;
@@ -238,9 +239,52 @@ export function DraftActionCard({
           </div>
         )}
 
-        <div className="mt-5 flex items-center justify-end gap-2">
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
           {status.kind === "idle" && (
             <>
+              {/* C-2 — Prep me everywhere. Available on every draft card so
+                  the banker can fetch a per-client briefing before approving. */}
+              {draft.target_id && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void dispatchAction({
+                      kind: "prep",
+                      label: "Prep me",
+                      clientId: draft.target_id!,
+                    })
+                  }
+                  className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-border hover:text-text md:min-h-0"
+                >
+                  <Sparkles size={12} />
+                  <span className="hidden sm:inline">Prep me</span>
+                </button>
+              )}
+              {/* C-3 — Do this for me. Only exposed on task-kind drafts since
+                  the autonomy allowlist only permits internal Task writes
+                  without explicit per-action approval. Email / update still
+                  route through the Approve button. */}
+              {draft.kind === "task" && draft.target_id && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void dispatchAction({
+                      kind: "do_for_me",
+                      label: "Do this for me",
+                      plan: {
+                        kind: "task",
+                        clientId: draft.target_id,
+                        subject: draft.title,
+                      },
+                      reason: draft.body,
+                    })
+                  }
+                  className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-accent/40 bg-accent/5 px-3 py-1.5 text-[12px] text-accent transition hover:border-accent hover:bg-accent/10 md:min-h-0"
+                  title="Auto-execute — allowed by autonomy rules (internal Task creation)."
+                >
+                  Do this for me
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onDismiss}

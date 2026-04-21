@@ -1,0 +1,752 @@
+/*
+ * app/themes.css — the catalog of 42 Horizon themes.
+ *
+ * Each block overrides the `--hz-*` custom properties set in globals.css.
+ * Default values are `horizon-dark` (defined in globals.css `:root`).
+ *
+ * Light themes set `color-scheme: light` + flip text / border values to
+ * near-black / warm grey. Dark themes set `color-scheme: dark`.
+ *
+ * This file is imported once from app/globals.css.
+ */
+
+/* =====================================================================
+ * Original (4)
+ * ===================================================================== */
+
+[data-theme="obsidian"] {
+  color-scheme: dark;
+  --hz-bg: #0c0a0f;
+  --hz-surface: #110e09;
+  --hz-surface2: #1a140d;
+  --hz-border: #2a231a;
+  --hz-border-soft: #1e1912;
+  --hz-text: #f0ebe0;
+  --hz-text-muted: #968e7d;
+  --hz-text-dim: #5a5448;
+  --hz-accent: #b8956a;
+  --hz-accent-dim: #7a5e3e;
+  --hz-accent-2: #d4a873;
+  --hz-accent-warm: #e0b184;
+}
+
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --hz-bg: #0a0d18;
+  --hz-surface: #0e1224;
+  --hz-surface2: #141936;
+  --hz-border: #1f2a4a;
+  --hz-border-soft: #141a33;
+  --hz-text: #e8ecf5;
+  --hz-text-muted: #8a93b0;
+  --hz-text-dim: #565f7a;
+  --hz-accent: #6ea8ff;
+  --hz-accent-dim: #3e6bbd;
+  --hz-accent-2: #a5b8ff;
+  --hz-accent-warm: #ffc58a;
+}
+
+[data-theme="graphite"] {
+  color-scheme: dark;
+  --hz-bg: #121214;
+  --hz-surface: #1a1a1d;
+  --hz-surface2: #222228;
+  --hz-border: #2e2e35;
+  --hz-border-soft: #1f1f24;
+  --hz-text: #ececef;
+  --hz-text-muted: #8e8e96;
+  --hz-text-dim: #585860;
+  --hz-accent: #a08cff;
+  --hz-accent-dim: #6a56b8;
+  --hz-accent-2: #c0b0ff;
+  --hz-accent-warm: #ffb894;
+}
+
+[data-theme="ivory"] {
+  color-scheme: light;
+  --hz-bg: #f5f1e8;
+  --hz-surface: #ffffff;
+  --hz-surface2: #faf6eb;
+  --hz-border: #d8cfb8;
+  --hz-border-soft: #e6dfcc;
+  --hz-text: #1a1915;
+  --hz-text-muted: #5a5648;
+  --hz-text-dim: #8a8576;
+  --hz-accent: #6a4a2a;
+  --hz-accent-dim: #43301a;
+  --hz-accent-2: #8a6538;
+  --hz-accent-warm: #b07a3a;
+}
+
+/* =====================================================================
+ * Elegant Neutrals (5)
+ * ===================================================================== */
+
+[data-theme="dusk"] {
+  color-scheme: dark;
+  --hz-bg: #15101a;
+  --hz-surface: #1c1626;
+  --hz-surface2: #251e32;
+  --hz-border: #382a45;
+  --hz-border-soft: #241c30;
+  --hz-text: #f2eaf0;
+  --hz-text-muted: #9e8ca6;
+  --hz-text-dim: #6a5c74;
+  --hz-accent: #d48ca3;
+  --hz-accent-dim: #9c5e78;
+  --hz-accent-2: #e2a8be;
+  --hz-accent-warm: #e0ba7a;
+}
+
+[data-theme="slate"] {
+  color-scheme: dark;
+  --hz-bg: #12151a;
+  --hz-surface: #181c22;
+  --hz-surface2: #20252d;
+  --hz-border: #2d333d;
+  --hz-border-soft: #1e232b;
+  --hz-text: #e6ebf2;
+  --hz-text-muted: #9098a6;
+  --hz-text-dim: #5e6572;
+  --hz-accent: #b0bac7;
+  --hz-accent-dim: #727a85;
+  --hz-accent-2: #d2dae4;
+  --hz-accent-warm: #c8a888;
+}
+
+[data-theme="parchment"] {
+  color-scheme: light;
+  --hz-bg: #f4ecd8;
+  --hz-surface: #fbf6e6;
+  --hz-surface2: #f0e5c8;
+  --hz-border: #d4c495;
+  --hz-border-soft: #e2d3a8;
+  --hz-text: #2a2218;
+  --hz-text-muted: #6a5a3e;
+  --hz-text-dim: #96886a;
+  --hz-accent: #8b6a3a;
+  --hz-accent-dim: #5c451f;
+  --hz-accent-2: #a88554;
+  --hz-accent-warm: #b8884a;
+}
+
+[data-theme="onyx"] {
+  color-scheme: dark;
+  --hz-bg: #050506;
+  --hz-surface: #0d0d0f;
+  --hz-surface2: #161618;
+  --hz-border: #222226;
+  --hz-border-soft: #161619;
+  --hz-text: #f0f2f5;
+  --hz-text-muted: #8e9098;
+  --hz-text-dim: #55575e;
+  --hz-accent: #e0e4eb;
+  --hz-accent-dim: #9a9ea6;
+  --hz-accent-2: #f5f7fa;
+  --hz-accent-warm: #d4ba8a;
+}
+
+[data-theme="fog"] {
+  color-scheme: light;
+  --hz-bg: #ecedef;
+  --hz-surface: #ffffff;
+  --hz-surface2: #f2f4f7;
+  --hz-border: #c8ccd2;
+  --hz-border-soft: #dfe2e6;
+  --hz-text: #1b1e22;
+  --hz-text-muted: #5a6069;
+  --hz-text-dim: #8a909a;
+  --hz-accent: #4e6e96;
+  --hz-accent-dim: #2e4a6c;
+  --hz-accent-2: #6a8ab0;
+  --hz-accent-warm: #b88a5a;
+}
+
+/* =====================================================================
+ * Greens & Oranges (5)
+ * ===================================================================== */
+
+[data-theme="forest"] {
+  color-scheme: dark;
+  --hz-bg: #0a120d;
+  --hz-surface: #0f1a14;
+  --hz-surface2: #16241c;
+  --hz-border: #22362a;
+  --hz-border-soft: #162219;
+  --hz-text: #e6f0e8;
+  --hz-text-muted: #8ea596;
+  --hz-text-dim: #566b60;
+  --hz-accent: #6aad7a;
+  --hz-accent-dim: #3e7a4e;
+  --hz-accent-2: #96c8a0;
+  --hz-accent-warm: #e0a870;
+}
+
+[data-theme="ember"] {
+  color-scheme: dark;
+  --hz-bg: #120c08;
+  --hz-surface: #1a110b;
+  --hz-surface2: #261910;
+  --hz-border: #3a2618;
+  --hz-border-soft: #241810;
+  --hz-text: #f2eae0;
+  --hz-text-muted: #a6907a;
+  --hz-text-dim: #6a5a48;
+  --hz-accent: #e07a3a;
+  --hz-accent-dim: #a0521e;
+  --hz-accent-2: #f0a06c;
+  --hz-accent-warm: #ffc080;
+}
+
+[data-theme="sage"] {
+  color-scheme: light;
+  --hz-bg: #eef0e8;
+  --hz-surface: #f7f8f1;
+  --hz-surface2: #e2e6d6;
+  --hz-border: #c3ccb0;
+  --hz-border-soft: #d8dcc8;
+  --hz-text: #1f2418;
+  --hz-text-muted: #5a604a;
+  --hz-text-dim: #8a907a;
+  --hz-accent: #6a7a4a;
+  --hz-accent-dim: #48522f;
+  --hz-accent-2: #8a9a68;
+  --hz-accent-warm: #a0784a;
+}
+
+[data-theme="copper"] {
+  color-scheme: dark;
+  --hz-bg: #120a06;
+  --hz-surface: #1c1108;
+  --hz-surface2: #281810;
+  --hz-border: #3d2615;
+  --hz-border-soft: #24170d;
+  --hz-text: #f0e6d8;
+  --hz-text-muted: #a0886e;
+  --hz-text-dim: #6a5a48;
+  --hz-accent: #c87642;
+  --hz-accent-dim: #8c4f25;
+  --hz-accent-2: #e09668;
+  --hz-accent-warm: #f0b880;
+}
+
+[data-theme="verdant"] {
+  color-scheme: light;
+  --hz-bg: #f1f3ec;
+  --hz-surface: #ffffff;
+  --hz-surface2: #e4ead8;
+  --hz-border: #bac8a8;
+  --hz-border-soft: #d4dec2;
+  --hz-text: #182218;
+  --hz-text-muted: #4a5a48;
+  --hz-text-dim: #808a78;
+  --hz-accent: #2f7a4a;
+  --hz-accent-dim: #1d4e2f;
+  --hz-accent-2: #4a9268;
+  --hz-accent-warm: #a87a3a;
+}
+
+/* =====================================================================
+ * Blues & Greys (5)
+ * ===================================================================== */
+
+[data-theme="steel"] {
+  color-scheme: dark;
+  --hz-bg: #10131a;
+  --hz-surface: #171c24;
+  --hz-surface2: #1f2530;
+  --hz-border: #2d3542;
+  --hz-border-soft: #1d242d;
+  --hz-text: #e6eaf0;
+  --hz-text-muted: #8a93a0;
+  --hz-text-dim: #565e6a;
+  --hz-accent: #5b8db3;
+  --hz-accent-dim: #3a607f;
+  --hz-accent-2: #8aabca;
+  --hz-accent-warm: #c8a26e;
+}
+
+[data-theme="mercury"] {
+  color-scheme: dark;
+  --hz-bg: #0e1116;
+  --hz-surface: #141821;
+  --hz-surface2: #1c2130;
+  --hz-border: #2a3140;
+  --hz-border-soft: #1a1f2a;
+  --hz-text: #eaeef5;
+  --hz-text-muted: #8e96a6;
+  --hz-text-dim: #5a6270;
+  --hz-accent: #89a9cf;
+  --hz-accent-dim: #587394;
+  --hz-accent-2: #aec3de;
+  --hz-accent-warm: #d2b48a;
+}
+
+[data-theme="arctic"] {
+  color-scheme: light;
+  --hz-bg: #eff3f7;
+  --hz-surface: #ffffff;
+  --hz-surface2: #dfe8f0;
+  --hz-border: #c0d0de;
+  --hz-border-soft: #d8e2ec;
+  --hz-text: #152030;
+  --hz-text-muted: #48586a;
+  --hz-text-dim: #808e9e;
+  --hz-accent: #3e6d9c;
+  --hz-accent-dim: #264a73;
+  --hz-accent-2: #5e8bb8;
+  --hz-accent-warm: #b87a3a;
+}
+
+[data-theme="indigo"] {
+  color-scheme: dark;
+  --hz-bg: #0c0f22;
+  --hz-surface: #131634;
+  --hz-surface2: #1c2048;
+  --hz-border: #2e3462;
+  --hz-border-soft: #1a1e3e;
+  --hz-text: #e6e8f5;
+  --hz-text-muted: #8c90b6;
+  --hz-text-dim: #585c7a;
+  --hz-accent: #8c7aff;
+  --hz-accent-dim: #5a4ac2;
+  --hz-accent-2: #b0a4ff;
+  --hz-accent-warm: #ffb084;
+}
+
+[data-theme="glacier"] {
+  color-scheme: light;
+  --hz-bg: #eaf1f7;
+  --hz-surface: #f8fbfe;
+  --hz-surface2: #dbe6f0;
+  --hz-border: #b8c8d8;
+  --hz-border-soft: #d0dce8;
+  --hz-text: #0e2035;
+  --hz-text-muted: #425a76;
+  --hz-text-dim: #7a90a8;
+  --hz-accent: #1d5aa8;
+  --hz-accent-dim: #0e3d7a;
+  --hz-accent-2: #4278bd;
+  --hz-accent-warm: #a87a3a;
+}
+
+/* =====================================================================
+ * Mid-Tones (5)
+ * ===================================================================== */
+
+[data-theme="bordeaux"] {
+  color-scheme: dark;
+  --hz-bg: #13090c;
+  --hz-surface: #1c0e12;
+  --hz-surface2: #28141a;
+  --hz-border: #3c1e28;
+  --hz-border-soft: #241318;
+  --hz-text: #f0e4e4;
+  --hz-text-muted: #a68a8e;
+  --hz-text-dim: #6a5358;
+  --hz-accent: #c88a70;
+  --hz-accent-dim: #8f5a44;
+  --hz-accent-2: #e0a88e;
+  --hz-accent-warm: #f0b884;
+}
+
+[data-theme="pewter"] {
+  color-scheme: dark;
+  --hz-bg: #15161a;
+  --hz-surface: #1e2026;
+  --hz-surface2: #282b33;
+  --hz-border: #373b45;
+  --hz-border-soft: #22252d;
+  --hz-text: #eaebef;
+  --hz-text-muted: #9196a0;
+  --hz-text-dim: #5e626a;
+  --hz-accent: #c7a86a;
+  --hz-accent-dim: #8a7444;
+  --hz-accent-2: #deca98;
+  --hz-accent-warm: #d4a480;
+}
+
+[data-theme="walnut"] {
+  color-scheme: dark;
+  --hz-bg: #13100c;
+  --hz-surface: #1d1913;
+  --hz-surface2: #29231a;
+  --hz-border: #3c3324;
+  --hz-border-soft: #241e16;
+  --hz-text: #eee5d8;
+  --hz-text-muted: #a29478;
+  --hz-text-dim: #6a6048;
+  --hz-accent: #c89360;
+  --hz-accent-dim: #8c623a;
+  --hz-accent-2: #e2b386;
+  --hz-accent-warm: #f0c088;
+}
+
+[data-theme="denim"] {
+  color-scheme: dark;
+  --hz-bg: #10161f;
+  --hz-surface: #161e2a;
+  --hz-surface2: #1f2a3c;
+  --hz-border: #2e3e56;
+  --hz-border-soft: #1d2734;
+  --hz-text: #e6ebf2;
+  --hz-text-muted: #8a95a6;
+  --hz-text-dim: #586474;
+  --hz-accent: #b89656;
+  --hz-accent-dim: #7e6538;
+  --hz-accent-2: #d4b480;
+  --hz-accent-warm: #e0b884;
+}
+
+[data-theme="moss"] {
+  color-scheme: dark;
+  --hz-bg: #0e120d;
+  --hz-surface: #141a13;
+  --hz-surface2: #1d241b;
+  --hz-border: #2c372a;
+  --hz-border-soft: #1a2018;
+  --hz-text: #e8ede4;
+  --hz-text-muted: #8e9884;
+  --hz-text-dim: #5a6454;
+  --hz-accent: #b27b48;
+  --hz-accent-dim: #77532f;
+  --hz-accent-2: #d0986a;
+  --hz-accent-warm: #e0ae7a;
+}
+
+/* =====================================================================
+ * SF Light Optimised (6) — all light mode
+ * ===================================================================== */
+
+[data-theme="birch"] {
+  color-scheme: light;
+  --hz-bg: #f5f2e9;
+  --hz-surface: #fffefa;
+  --hz-surface2: #ebe6d4;
+  --hz-border: #cfc4a8;
+  --hz-border-soft: #e0dac0;
+  --hz-text: #1c241c;
+  --hz-text-muted: #526253;
+  --hz-text-dim: #8a9088;
+  --hz-accent: #3a6a4a;
+  --hz-accent-dim: #204530;
+  --hz-accent-2: #568468;
+  --hz-accent-warm: #a8783a;
+}
+
+[data-theme="mist"] {
+  color-scheme: light;
+  --hz-bg: #eceef2;
+  --hz-surface: #fbfcfe;
+  --hz-surface2: #e0e4ec;
+  --hz-border: #c2cad6;
+  --hz-border-soft: #d8dee8;
+  --hz-text: #1c2230;
+  --hz-text-muted: #526070;
+  --hz-text-dim: #8a93a0;
+  --hz-accent: #5a7499;
+  --hz-accent-dim: #384e6d;
+  --hz-accent-2: #7b92b3;
+  --hz-accent-warm: #b07a48;
+}
+
+[data-theme="cashew"] {
+  color-scheme: light;
+  --hz-bg: #f4ece0;
+  --hz-surface: #fffcf4;
+  --hz-surface2: #ece0c8;
+  --hz-border: #d4bf95;
+  --hz-border-soft: #e2d2aa;
+  --hz-text: #24180f;
+  --hz-text-muted: #5a4a34;
+  --hz-text-dim: #8a7a60;
+  --hz-accent: #a8562e;
+  --hz-accent-dim: #723a1c;
+  --hz-accent-2: #c47a4e;
+  --hz-accent-warm: #c89058;
+}
+
+[data-theme="mineral"] {
+  color-scheme: light;
+  --hz-bg: #eef0f0;
+  --hz-surface: #fafcfc;
+  --hz-surface2: #e0e4e4;
+  --hz-border: #c2c8c8;
+  --hz-border-soft: #d8dcdc;
+  --hz-text: #1a2128;
+  --hz-text-muted: #4e5862;
+  --hz-text-dim: #858c92;
+  --hz-accent: #2c3e4a;
+  --hz-accent-dim: #15222b;
+  --hz-accent-2: #4a606e;
+  --hz-accent-warm: #a8734a;
+}
+
+[data-theme="blush"] {
+  color-scheme: light;
+  --hz-bg: #f7ecec;
+  --hz-surface: #fffafa;
+  --hz-surface2: #ecdada;
+  --hz-border: #d8b8b8;
+  --hz-border-soft: #e8cdcd;
+  --hz-text: #2a1a1e;
+  --hz-text-muted: #6a4a52;
+  --hz-text-dim: #988088;
+  --hz-accent: #a0526a;
+  --hz-accent-dim: #6c3044;
+  --hz-accent-2: #c07988;
+  --hz-accent-warm: #b88a4a;
+}
+
+[data-theme="chamois"] {
+  color-scheme: light;
+  --hz-bg: #f4efe2;
+  --hz-surface: #fffaec;
+  --hz-surface2: #e8decd;
+  --hz-border: #ccbe94;
+  --hz-border-soft: #ded0a8;
+  --hz-text: #221f10;
+  --hz-text-muted: #5a5434;
+  --hz-text-dim: #8a835e;
+  --hz-accent: #7a704a;
+  --hz-accent-dim: #50472a;
+  --hz-accent-2: #9a8c66;
+  --hz-accent-warm: #a8783a;
+}
+
+/* =====================================================================
+ * Wealth Management (6) — institution-matched, dark mode
+ * ===================================================================== */
+
+[data-theme="bullion"] {
+  color-scheme: dark;
+  --hz-bg: #12100a;
+  --hz-surface: #1c180c;
+  --hz-surface2: #282314;
+  --hz-border: #3d3418;
+  --hz-border-soft: #241f10;
+  --hz-text: #f0e8d0;
+  --hz-text-muted: #a6946a;
+  --hz-text-dim: #6e6248;
+  --hz-accent: #d4a820;
+  --hz-accent-dim: #96760f;
+  --hz-accent-2: #e8c14a;
+  --hz-accent-warm: #f0c878;
+}
+
+[data-theme="prussian"] {
+  color-scheme: dark;
+  --hz-bg: #0c1422;
+  --hz-surface: #13203a;
+  --hz-surface2: #1c2d50;
+  --hz-border: #2a4374;
+  --hz-border-soft: #1a2948;
+  --hz-text: #e4eaf3;
+  --hz-text-muted: #8a99b5;
+  --hz-text-dim: #56647c;
+  --hz-accent: #c8a060;
+  --hz-accent-dim: #886834;
+  --hz-accent-2: #e0bd82;
+  --hz-accent-warm: #e6b878;
+}
+
+[data-theme="coutts"] {
+  color-scheme: dark;
+  --hz-bg: #0e0a10;
+  --hz-surface: #170e14;
+  --hz-surface2: #23141e;
+  --hz-border: #3a2032;
+  --hz-border-soft: #1f1018;
+  --hz-text: #eeddea;
+  --hz-text-muted: #9f8499;
+  --hz-text-dim: #644e5d;
+  --hz-accent: #b8a46a;
+  --hz-accent-dim: #7f6f3e;
+  --hz-accent-2: #d2c08a;
+  --hz-accent-warm: #d89a6a;
+}
+
+[data-theme="vault"] {
+  color-scheme: dark;
+  --hz-bg: #0a0e10;
+  --hz-surface: #101418;
+  --hz-surface2: #181e24;
+  --hz-border: #262e36;
+  --hz-border-soft: #161b20;
+  --hz-text: #e8ecf0;
+  --hz-text-muted: #8a929c;
+  --hz-text-dim: #575e68;
+  --hz-accent: #c2c9d1;
+  --hz-accent-dim: #858d96;
+  --hz-accent-2: #e0e5eb;
+  --hz-accent-warm: #c89878;
+}
+
+[data-theme="endowment"] {
+  color-scheme: dark;
+  --hz-bg: #0a1210;
+  --hz-surface: #0f1a17;
+  --hz-surface2: #172620;
+  --hz-border: #24392e;
+  --hz-border-soft: #14201b;
+  --hz-text: #e3ece4;
+  --hz-text-muted: #8ba194;
+  --hz-text-dim: #56685e;
+  --hz-accent: #b8975a;
+  --hz-accent-dim: #7d6434;
+  --hz-accent-2: #d4b584;
+  --hz-accent-warm: #dca470;
+}
+
+[data-theme="trust"] {
+  color-scheme: dark;
+  --hz-bg: #0d0a0c;
+  --hz-surface: #180e10;
+  --hz-surface2: #241518;
+  --hz-border: #3a2024;
+  --hz-border-soft: #1e1114;
+  --hz-text: #ecdede;
+  --hz-text-muted: #a08686;
+  --hz-text-dim: #665353;
+  --hz-accent: #c0993a;
+  --hz-accent-dim: #836720;
+  --hz-accent-2: #dbb45a;
+  --hz-accent-warm: #dcaa6a;
+}
+
+/* =====================================================================
+ * Traditional Banking (6) — institution-matched, dark mode
+ * ===================================================================== */
+
+[data-theme="cobalt"] {
+  color-scheme: dark;
+  --hz-bg: #081224;
+  --hz-surface: #0e1e36;
+  --hz-surface2: #162b4d;
+  --hz-border: #223f6e;
+  --hz-border-soft: #122648;
+  --hz-text: #e6ecf5;
+  --hz-text-muted: #8695ae;
+  --hz-text-dim: #556478;
+  --hz-accent: #3379d9;
+  --hz-accent-dim: #1e4c94;
+  --hz-accent-2: #619ceb;
+  --hz-accent-warm: #e0a270;
+}
+
+[data-theme="heritage"] {
+  color-scheme: dark;
+  --hz-bg: #100608;
+  --hz-surface: #1c0a0e;
+  --hz-surface2: #2a1014;
+  --hz-border: #451a24;
+  --hz-border-soft: #240d12;
+  --hz-text: #f0e0d8;
+  --hz-text-muted: #ab8a82;
+  --hz-text-dim: #6e5550;
+  --hz-accent: #e0b84a;
+  --hz-accent-dim: #9a7e25;
+  --hz-accent-2: #eed078;
+  --hz-accent-warm: #e8c070;
+}
+
+[data-theme="civic"] {
+  color-scheme: dark;
+  --hz-bg: #091224;
+  --hz-surface: #0e1b36;
+  --hz-surface2: #172a4d;
+  --hz-border: #243e6b;
+  --hz-border-soft: #142445;
+  --hz-text: #e5ecf4;
+  --hz-text-muted: #8596ab;
+  --hz-text-dim: #546176;
+  --hz-accent: #4d84d4;
+  --hz-accent-dim: #2c568e;
+  --hz-accent-2: #78a4e2;
+  --hz-accent-warm: #d8a26e;
+}
+
+[data-theme="cardinal"] {
+  color-scheme: dark;
+  --hz-bg: #0f0608;
+  --hz-surface: #1e0a10;
+  --hz-surface2: #2d1018;
+  --hz-border: #481c28;
+  --hz-border-soft: #260d14;
+  --hz-text: #f0dee0;
+  --hz-text-muted: #ac878c;
+  --hz-text-dim: #6e5357;
+  --hz-accent: #d43a4a;
+  --hz-accent-dim: #8f1c28;
+  --hz-accent-2: #e86a78;
+  --hz-accent-warm: #e0a270;
+}
+
+[data-theme="meridian"] {
+  color-scheme: dark;
+  --hz-bg: #0c0607;
+  --hz-surface: #180a0c;
+  --hz-surface2: #241012;
+  --hz-border: #3d181c;
+  --hz-border-soft: #200c0e;
+  --hz-text: #edd8d8;
+  --hz-text-muted: #a28383;
+  --hz-text-dim: #685050;
+  --hz-accent: #cf3a3a;
+  --hz-accent-dim: #8b1d1d;
+  --hz-accent-2: #e26767;
+  --hz-accent-warm: #d99a6a;
+}
+
+[data-theme="union"] {
+  color-scheme: dark;
+  --hz-bg: #0a0d16;
+  --hz-surface: #11162a;
+  --hz-surface2: #1a213d;
+  --hz-border: #2b345a;
+  --hz-border-soft: #171d35;
+  --hz-text: #e4e8f2;
+  --hz-text-muted: #898fa6;
+  --hz-text-dim: #565d74;
+  --hz-accent: #3e6ad4;
+  --hz-accent-dim: #24418a;
+  --hz-accent-2: #6b8ce2;
+  --hz-accent-warm: #d69a62;
+}
+
+/* =====================================================================
+ * Smooth transitions between themes — used by Institution Demo Mode (B-1).
+ * 800ms keeps backgrounds, accents and text all in lockstep.
+ * ===================================================================== */
+
+html,
+html body {
+  transition:
+    background-color 800ms ease,
+    color 800ms ease;
+}
+
+[data-theme] *,
+[data-theme] *::before,
+[data-theme] *::after {
+  transition-property:
+    background-color,
+    border-color,
+    color,
+    fill,
+    stroke,
+    box-shadow;
+  transition-duration: 360ms;
+  transition-timing-function: ease;
+}
+
+/* Users who prefer reduced motion get instant switches. */
+@media (prefers-reduced-motion: reduce) {
+  html,
+  html body,
+  [data-theme] *,
+  [data-theme] *::before,
+  [data-theme] *::after {
+    transition: none !important;
+  }
+}

@@ -7,6 +7,7 @@ import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "@/components/horizon/ReasoningTrail";
 import { cn } from "@/lib/utils";
 import { PULSE_REFRESH_EVENT } from "@/lib/client/rightNowSnooze";
+import { dispatchAction } from "@/lib/client/actions/registry";
 import type {
   PulseStripPayload,
   PulseStripTemperature,
@@ -40,21 +41,29 @@ function coercePayload(raw: PulseStripPayload): PulseStripPayload {
   };
 }
 
+/**
+ * F-5 fallback renderer — flight-deck callout style.
+ * Rules: ALL-CAPS label leads · ≤ 4 segments · 2–4 words each · positives over
+ * negatives. Used only when the model's strip_line is empty.
+ */
 function fallbackStripLine(p: PulseStripPayload): string {
   const parts: string[] = [];
-  parts.push(p.temperature_label || p.temperature);
-  parts.push(`${p.review_count} to review`);
+  parts.push((p.temperature_label || p.temperature).toUpperCase());
+  if (p.review_count > 0) {
+    parts.push(`${p.review_count} to review`);
+  } else {
+    parts.push("calendar clear");
+  }
   if (p.next_event && p.next_event.time && p.next_event.label) {
-    parts.push(`Next: ${p.next_event.time} ${p.next_event.label}`);
+    parts.push(`next ${p.next_event.time} ${p.next_event.label}`);
+  } else {
+    parts.push("open afternoon");
   }
   if (p.flag_count > 0) {
-    parts.push(
-      `${p.flag_count} need attention${p.flag_deadline ? ` ${p.flag_deadline}` : ""}`
-    );
-  } else {
-    parts.push("0 flags");
+    const deadline = p.flag_deadline ? ` ${p.flag_deadline}` : "";
+    parts.push(`${p.flag_count} need attention${deadline}`);
   }
-  return parts.join(" · ");
+  return parts.slice(0, 4).join(" · ");
 }
 
 function temperatureStyles(t: PulseStripTemperature): {
@@ -167,7 +176,7 @@ export function PulseStrip() {
 
       {data && styles && (
         <>
-          {/* Desktop / tablet: full strip */}
+          {/* Desktop / tablet: full strip with tappable segments (A-5). */}
           <div className="hidden items-center gap-3 md:flex md:gap-4">
             <span
               className={cn(
@@ -176,14 +185,11 @@ export function PulseStrip() {
               )}
               aria-hidden
             />
-            <p
-              className={cn(
-                "min-w-0 flex-1 font-mono text-[12px] leading-snug tracking-tight text-text/95 md:text-[13px]",
-                styles.label
-              )}
-            >
-              {displayLine}
-            </p>
+            <TappableStripLine
+              line={displayLine}
+              data={data}
+              labelClass={styles.label}
+            />
           </div>
 
           {/* Mobile: compact */}
@@ -236,4 +242,113 @@ export function PulseStrip() {
       )}
     </div>
   );
+}
+
+/**
+ * A-5 — split the strip on " · " separators and render each segment as a
+ * button when its text maps to a known action intent. Segments we
+ * recognize:
+ *   - "X to review"       → show overdue/today tasks list via AskBar
+ *   - "next 3:30 PM Patel"→ open that calendar touchpoint (investigate)
+ *   - "X need attention"  → pull the flag list into AskBar
+ * Anything unrecognized stays plain text so the line reads cleanly.
+ */
+function TappableStripLine({
+  line,
+  data,
+  labelClass,
+}: {
+  line: string;
+  data: PulseStripPayload;
+  labelClass: string;
+}) {
+  const segs = line.split(" · ");
+  return (
+    <p
+      className={cn(
+        "min-w-0 flex-1 font-mono text-[12px] leading-snug tracking-tight text-text/95 md:text-[13px]",
+        labelClass
+      )}
+    >
+      {segs.map((raw, i) => {
+        const trimmed = raw.trim();
+        const intent = classifyStripSegment(trimmed, data);
+        const sep = i > 0 ? <span className="text-text-muted/40"> · </span> : null;
+        if (!intent) {
+          return (
+            <span key={i}>
+              {sep}
+              {trimmed}
+            </span>
+          );
+        }
+        return (
+          <span key={i}>
+            {sep}
+            <button
+              type="button"
+              onClick={() => void dispatchAction(intent.action)}
+              className="rounded px-1 py-[1px] text-left underline decoration-transparent decoration-dotted underline-offset-2 transition hover:bg-surface2/60 hover:decoration-current"
+              title={intent.title}
+            >
+              {trimmed}
+            </button>
+          </span>
+        );
+      })}
+    </p>
+  );
+}
+
+function classifyStripSegment(
+  seg: string,
+  data: PulseStripPayload
+):
+  | {
+      title: string;
+      action: import("@/lib/client/actions/registry").HorizonAction;
+    }
+  | null {
+  if (/to review/i.test(seg) && data.review_count > 0) {
+    return {
+      title: "Show the items I need to review",
+      action: {
+        kind: "investigate",
+        label: "Review",
+        question: `Show me the ${data.review_count} items I need to review today — tasks due, events starting, and opportunities closing. Rank by urgency.`,
+      },
+    };
+  }
+  if (/^next /i.test(seg) && data.next_event) {
+    const ne = data.next_event;
+    return {
+      title: "Prep me for this touchpoint",
+      action: {
+        kind: "investigate",
+        label: "Prep",
+        question: `Prep me for my ${ne.time} with ${ne.label}. What's changed since our last touch, what should I lead with, and what are the risks?`,
+      },
+    };
+  }
+  if (/(need attention|flag)/i.test(seg) && data.flag_count > 0) {
+    return {
+      title: "Show the flagged items",
+      action: {
+        kind: "investigate",
+        label: "Flags",
+        question: `Walk me through the ${data.flag_count} flagged items${data.flag_deadline ? ` before ${data.flag_deadline}` : ""}. What's the risk on each?`,
+      },
+    };
+  }
+  if (/(overdue|long-overdue)/i.test(seg)) {
+    return {
+      title: "Triage overdue items",
+      action: {
+        kind: "investigate",
+        label: "Overdue",
+        question: `Triage my overdue tasks. Group by client and recommend which to close, reschedule, or drop.`,
+      },
+    };
+  }
+  return null;
 }

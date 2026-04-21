@@ -9,22 +9,26 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // THEMES A-1 — all brand-level colors route through `--hz-*` CSS vars
+      // defined in globals.css so a theme file can swap the entire palette
+      // at runtime without rebuilding Tailwind. Default values (Horizon
+      // dark) live in :root; overrides per theme live in `[data-theme]` blocks.
       colors: {
-        bg: "#0A0B0D",
-        surface: "#111316",
-        surface2: "#17191D",
-        border: "#23262B",
-        "border-soft": "#1B1E23",
-        text: "#F2F3F5",
-        "text-muted": "#8A8F98",
-        "text-dim": "#5B6069",
-        accent: "#5B8DEF",
-        "accent-dim": "#3A5FA8",
-        "accent-2": "#A78BFA",
-        "accent-warm": "#F0B37A",
-        success: "#4ADE80",
-        warn: "#F5A524",
-        danger: "#F87171",
+        bg: "var(--hz-bg)",
+        surface: "var(--hz-surface)",
+        surface2: "var(--hz-surface2)",
+        border: "var(--hz-border)",
+        "border-soft": "var(--hz-border-soft)",
+        text: "var(--hz-text)",
+        "text-muted": "var(--hz-text-muted)",
+        "text-dim": "var(--hz-text-dim)",
+        accent: "var(--hz-accent)",
+        "accent-dim": "var(--hz-accent-dim)",
+        "accent-2": "var(--hz-accent-2)",
+        "accent-warm": "var(--hz-accent-warm)",
+        success: "var(--hz-success)",
+        warn: "var(--hz-warn)",
+        danger: "var(--hz-danger)",
       },
       fontFamily: {
         sans: ['"Inter"', "system-ui", "sans-serif"],

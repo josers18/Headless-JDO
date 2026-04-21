@@ -2,17 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+@import "./themes.css";
+
+/*
+ * THEMES A-1 — CSS variable system. All brand surfaces are expressed as
+ * `--hz-*` tokens so a theme file (or runtime toggle) can swap the entire
+ * palette by overriding these on a `[data-theme="…"]` attribute on <html>.
+ *
+ * Default = Horizon Dark (original product aesthetic).
+ */
+:root,
+[data-theme="horizon-dark"] {
   color-scheme: dark;
-  --bg: #0a0b0d;
-  --surface: #111316;
-  --surface2: #17191d;
-  --border: #23262b;
-  --border-soft: #1b1e23;
-  --text: #f2f3f5;
-  --text-muted: #8a8f98;
-  --accent: #5b8def;
-  --accent-2: #a78bfa;
+  --hz-bg: #0a0b0d;
+  --hz-surface: #111316;
+  --hz-surface2: #17191d;
+  --hz-border: #23262b;
+  --hz-border-soft: #1b1e23;
+  --hz-text: #f2f3f5;
+  --hz-text-muted: #8a8f98;
+  --hz-text-dim: #5b6069;
+  --hz-accent: #5b8def;
+  --hz-accent-dim: #3a5fa8;
+  --hz-accent-2: #a78bfa;
+  --hz-accent-warm: #f0b37a;
+  --hz-success: #4ade80;
+  --hz-warn: #f5a524;
+  --hz-danger: #f87171;
+
+  /* Legacy aliases — older rules in this file still reference --bg etc. */
+  --bg: var(--hz-bg);
+  --surface: var(--hz-surface);
+  --surface2: var(--hz-surface2);
+  --border: var(--hz-border);
+  --border-soft: var(--hz-border-soft);
+  --text: var(--hz-text);
+  --text-muted: var(--hz-text-muted);
+  --accent: var(--hz-accent);
+  --accent-2: var(--hz-accent-2);
 }
 
 html,

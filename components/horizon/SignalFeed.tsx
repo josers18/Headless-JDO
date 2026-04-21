@@ -21,6 +21,7 @@ import {
 } from "@/lib/salesforce/recordLink";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
+import { dispatchAction } from "@/lib/client/actions/registry";
 
 const POLL_INTERVAL_MS = 45_000;
 
@@ -274,6 +275,71 @@ function SignalRow({
           )}
         </div>
       </div>
+
+      {/* A-4 — per-signal quick actions. Shown on row hover so the feed
+          still reads as ambient awareness, but every signal is one tap
+          from an agent investigation or a drafted response. Kind-aware
+          CTA: transactions → "Call", risk → "Draft note", engagement →
+          "Why?", default → "Why?". */}
+      <div
+        className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+        data-actionrow-noclick
+      >
+        {signal.client_id && signal.kind === "transaction" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void dispatchAction({
+                kind: "draft_call",
+                label: "Call",
+                clientId: signal.client_id,
+                clientName: signal.client_name,
+                reason: signal.summary,
+              });
+            }}
+            className="rounded-md border border-border-soft px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-text-muted transition hover:border-border hover:text-text"
+          >
+            Call
+          </button>
+        )}
+        {signal.client_id && signal.severity === "high" && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void dispatchAction({
+                kind: "draft_email",
+                label: "Respond",
+                clientId: signal.client_id,
+                clientName: signal.client_name,
+                reason: signal.summary,
+              });
+            }}
+            className="rounded-md border border-border-soft px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-text-muted transition hover:border-border hover:text-text"
+          >
+            Respond
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            void dispatchAction({
+              kind: "investigate",
+              label: "Why?",
+              question: `Investigate this signal: "${signal.summary}". What's the context from data_360 and salesforce_crm, and what should I do next?`,
+              context: signal.client_id
+                ? `Client id: ${signal.client_id}`
+                : undefined,
+            });
+          }}
+          className="rounded-md border border-border-soft px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-text-muted transition hover:border-border hover:text-text"
+        >
+          Why?
+        </button>
+      </div>
+
       <KindIcon kind={signal.kind} severity={signal.severity} />
     </li>
   );
@@ -314,13 +380,39 @@ function mergeSignals(prev: Signal[], incoming: Signal[]): Signal[] {
   const seen = new Map<string, Signal>();
   for (const s of incoming) seen.set(s.id, s);
   for (const s of prev) if (!seen.has(s.id)) seen.set(s.id, s);
-  return Array.from(seen.values())
-    .sort((a, b) => {
-      const ta = Date.parse(a.timestamp ?? "") || 0;
-      const tb = Date.parse(b.timestamp ?? "") || 0;
-      return tb - ta;
-    })
-    .slice(0, 12);
+  const sorted = Array.from(seen.values()).sort((a, b) => {
+    const ta = Date.parse(a.timestamp ?? "") || 0;
+    const tb = Date.parse(b.timestamp ?? "") || 0;
+    return tb - ta;
+  });
+  return collapseNoise(sorted).slice(0, 12);
+}
+
+/**
+ * F-7 — noise collapse. Beyond id-dedup, bin "created/updated" pairs for the
+ * same client+kind that fire within 60 seconds of each other so the feed
+ * reads like ambient awareness instead of a CRUD audit log. We always keep
+ * the newest row and drop older duplicates of the same bucket.
+ */
+function collapseNoise(signals: Signal[]): Signal[] {
+  const out: Signal[] = [];
+  const bucketSeen = new Set<string>();
+  for (const s of signals) {
+    const bucket = noiseBucket(s);
+    if (bucket && bucketSeen.has(bucket)) continue;
+    if (bucket) bucketSeen.add(bucket);
+    out.push(s);
+  }
+  return out;
+}
+
+function noiseBucket(s: Signal): string | null {
+  const t = Date.parse(s.timestamp ?? "");
+  if (!t) return null;
+  const client = s.client_id ?? s.client_name ?? "";
+  if (!client) return null;
+  const minuteBin = Math.floor(t / 60_000);
+  return `${client}::${s.kind}::${minuteBin}`;
 }
 
 function relativeTime(d: Date): string {

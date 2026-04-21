@@ -1,7 +1,9 @@
-// Pulse Strip — single-line flight-deck read (UI v2 T0-1).
-// Contract: JSON only; multi-MCP in parallel; under 12 words in strip_line.
+// Pulse Strip — single-line flight-deck read (UI v2 T0-1 + UI_V3_FIX F-5).
+// Contract: JSON only; multi-MCP in parallel; flight-deck callout style.
+// F-5 rules: temperature label FIRST in ALL CAPS · positives over negatives ·
+// ≤ 4 segments · 2–4 words per segment · max 12 words total.
 
-export const PULSE_STRIP_PROMPT_VERSION = "v1.0.0-2026-04-20";
+export const PULSE_STRIP_PROMPT_VERSION = "v1.1.0-2026-04-20";
 
 export interface PulseStripPromptArgs {
   bankerUserId: string;
@@ -9,7 +11,7 @@ export interface PulseStripPromptArgs {
 }
 
 export function pulseStripPrompt(a: PulseStripPromptArgs): string {
-  return `You are generating the Pulse Strip — a single-line flight-deck temperature read for a relationship banker. They must understand state in under 1 second.
+  return `You are generating the Pulse Strip — a single-line flight-deck callout for a relationship banker. They must understand state in under 1 second.
 
 BANKER (pre-resolved — do NOT call salesforce_crm.getUserInfo just to resolve this):
   Salesforce User Id: ${a.bankerUserId}
@@ -28,16 +30,35 @@ TEMPERATURE — pick exactly one:
 - ATTENTION — one or two time-sensitive items OR a notable pattern; nothing requiring action within 4 hours that is material/compliance-critical.
 - URGENT — something should happen within 4 hours OR tool results show a material anomaly / time-bound risk for this banker today.
 
+STRIP COPY RULES (flight-deck callout style — these are hard rules, not suggestions):
+- Lead with the TEMPERATURE LABEL in ALL CAPS (e.g. "QUIET MONDAY", "ATTENTION", "URGENT"). It is always the first thing the eye sees.
+- Max 4 segments separated by " · ". Fewer is better.
+- Each segment is 2–4 words. No sentences, no verbs-of-being, no connectives.
+- Prefer positives over negatives: "open afternoon" beats "no events today"; "calendar clear" beats "nothing scheduled"; "book steady" beats "no flags".
+- Use specific, mildly urgent nouns when something is real: "2 long-overdue" beats "2 tasks overdue"; "Chen flag review" beats "1 client flagged".
+- Never pad with filler ("as of today", "for you", "right now") — bankers already know that.
+- Total word count across all segments ≤ 12 words (not counting a single optional leading emoji).
+
+GOOD EXAMPLES:
+- "QUIET MONDAY · 8 open tasks · 2 long-overdue · open afternoon"
+- "ATTENTION · 5 due today · Chen flag · next 10AM Patel"
+- "URGENT · HNW overdraft · draft ready · send before EOD"
+
+BAD EXAMPLES (do not produce these):
+- "8 open tasks · 2 overdue from July · no events today" — no temperature lead, negative framing
+- "You have 5 tasks due today and 2 overdue" — sentence, not a callout
+- "QUIET MONDAY · There are 8 open tasks to review today" — filler words
+
 OUTPUT — return a single JSON object ONLY (no markdown fence, no prose before or after):
 {
   "temperature": "QUIET" | "ATTENTION" | "URGENT",
-  "temperature_label": "string, ≤ 3 words after the mood (e.g. QUIET MONDAY, ATTENTION, URGENT)",
+  "temperature_label": "string, ALL CAPS, ≤ 3 words (e.g. QUIET MONDAY, ATTENTION, URGENT)",
   "review_count": number,
   "next_event": { "time": "3:30 PM", "label": "Patel" } | null,
   "flag_count": number,
   "flag_deadline": "before EOD" | "this week" | "today" | null,
-  "strip_line": "string — the entire one-line strip for the UI, MAXIMUM 12 words (not counting a single leading emoji if you include one). Reads like Linear's status bar, not a paragraph."
+  "strip_line": "string — the entire one-line strip for the UI, following STRIP COPY RULES above. ≤ 12 words. Always begins with temperature_label in ALL CAPS."
 }
 
-strip_line should feel like: temperature copy · item count · next event · flags (when relevant). If next_event is null, omit that segment cleanly. If flag_count is 0, say so briefly ("0 flags"). Never invent client names, times, or Ids — only facts from tool results. If tools are empty, set temperature QUIET, review_count 0, next_event null, flag_count 0, strip_line honest and short.`;
+Never invent client names, times, or Ids — only facts from tool results. If tools are empty, set temperature QUIET, review_count 0, next_event null, flag_count 0, strip_line: "QUIET · nothing pressing · open day".`;
 }

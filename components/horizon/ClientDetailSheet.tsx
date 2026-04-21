@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
+import { dispatchAction } from "@/lib/client/actions/registry";
 import { ArrowDownRight, ArrowUpRight, Minus, X } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
@@ -238,6 +239,54 @@ export function ClientDetailSheet({
                   <div className="h-4 w-[65%] rounded shimmer" />
                 </div>
               ) : null}
+              {/* C-2 — Prep me / Why now? / Draft email entry points right
+                  under the summary so the banker can pivot to action
+                  without scrolling. Routes through the action registry. */}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    void dispatchAction({
+                      kind: "prep",
+                      label: "Prep me",
+                      clientId,
+                      clientName: detail?.name ?? clientName,
+                    })
+                  }
+                  className="rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-accent/40 hover:text-text"
+                >
+                  Prep me
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void dispatchAction({
+                      kind: "investigate",
+                      label: "Why now?",
+                      question: `Why is ${detail?.name ?? clientName ?? "this client"} worth attention right now? Look at data_360 for transactional/behavioral changes and salesforce_crm for recent activity.`,
+                      context: `Client id: ${clientId}`,
+                    })
+                  }
+                  className="rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-accent/40 hover:text-text"
+                >
+                  Why now?
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void dispatchAction({
+                      kind: "draft_email",
+                      label: "Draft email",
+                      clientId,
+                      clientName: detail?.name ?? clientName,
+                      reason: "Warm check-in based on this week's signals.",
+                    })
+                  }
+                  className="rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-accent/40 hover:text-text"
+                >
+                  Draft email
+                </button>
+              </div>
             </div>
           </div>
 

@@ -11,6 +11,7 @@ import { extractNamesForProbing } from "@/lib/client/extractNamesForProbing";
 import { lookupEntityLabel } from "@/lib/salesforce/labelLookup";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import { cn } from "@/lib/utils";
+import { sanitizeProseLite } from "@/lib/safety/sanitize";
 import type { BriefEntityLink } from "@/types/horizon";
 
 function escapeRegExp(s: string): string {
@@ -188,7 +189,7 @@ export function BriefRichText({
       setProbedEntities([]);
       return;
     }
-    const names = extractNamesForProbing(text);
+    const names = extractNamesForProbing(sanitizeProseLite(text));
     if (names.length === 0) {
       setProbedEntities([]);
       return;
@@ -288,25 +289,36 @@ export function BriefRichText({
     [base, clientId, clientName, mergedEntityLinks, labels]
   );
 
-  const topSegs = useMemo(() => segmentTextWithSalesforceIds(text), [text]);
+  const cleanText = useMemo(() => sanitizeProseLite(text), [text]);
+  const topSegs = useMemo(
+    () => segmentTextWithSalesforceIds(cleanText),
+    [cleanText]
+  );
 
   return (
     <span className={cn("whitespace-pre-wrap", className)}>
       {topSegs.map((seg, i) => {
         if (seg.kind === "id") {
           const href = base ? lightningRecordViewUrl(base, seg.value) : null;
-          const display = lookupEntityLabel(labels, seg.value) ?? seg.value;
-          const isResolved = display !== seg.value;
-          if (!href) {
+          const resolved = lookupEntityLabel(labels, seg.value);
+          if (!resolved) {
+            // F-2 safety net: never leak a raw Id. If we can't resolve to
+            // a name in time, show a quiet "[unresolved]" chip instead of
+            // dumping the 18-char Id into the banker's reading surface.
             return (
               <span
                 key={i}
-                className={cn(
-                  "text-[0.96em]",
-                  isResolved ? "text-text" : "font-mono text-text-muted"
-                )}
+                className="rounded bg-surface2/60 px-1 py-[1px] text-[0.92em] italic text-text-muted/70"
+                aria-label={`Unresolved record ${seg.value}`}
               >
-                {display}
+                [unresolved]
+              </span>
+            );
+          }
+          if (!href) {
+            return (
+              <span key={i} className="text-[0.96em] text-text">
+                {resolved}
               </span>
             );
           }
@@ -318,11 +330,10 @@ export function BriefRichText({
               rel="noopener noreferrer"
               className={cn(
                 "text-[0.96em] text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent",
-                !isResolved && "font-mono",
                 linkClassName
               )}
             >
-              {display}
+              {resolved}
             </a>
           );
         }
@@ -355,19 +366,22 @@ export function BriefRichText({
                     const href = base
                       ? lightningRecordViewUrl(base, s.value)
                       : null;
-                    const display =
-                      lookupEntityLabel(labels, s.value) ?? s.value;
-                    const isResolved = display !== s.value;
-                    if (!href) {
+                    const resolved = lookupEntityLabel(labels, s.value);
+                    if (!resolved) {
                       return (
                         <span
                           key={k}
-                          className={cn(
-                            "text-[0.96em]",
-                            isResolved ? "text-text" : "font-mono text-text-muted"
-                          )}
+                          className="rounded bg-surface2/60 px-1 py-[1px] text-[0.92em] italic text-text-muted/70"
+                          aria-label={`Unresolved record ${s.value}`}
                         >
-                          {display}
+                          [unresolved]
+                        </span>
+                      );
+                    }
+                    if (!href) {
+                      return (
+                        <span key={k} className="text-[0.96em] text-text">
+                          {resolved}
                         </span>
                       );
                     }
@@ -379,11 +393,10 @@ export function BriefRichText({
                         rel="noopener noreferrer"
                         className={cn(
                           "text-[0.96em] text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent",
-                          !isResolved && "font-mono",
                           linkClassName
                         )}
                       >
-                        {display}
+                        {resolved}
                       </a>
                     );
                   })}

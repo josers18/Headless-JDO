@@ -10,6 +10,7 @@ import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { GhostPrompt } from "./GhostPrompt";
 import { cn } from "@/lib/utils";
+import { dispatchAction } from "@/lib/client/actions/registry";
 
 interface Pulse {
   narrative: string;
@@ -219,6 +220,45 @@ function KpiCard({
             {kpi.explanation}
           </div>
         )}
+
+        {/* A-3 — KPI tiles become actionable. Two tight buttons at the foot
+            of each card: "Explain" routes through AskBar to investigate
+            what drove the change; "Who drove this?" narrows to the top
+            contributing clients or opportunities. Both keep the tile
+            tappable without leaving the surface. */}
+        <div className="mt-4 flex items-center gap-1.5 border-t border-border-soft/40 pt-3">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void dispatchAction({
+                kind: "investigate",
+                label: "Explain",
+                question: `What drove the ${kpi.direction === "flat" ? "steady" : kpi.direction === "up" ? "increase" : "decrease"} in ${kpi.label} (${kpi.value}, ${kpi.delta})? Pull the supporting data from tableau_next and data_360.`,
+                context: `KPI: ${kpi.label} = ${kpi.value} (${kpi.delta})`,
+              });
+            }}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-text-muted transition hover:bg-surface2 hover:text-text"
+          >
+            Explain
+          </button>
+          <span className="text-text-muted/40">·</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void dispatchAction({
+                kind: "investigate",
+                label: "Who drove this?",
+                question: `Which three clients contributed the most to the ${kpi.delta} move in ${kpi.label}? Rank by absolute impact.`,
+                context: `KPI: ${kpi.label}`,
+              });
+            }}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-text-muted transition hover:bg-surface2 hover:text-text"
+          >
+            Who drove this?
+          </button>
+        </div>
       </div>
     </div>
   );
