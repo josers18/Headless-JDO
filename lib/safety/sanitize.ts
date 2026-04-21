@@ -80,6 +80,19 @@ const URLISH = new RegExp(
   "g"
 );
 
+// "Name (ID)" — a capitalized name token (or multi-word name) immediately
+// followed by a parenthesized bare Id. We drop the parenthesis+Id so the
+// banker just sees the name, which BriefRichText will link via label
+// resolution using the Id carried elsewhere in the payload (or via
+// probeCoListedNames). Covers:
+//   "Julie Morris (001am00000qvjsAAAQ)"  → "Julie Morris"
+//   "Patel Holdings (001am00000qvjs)"    → "Patel Holdings"
+// Also covers custom-prefix ids (a0*, etc.) and stray leading prefixes.
+const NAME_PAREN_ID_FULL = new RegExp(
+  `(\\b[A-Z][\\w&'.-]*(?:\\s+[A-Z][\\w&'.-]*){0,4})\\s*\\((?:${PREFIX_ALT}|a[0-9])[A-Za-z0-9]{12,15}\\)`,
+  "g"
+);
+
 /**
  * Replace leaked Ids with a neutral token. Logs a warning (once per unique
  * leaked pattern per request) so we can see this happening in Heroku logs
@@ -94,6 +107,12 @@ export function sanitizeProse(input: unknown): string {
   const hits: string[] = [];
 
   const record = (match: string) => hits.push(match);
+
+  // Run name-first so we keep the human-readable token and strip the Id noise.
+  out = out.replace(NAME_PAREN_ID_FULL, (_m, name: string) => {
+    record(`name-paren-id:${name.trim()}`);
+    return name;
+  });
 
   out = out.replace(PREFIX_PAREN, (m) => {
     record(m);
@@ -193,6 +212,10 @@ export function containsRawSalesforceId(s: string): boolean {
 export function sanitizeProseLite(input: unknown): string {
   if (typeof input !== "string") return typeof input === "number" ? String(input) : "";
   let out = input;
+  // Keep the human name, drop the parenthesized Id so the banker never sees
+  // "Julie Morris (001am00000qvjsAAAQ)". BriefRichText resolves names on its
+  // own via labels/probeCoListedNames.
+  out = out.replace(NAME_PAREN_ID_FULL, (_m, name: string) => name);
   out = out.replace(PREFIX_PAREN, "[unresolved]");
   out = out.replace(SF_FIELD_LEAK, "");
   out = out.replace(QUALIFIED, "a record");

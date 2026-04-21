@@ -1,6 +1,6 @@
 // Today's Arc — structured remainder-of-workday view (UI v2 T0-3).
 
-export const ARC_PROMPT_VERSION = "v1.1.0-2026-04-20";
+export const ARC_PROMPT_VERSION = "v1.2.0-2026-04-21";
 
 export interface ArcPromptArgs {
   bankerUserId: string;
@@ -58,12 +58,13 @@ Return JSON ONLY (no fences, no prose):
     {
       "start": "ISO-8601",
       "duration_minutes": number,
-      "suggestion": "one sentence — why this gap matters (may include Account/Contact Ids from tools)"
+      "suggestion": "one banker-facing sentence — use client/account NAMES from the tool rows, NEVER raw Salesforce Ids"
     }
   ]
 }
 
 Rules:
+- BANKER-FACING COPY (title, context, suggestion): use human names (Account.Name, Contact names from WhoId joins). NEVER embed raw Salesforce Ids like "001am00000qvjsAAAQ" in prose. Ids belong in the structured "client_id" field only. If you do not have a resolved name, use a generic phrase ("two overdue tasks", "an at-risk opportunity").
 - "nodes" = only items whose start falls on TODAY between now and end_of_day (rest of workday). If none left today, nodes may be [].
 - "lookahead_week" = next 7 calendar days after today through day 7 ahead (tool-backed Events/Tasks/Opportunity closes). Omit duplicates already in nodes.
 - "lookahead_month" = day 8–30 ahead only.

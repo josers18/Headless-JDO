@@ -10,6 +10,7 @@ import { ClientDetailSheet } from "./ClientDetailSheet";
 import { GhostPrompt } from "./GhostPrompt";
 import { BriefRichText } from "./BriefRichText";
 import { extractFirstSalesforceId } from "@/lib/salesforce/recordLink";
+import { sanitizeProseLite } from "@/lib/safety/sanitize";
 import { cn } from "@/lib/utils";
 import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 import type { ArcNodePayload, TodaysArcPayload } from "@/types/horizon";
@@ -328,7 +329,7 @@ export function TodaysArc() {
                       </span>
                       <p className="mt-1 text-text/90">
                         <BriefRichText
-                          text={w.suggestion}
+                          text={sanitizeProseLite(w.suggestion)}
                           clientId={extractFirstSalesforceId(w.suggestion)}
                           probeCoListedNames
                         />

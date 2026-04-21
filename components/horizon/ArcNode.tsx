@@ -42,6 +42,27 @@ function titleShort(s: string): string {
   return all.length > 3 ? `${w.join(" ")}…` : w.join(" ");
 }
 
+// "Focus window" / "Deadline" / "Meeting" make much cleaner axis tick
+// labels than a 3-word truncation of a prose sentence — which often reads
+// as "Clear afternoon to…" or "Open window to…" and wraps awkwardly at
+// 92px. We use the node type to pick a short label for the axis caption;
+// the full title + context is still shown in the hover tooltip and in the
+// selected detail card below the timeline.
+function axisLabelFor(type: string, title: string): string {
+  switch (type) {
+    case "recommended":
+      return "Focus";
+    case "deadline":
+      return "Due";
+    case "event":
+      return titleShort(title) || "Meeting";
+    case "blocked":
+      return "Blocked";
+    default:
+      return titleShort(title);
+  }
+}
+
 function oneLineContext(s: string, max = 140): string {
   const t = s.replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
@@ -70,6 +91,7 @@ export function ArcNode({
   const lastDx = useRef(0);
   const suppressClick = useRef(false);
   const shortTitle = titleShort(node.title);
+  const axisLabel = axisLabelFor(node.type, node.title);
 
   return (
     <div
@@ -157,8 +179,8 @@ export function ArcNode({
             st.ring
           )}
         />
-        <span className="max-w-[92px] text-center font-mono text-[9px] uppercase leading-tight tracking-tight text-text-muted group-hover:text-text/90">
-          {shortTitle}
+        <span className="max-w-[110px] whitespace-nowrap text-center font-mono text-[9px] uppercase leading-tight tracking-tight text-text-muted group-hover:text-text/90">
+          {axisLabel}
         </span>
       </button>
     </div>
