@@ -44,7 +44,13 @@ export function extractRecordIdFromActionResult(text: string): string | undefine
   return bare?.[1];
 }
 
-/** I-5 — three visible actions + overflow (Prep, Dismiss, Approve + ⋯). */
+/**
+ * FINAL-2 — two visible actions + overflow (Dismiss, Approve + ⋯).
+ * "Prep me" moved into the overflow menu so Approve & execute is
+ * visually unambiguous as the primary decision. Earlier I-5 layout
+ * showed three visible buttons plus overflow; four interactive
+ * elements across one row read as indecision on camera.
+ */
 function DraftIdleActions({
   draft,
   onApprove,
@@ -75,22 +81,6 @@ function DraftIdleActions({
 
   return (
     <>
-      {draft.target_id && (
-        <button
-          type="button"
-          onClick={() =>
-            void dispatchAction({
-              kind: "prep",
-              label: "Prep me",
-              clientId: draft.target_id!,
-            })
-          }
-          className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-border hover:text-text md:min-h-0"
-        >
-          <Sparkles size={12} />
-          <span className="hidden sm:inline">Prep me</span>
-        </button>
-      )}
       <button
         type="button"
         onClick={onDismiss}
@@ -125,6 +115,24 @@ function DraftIdleActions({
             role="menu"
             className="absolute bottom-[calc(100%+6px)] right-0 z-30 w-[220px] overflow-hidden rounded-xl border border-border bg-surface shadow-[0_24px_60px_-30px_rgba(0,0,0,0.6)] sm:bottom-auto sm:top-[calc(100%+6px)]"
           >
+            {draft.target_id && (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-text transition hover:bg-surface2"
+                onClick={() => {
+                  setOpen(false);
+                  void dispatchAction({
+                    kind: "prep",
+                    label: "Prep me",
+                    clientId: draft.target_id!,
+                  });
+                }}
+              >
+                <Sparkles size={12} className="text-accent-2/80" />
+                Prep me
+              </button>
+            )}
             {draft.kind === "task" && draft.target_id && (
               <button
                 type="button"
