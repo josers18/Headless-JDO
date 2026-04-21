@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import type { Signal } from "@/types/horizon";
-import { cn } from "@/lib/utils";
+import { cn, truncateAtWordBoundary } from "@/lib/utils";
 import { BriefRichText } from "./BriefRichText";
 import { ClientDetailSheet } from "./ClientDetailSheet";
 import {
@@ -34,6 +34,13 @@ import type { McpServerName } from "@/types/horizon";
 import { useSectionContentReporter } from "./SectionContentPresence";
 
 const POLL_INTERVAL_MS = 45_000;
+/** FINAL-4 — default collapsed cap for the Live Signals rail. Keeps
+ *  the column proportional on camera even if signals accumulate
+ *  through the day. The user can expand inline to see up to 12. */
+const DEFAULT_VISIBLE_SIGNALS = 6;
+/** FINAL-4 — summary pre-truncate so mid-word CSS line-clamp cutoffs
+ *  ("engagement decay, d…") never ship to the card. */
+const SIGNAL_SUMMARY_MAX_CHARS = 140;
 
 // SignalFeed polls /api/signals on a 45s cadence. data_360 doesn't push
 // events, so "live" is "recently observed." We merge new signals into the
@@ -48,6 +55,7 @@ export function SignalFeed() {
     clientId: string;
     clientName?: string;
   } | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchOnce = useCallback(async () => {
@@ -150,26 +158,52 @@ export function SignalFeed() {
       )}
 
       {signals.length > 0 && (
-        <ul className="mt-6 space-y-2">
-          {signals.map((s, idx) => (
-            <SignalRow
-              signal={s}
-              key={s.id}
-              index={idx}
-              onOpenDetail={() => {
-                if (!s.client_id) return;
-                dispatchHorizonFocusClient({
-                  name: s.client_name ?? "Client",
-                  clientId: s.client_id,
-                });
-                setSheet({
-                  clientId: s.client_id,
-                  clientName: s.client_name,
-                });
-              }}
-            />
-          ))}
-        </ul>
+        <>
+          <ul className="mt-6 space-y-2">
+            {(showAll
+              ? signals
+              : signals.slice(0, DEFAULT_VISIBLE_SIGNALS)
+            ).map((s, idx) => (
+              <SignalRow
+                signal={s}
+                key={s.id}
+                index={idx}
+                onOpenDetail={() => {
+                  if (!s.client_id) return;
+                  dispatchHorizonFocusClient({
+                    name: s.client_name ?? "Client",
+                    clientId: s.client_id,
+                  });
+                  setSheet({
+                    clientId: s.client_id,
+                    clientName: s.client_name,
+                  });
+                }}
+              />
+            ))}
+          </ul>
+          {signals.length > DEFAULT_VISIBLE_SIGNALS && (
+            <button
+              type="button"
+              onClick={() => setShowAll((v) => !v)}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-border-soft/70 bg-surface/40 px-3 py-2 text-[11px] uppercase tracking-[0.12em] text-text-muted transition hover:border-border hover:text-text"
+              aria-expanded={showAll}
+            >
+              {showAll
+                ? "Show fewer"
+                : `+ ${signals.length - DEFAULT_VISIBLE_SIGNALS} more signal${
+                    signals.length - DEFAULT_VISIBLE_SIGNALS === 1 ? "" : "s"
+                  }`}
+              <ChevronRight
+                size={12}
+                className={cn(
+                  "transition-transform",
+                  showAll ? "-rotate-90" : "rotate-90"
+                )}
+              />
+            </button>
+          )}
+        </>
       )}
 
       {sheet && (
@@ -259,7 +293,10 @@ function SignalRow({
       <div className="min-w-0 flex-1">
         <p className="line-clamp-2 text-[13px] leading-snug text-text">
           <BriefRichText
-            text={signal.summary}
+            text={truncateAtWordBoundary(
+              signal.summary ?? "",
+              SIGNAL_SUMMARY_MAX_CHARS
+            )}
             clientId={signal.client_id}
             clientName={signal.client_name}
           />

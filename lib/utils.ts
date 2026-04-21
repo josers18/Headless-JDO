@@ -23,6 +23,31 @@ export function truncate(s: string, n: number): string {
 }
 
 /**
+ * FINAL-4 — truncate at the nearest WORD BOUNDARY at or before
+ * `max` characters, so on-camera cards never cut mid-word or
+ * immediately after a comma (e.g. "engagement decay, d…").
+ *
+ * Behavior:
+ * - If the string already fits, returns it unchanged.
+ * - Otherwise scans backwards from `max-1` for the last whitespace,
+ *   then trims trailing punctuation (commas, semicolons, hyphens,
+ *   em-dashes, colons) so the ellipsis reads as a natural pause.
+ * - If the entire window before `max` has no whitespace (a single
+ *   ~120-char word is improbable but possible), falls back to a
+ *   hard character cut — we still guarantee the ellipsis.
+ * - Always appends a single "…" (U+2026).
+ */
+export function truncateAtWordBoundary(s: string, max: number): string {
+  const str = s ?? "";
+  if (str.length <= max) return str;
+  const window = str.slice(0, max);
+  const lastSpace = window.lastIndexOf(" ");
+  let cut = lastSpace > 0 ? window.slice(0, lastSpace) : window;
+  cut = cut.replace(/[,;:\-–—]+\s*$/u, "").trimEnd();
+  return `${cut}…`;
+}
+
+/**
  * Some MCP servers register OpenAI-safe tool names by gluing the workspace
  * slug right after the verb (no `_`), e.g.
  * `getDcMetadatamarketing_data_cloud_queries` on Data 360 or
