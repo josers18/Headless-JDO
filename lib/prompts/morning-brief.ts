@@ -82,12 +82,13 @@ Always set right_now_index — default 0 only when item 0 is clearly the best.
 
 JSON field rules:
 - Whenever you set "client_id" to a Salesforce 15- or 18-character Id, you MUST also set "client_name" to that record's human-readable name (Account Name, Contact Name, etc.) from the tool response you used — the UI links names in the copy to Salesforce.
+- If headline/why/suggested_action name MORE than one specific Account or Contact (e.g. "Okafor Capital" and "Chen Family Trust"), add "entity_links": an array of { "client_id", "client_name" } for EVERY additional named record (not duplicating the primary client_id). Omit the field when only one client is named.
 
 Return structured JSON ONLY (no prose, no markdown fences):
 {
   "greeting": "Good morning, ${firstName}.",
   "items": [
-    { "headline": "...", "why": "...", "suggested_action": "...", "sources": ["data_360"|"salesforce_crm"|"tableau_next"], "client_id": "...?", "client_name": "...?" }
+    { "headline": "...", "why": "...", "suggested_action": "...", "sources": ["data_360"|"salesforce_crm"|"tableau_next"], "client_id": "...?", "client_name": "...?", "entity_links": [{"client_id":"...","client_name":"..."}] }
   ],
   "signoff": "One line, slightly personal, time-aware.",
   "right_now_index": 0

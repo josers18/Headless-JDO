@@ -4,6 +4,11 @@ export type McpServerName =
   | "tableau_next"
   | "heroku_toolkit";
 
+export interface BriefEntityLink {
+  client_id: string;
+  client_name?: string;
+}
+
 export interface BriefItem {
   headline: string;
   why: string;
@@ -12,6 +17,8 @@ export interface BriefItem {
   client_id?: string;
   /** Human label for `client_id` (Account/Contact/etc.); used for name links in the UI. */
   client_name?: string;
+  /** Other Accounts/Contacts named in this item (multi-account copy). */
+  entity_links?: BriefEntityLink[];
 }
 
 export interface MorningBrief {

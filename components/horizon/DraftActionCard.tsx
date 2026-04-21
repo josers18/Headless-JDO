@@ -97,6 +97,7 @@ export function DraftActionCard({
                 <BriefRichText
                   text={stripDraftDisplayNoise(draft.title)}
                   clientId={draft.target_id}
+                  linkClassName="font-semibold"
                 />
               </div>
               <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-text-muted/70">
@@ -209,6 +210,7 @@ export function DraftActionCard({
           <BriefRichText
             text={stripDraftDisplayNoise(draft.title)}
             clientId={draft.target_id}
+            linkClassName="font-semibold"
           />
         </div>
         <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-text-muted">

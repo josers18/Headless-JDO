@@ -8,6 +8,11 @@ import { tryParseJson } from "@/lib/client/jsonStream";
 import { cn } from "@/lib/utils";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
+import { useSfInstanceUrl } from "./SfInstanceProvider";
+import {
+  inferSalesforceObjectFromId,
+  lightningRecordViewUrl,
+} from "@/lib/salesforce/recordLink";
 import type { McpServerName } from "@/types/horizon";
 
 // ClientDetailSheet opens from the Priority Queue. It streams /api/client/[id]
@@ -69,6 +74,11 @@ export function ClientDetailSheet({
   clientName?: string;
   onClose: () => void;
 }) {
+  const base = useSfInstanceUrl();
+  const recordHref =
+    base && inferSalesforceObjectFromId(clientId)
+      ? lightningRecordViewUrl(base, clientId)
+      : null;
   const { narrative, steps, state, error, start } = useAgentStream();
 
   useEffect(() => {
@@ -126,8 +136,24 @@ export function ClientDetailSheet({
 
         <div className="relative px-8 pb-16 pt-8">
           <div className="flex items-center justify-between">
-            <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
-              <TextWithSalesforceIds text={`client · ${clientId}`} />
+            <div className="min-w-0 pr-4">
+              {recordHref && (detail?.name ?? clientName)?.trim() ? (
+                <a
+                  href={recordHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block truncate text-[11px] font-medium uppercase tracking-[0.18em] text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                >
+                  {(detail?.name ?? clientName)!.trim()}
+                </a>
+              ) : (
+                <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">
+                  <TextWithSalesforceIds text={`client · ${clientId}`} />
+                </div>
+              )}
+              <div className="mt-0.5 truncate font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted/55">
+                {clientId}
+              </div>
             </div>
             <button
               onClick={onClose}
@@ -144,7 +170,20 @@ export function ClientDetailSheet({
             </div>
             <div className="min-w-0 flex-1">
               <div className="font-display text-[30px] leading-tight tracking-tight text-text text-balance">
-                {detail?.name ?? clientName ?? (
+                {detail?.name ?? clientName ? (
+                  recordHref ? (
+                    <a
+                      href={recordHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-inherit decoration-accent/40 underline-offset-4 hover:underline"
+                    >
+                      {detail?.name ?? clientName}
+                    </a>
+                  ) : (
+                    (detail?.name ?? clientName)
+                  )
+                ) : (
                   <span className="inline-block h-[1em] w-[60%] rounded shimmer" />
                 )}
               </div>

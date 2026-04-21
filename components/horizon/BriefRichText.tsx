@@ -9,22 +9,116 @@ import {
 import { resolveSfLabels } from "@/lib/client/sfLabelsCache";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import { cn } from "@/lib/utils";
+import type { BriefEntityLink } from "@/types/horizon";
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Longest names first so "Okafor Capital Holdings" wins over "Okafor Capital". */
-function splitByAnyNames(
+/** Tokens to try matching in prose for a single Salesforce Id. */
+function displayNameHints(
+  id: string,
+  labels: Record<string, string>,
+  explicit?: string
+): string[] {
+  const out: string[] = [];
+  const ex = explicit?.trim();
+  if (ex) out.push(ex);
+  const resolved = labels[id]?.trim();
+  if (resolved) {
+    out.push(resolved);
+    const beforeComma = resolved.split(",")[0]?.trim();
+    if (
+      beforeComma &&
+      beforeComma.length >= 2 &&
+      beforeComma !== resolved
+    ) {
+      out.push(beforeComma);
+    }
+    const dashHead = resolved.split(/\s+-\s+/)[0]?.trim();
+    if (
+      dashHead &&
+      dashHead.length >= 2 &&
+      dashHead !== resolved &&
+      !out.includes(dashHead)
+    ) {
+      out.push(dashHead);
+    }
+    const firstToken = resolved.match(/^[\w'.&-]+/u)?.[0];
+    if (
+      firstToken &&
+      firstToken.length >= 3 &&
+      firstToken !== resolved &&
+      !out.includes(firstToken)
+    ) {
+      out.push(firstToken);
+    }
+  }
+  return [...new Set(out.map((s) => s.trim()).filter((s) => s.length > 1))];
+}
+
+type NameAnchor = { name: string; href: string };
+
+function buildNameAnchors(
+  base: string | null,
+  primaryId: string | undefined,
+  primaryName: string | undefined,
+  entityLinks: BriefEntityLink[] | undefined,
+  labels: Record<string, string>
+): NameAnchor[] {
+  const list: NameAnchor[] = [];
+  const seen = new Set<string>();
+
+  const push = (name: string, id: string) => {
+    const href =
+      base && inferSalesforceObjectFromId(id)
+        ? lightningRecordViewUrl(base, id)
+        : null;
+    if (!href) return;
+    const n = name.trim();
+    if (n.length < 2) return;
+    const key = `${n.toLowerCase()}\t${href}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push({ name: n, href });
+  };
+
+  const addEntity = (idRaw: string | undefined, nameRaw?: string) => {
+    const id = idRaw?.trim();
+    if (!id) return;
+    for (const hint of displayNameHints(id, labels, nameRaw)) {
+      push(hint, id);
+    }
+  };
+
+  addEntity(primaryId, primaryName);
+  for (const e of entityLinks ?? []) {
+    addEntity(e.client_id, e.client_name);
+  }
+
+  return list.sort((a, b) => b.name.length - a.name.length);
+}
+
+/**
+ * Split `text` into text + link runs. Alternation is longest-name-first so
+ * "Okafor Capital Holdings" wins over "Okafor Capital".
+ */
+function splitByNamedAnchors(
   text: string,
-  names: string[]
-): Array<{ kind: "text" | "name"; value: string }> {
-  const uniq = [
-    ...new Set(names.map((n) => n.trim()).filter((n) => n.length > 1)),
-  ].sort((a, b) => b.length - a.length);
-  if (uniq.length === 0) return [{ kind: "text", value: text }];
-  const re = new RegExp(`(?:${uniq.map(escapeRegExp).join("|")})`, "gi");
-  const out: Array<{ kind: "text" | "name"; value: string }> = [];
+  anchors: NameAnchor[]
+): Array<
+  | { kind: "text"; value: string }
+  | { kind: "link"; value: string; href: string }
+> {
+  if (anchors.length === 0) return [{ kind: "text", value: text }];
+  const re = new RegExp(
+    anchors.map((a) => escapeRegExp(a.name)).join("|"),
+    "gi"
+  );
+  const out: Array<
+    | { kind: "text"; value: string }
+    | { kind: "link"; value: string; href: string }
+  > = [];
   let last = 0;
   for (const match of text.matchAll(re)) {
     const idx = match.index ?? 0;
@@ -32,7 +126,14 @@ function splitByAnyNames(
     if (idx > last) {
       out.push({ kind: "text", value: text.slice(last, idx) });
     }
-    out.push({ kind: "name", value: chunk });
+    const href =
+      anchors.find((a) => a.name.toLowerCase() === chunk.toLowerCase())
+        ?.href ?? anchors[0]?.href;
+    if (href) {
+      out.push({ kind: "link", value: chunk, href });
+    } else {
+      out.push({ kind: "text", value: chunk });
+    }
     last = idx + chunk.length;
   }
   if (last < text.length) {
@@ -49,9 +150,8 @@ function collectIdsFromText(text: string): string[] {
 }
 
 /**
- * Brief / hero copy: Salesforce Id links show resolved labels when possible;
- * when `client_id` is set, also resolve that record's Name and link every
- * occurrence of known display strings (model `client_name` + API label).
+ * Rich text: Id → resolved label + Lightning link; optional CRM entities link
+ * matched display names to the correct record (`client_id` + `entity_links`).
  */
 export function BriefRichText({
   text,
@@ -59,24 +159,37 @@ export function BriefRichText({
   linkClassName,
   clientId,
   clientName,
+  entityLinks,
 }: {
   text: string;
   className?: string;
   linkClassName?: string;
   clientId?: string;
   clientName?: string;
+  /** Extra Accounts/Contacts/etc. named in this copy (e.g. "Also today" multi-account). */
+  entityLinks?: BriefEntityLink[];
 }) {
   const base = useSfInstanceUrl();
-  const clientHref =
-    base && clientId && inferSalesforceObjectFromId(clientId)
-      ? lightningRecordViewUrl(base, clientId)
-      : null;
+
+  const entityLinksKey = useMemo(
+    () =>
+      (entityLinks ?? [])
+        .map((e) => `${e.client_id.trim()}:${(e.client_name ?? "").trim()}`)
+        .sort()
+        .join("|"),
+    [entityLinks]
+  );
 
   const [labels, setLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const ids = new Set(collectIdsFromText(text));
-    if (clientId?.trim()) ids.add(clientId.trim());
+    const cid = clientId?.trim();
+    if (cid) ids.add(cid);
+    for (const e of entityLinks ?? []) {
+      const id = e.client_id?.trim();
+      if (id) ids.add(id);
+    }
     const list = [...ids];
     if (list.length === 0) {
       setLabels({});
@@ -89,36 +202,12 @@ export function BriefRichText({
     return () => {
       cancelled = true;
     };
-  }, [text, clientId]);
+  }, [text, clientId, entityLinksKey, entityLinks]);
 
-  const namesToLink = useMemo(() => {
-    const n = new Set<string>();
-    const cn = clientName?.trim();
-    if (cn) n.add(cn);
-    const cid = clientId?.trim();
-    if (cid && labels[cid]) {
-      const resolved = labels[cid]!;
-      n.add(resolved);
-      const beforeComma = resolved.split(",")[0]?.trim();
-      if (
-        beforeComma &&
-        beforeComma.length >= 2 &&
-        beforeComma !== resolved
-      ) {
-        n.add(beforeComma);
-      }
-      const firstToken = resolved.match(/^[\w'.&-]+/u)?.[0];
-      if (
-        firstToken &&
-        firstToken.length >= 3 &&
-        firstToken !== resolved &&
-        !n.has(firstToken)
-      ) {
-        n.add(firstToken);
-      }
-    }
-    return [...n].sort((a, b) => b.length - a.length);
-  }, [clientName, clientId, labels]);
+  const nameAnchors = useMemo(
+    () => buildNameAnchors(base, clientId, clientName, entityLinks, labels),
+    [base, clientId, clientName, entityLinks, labels]
+  );
 
   const topSegs = useMemo(() => segmentTextWithSalesforceIds(text), [text]);
 
@@ -160,12 +249,12 @@ export function BriefRichText({
         }
         return (
           <span key={i}>
-            {splitByAnyNames(seg.value, namesToLink).map((piece, j) => {
-              if (piece.kind === "name" && clientHref) {
+            {splitByNamedAnchors(seg.value, nameAnchors).map((piece, j) => {
+              if (piece.kind === "link") {
                 return (
                   <a
-                    key={`${i}-${j}-n`}
-                    href={clientHref}
+                    key={`${i}-${j}-l`}
+                    href={piece.href}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={cn(

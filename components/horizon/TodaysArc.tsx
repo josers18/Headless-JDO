@@ -6,7 +6,6 @@ import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ArcNode } from "./ArcNode";
 import { GhostPrompt } from "./GhostPrompt";
-import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
 import { BriefRichText } from "./BriefRichText";
 import { cn } from "@/lib/utils";
 import type { ArcNodePayload, TodaysArcPayload } from "@/types/horizon";
@@ -132,7 +131,7 @@ function ArcLookaheadSection({
               </span>
             </div>
             <div className="mt-1.5 text-[13px] font-medium text-text">
-              {n.title}
+              <BriefRichText text={n.title} clientId={n.client_id} />
             </div>
             <div className="mt-1 text-[12px] leading-snug text-text-muted">
               <BriefRichText text={n.context} clientId={n.client_id} />
@@ -320,7 +319,12 @@ export function TodaysArc() {
 
               {selected && (
                 <div className="mt-4 rounded-lg border border-border-soft bg-surface2/50 px-4 py-3 text-[13px] leading-relaxed animate-fade-in">
-                  <div className="font-medium text-text">{selected.title}</div>
+                  <div className="font-medium text-text">
+                    <BriefRichText
+                      text={selected.title}
+                      clientId={selected.client_id}
+                    />
+                  </div>
                   <p className="mt-1.5 text-text-muted">
                     <BriefRichText text={selected.context} clientId={selected.client_id} />
                   </p>
@@ -346,7 +350,7 @@ export function TodaysArc() {
                         Suggested focus
                       </span>
                       <p className="mt-1 text-text/90">
-                        <TextWithSalesforceIds text={w.suggestion} />
+                        <BriefRichText text={w.suggestion} />
                       </p>
                     </li>
                   ))}
