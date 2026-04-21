@@ -94,6 +94,20 @@ const config: Config = {
           "0%, 100%": { transform: "translate3d(0, 0, 0)" },
           "50%": { transform: "translate3d(2%, 1%, 0)" },
         },
+        // FINAL-7 — Theme switcher primer. The four dots on the Theme
+        // button each run this keyframe with a staggered animation-delay
+        // so at any moment they show four different theme tokens.
+        // Using var(--hz-*) means the primer automatically re-paints
+        // itself into whatever institutional palette is currently
+        // active, which is exactly the thing the button is advertising.
+        "theme-dot-cycle": {
+          "0%, 100%": {
+            backgroundColor: "var(--hz-accent)",
+          },
+          "25%": { backgroundColor: "var(--hz-accent-2)" },
+          "50%": { backgroundColor: "var(--hz-warn)" },
+          "75%": { backgroundColor: "var(--hz-success)" },
+        },
       },
       animation: {
         "fade-rise": "fade-rise 380ms cubic-bezier(0.16, 1, 0.3, 1) both",
@@ -103,6 +117,8 @@ const config: Config = {
         "sheen-sweep": "sheen-sweep 2.4s ease-in-out infinite",
         "accent-drift":
           "accent-drift 12s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "theme-dot-cycle":
+          "theme-dot-cycle 12s ease-in-out infinite",
       },
     },
   },

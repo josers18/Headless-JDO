@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Palette, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/lib/client/useTheme";
 import {
@@ -71,14 +71,58 @@ export function ThemeSwitcher() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-border-soft px-2.5 py-1.5 text-[11px] text-text-muted transition hover:border-accent/40 hover:text-text",
+          "inline-flex items-center gap-2 rounded-md border border-border-soft px-2.5 py-1.5 text-[11px] text-text-muted transition hover:border-accent/40 hover:text-text",
           open && "border-accent/60 text-text"
         )}
         aria-haspopup="dialog"
         aria-expanded={open}
         title="Switch theme"
       >
-        <Palette size={12} />
+        {/*
+         * FINAL-7 (Option A) — ambient palette primer. Four small dots
+         * each run the `theme-dot-cycle` keyframe with staggered
+         * delays so they never match colors at the same moment. The
+         * keyframe reads `var(--hz-*)` tokens, so whatever palette is
+         * live (Mercury, Citi, Goldman, …) flows straight into the
+         * button: it literally becomes a preview of what the sheet
+         * offers. Pauses while the sheet is open so we're not
+         * fighting the grid of swatches inside for attention.
+         * Dots are aria-hidden — the label "Theme" and the
+         * aria-haspopup carry all the semantics a reader needs.
+         */}
+        <span
+          className="inline-flex items-center gap-[3px]"
+          aria-hidden
+        >
+          <span
+            className={cn(
+              "h-[6px] w-[6px] rounded-full bg-accent",
+              !open && "animate-theme-dot-cycle"
+            )}
+            style={!open ? { animationDelay: "0s" } : undefined}
+          />
+          <span
+            className={cn(
+              "h-[6px] w-[6px] rounded-full bg-accent-2",
+              !open && "animate-theme-dot-cycle"
+            )}
+            style={!open ? { animationDelay: "-3s" } : undefined}
+          />
+          <span
+            className={cn(
+              "h-[6px] w-[6px] rounded-full bg-warn",
+              !open && "animate-theme-dot-cycle"
+            )}
+            style={!open ? { animationDelay: "-6s" } : undefined}
+          />
+          <span
+            className={cn(
+              "h-[6px] w-[6px] rounded-full bg-success",
+              !open && "animate-theme-dot-cycle"
+            )}
+            style={!open ? { animationDelay: "-9s" } : undefined}
+          />
+        </span>
         <span className="hidden sm:inline">Theme</span>
       </button>
 
