@@ -1,8 +1,7 @@
 import { ensureFreshToken } from "@/lib/salesforce/token";
 import { sameSalesforceRecordId } from "@/lib/salesforce/sameRecordId";
+import { runSoqlViaMcp } from "@/lib/salesforce/mcpQuery";
 import { log } from "@/lib/log";
-
-const API_VER = "v59.0";
 
 const PREFIX_CONFIG: Record<
   string,
@@ -24,6 +23,18 @@ function soqlQuoteId(id: string): string {
   return `'${id.replace(/'/g, "''")}'`;
 }
 
+function readString(rec: Record<string, unknown>, field: string): string | undefined {
+  const v = rec[field];
+  if (typeof v === "string") return v;
+  const lower = rec[field.toLowerCase()];
+  if (typeof lower === "string") return lower;
+  return undefined;
+}
+
+/**
+ * Resolves Salesforce Ids to display labels via the salesforce_crm MCP server
+ * (NOT direct REST) because our External Client App scope is `mcp_api` only.
+ */
 export async function POST(req: Request) {
   const token = await ensureFreshToken();
   if (!token) {
@@ -48,9 +59,6 @@ export async function POST(req: Request) {
     byPrefix.set(pre, list);
   }
 
-  const baseUrl = token.instance_url.replace(/\/+$/, "");
-  const headers = { Authorization: `Bearer ${token.access_token}` };
-
   for (const [pre, ids] of byPrefix) {
     const cfg = PREFIX_CONFIG[pre];
     if (!cfg || ids.length === 0) continue;
@@ -58,36 +66,24 @@ export async function POST(req: Request) {
     const field = cfg.nameField;
     const soql = `SELECT Id, ${field} FROM ${cfg.object} WHERE Id IN (${inList})`;
     try {
-      const url = `${baseUrl}/services/data/${API_VER}/query?q=${encodeURIComponent(soql)}`;
-      const res = await fetch(url, { headers });
-      if (!res.ok) {
-        log.warn("sf_labels_query_failed", {
-          status: res.status,
-          object: cfg.object,
-        });
-        continue;
-      }
-      const json = (await res.json()) as {
-        records?: Array<{ Id?: string; Name?: string; Subject?: string }>;
-      };
-      for (const r of json.records ?? []) {
-        const rid = r.Id;
+      const records = await runSoqlViaMcp(token.access_token, soql);
+      for (const r of records) {
+        const rid = readString(r, "Id");
         if (!rid) continue;
         const name =
-          typeof r.Name === "string"
-            ? r.Name
-            : typeof r.Subject === "string"
-              ? r.Subject
-              : "";
+          readString(r, field) ??
+          readString(r, "Name") ??
+          readString(r, "Subject") ??
+          "";
         const label = name.trim();
         if (!label) continue;
         labels[rid] = label;
-        for (const req of ids) {
-          if (sameSalesforceRecordId(rid, req)) labels[req] = label;
+        for (const requested of ids) {
+          if (sameSalesforceRecordId(rid, requested)) labels[requested] = label;
         }
       }
     } catch (e) {
-      log.warn("sf_labels_fetch_error", {
+      log.warn("sf_labels_query_failed", {
         object: cfg.object,
         err: String(e),
       });

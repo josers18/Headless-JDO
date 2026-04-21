@@ -1,7 +1,6 @@
 import { ensureFreshToken } from "@/lib/salesforce/token";
+import { runSoqlViaMcp } from "@/lib/salesforce/mcpQuery";
 import { log } from "@/lib/log";
-
-const API_VER = "v59.0";
 
 function soqlQuote(s: string): string {
   return `'${s.replace(/'/g, "''")}'`;
@@ -60,15 +59,32 @@ function pickBestRow(
   return best?.row ?? null;
 }
 
-function tokensForWildcardSosl(name: string): string[] {
-  return name
-    .trim()
-    .split(/\s+/)
-    .map((t) => t.replace(/[^a-zA-Z0-9'-]/g, ""))
-    .filter((t) => t.length >= 2)
-    .slice(0, 4);
+function readString(rec: Record<string, unknown>, field: string): string | undefined {
+  const v = rec[field];
+  if (typeof v === "string") return v;
+  return undefined;
 }
 
+function rowsFromSoql(
+  records: Array<Record<string, unknown>>,
+  type: Row["type"]
+): Row[] {
+  const out: Row[] = [];
+  for (const r of records) {
+    const id = readString(r, "Id");
+    const nm = readString(r, "Name");
+    if (!id || !nm) continue;
+    out.push({ type, Id: id, Name: nm.trim() });
+  }
+  return out;
+}
+
+/**
+ * SOQL-only entity resolution via the salesforce_crm MCP server (our ECA is
+ * `mcp_api` scoped only, so direct REST / SOSL calls 401). We run two tight
+ * Name-LIKE queries (Contact, Account) instead of SOSL so we stay inside the
+ * MCP lane.
+ */
 export async function POST(req: Request) {
   const token = await ensureFreshToken();
   if (!token) {
@@ -84,107 +100,62 @@ export async function POST(req: Request) {
     return Response.json({ entities: [] });
   }
 
-  const baseUrl = token.instance_url.replace(/\/+$/, "");
-  const headers = { Authorization: `Bearer ${token.access_token}` };
   const inList = unique.map(soqlQuote).join(",");
-
+  const likeClauses = unique
+    .map((n) => `Name LIKE '${n.replace(/'/g, "''")}%'`)
+    .join(" OR ");
   const allRows: Row[] = [];
 
-  const runSoql = async (objectName: "Contact" | "Account") => {
-    const soql = `SELECT Id, Name FROM ${objectName} WHERE Name IN (${inList})`;
+  const runOne = async (
+    obj: Row["type"],
+    soql: string
+  ): Promise<Row[]> => {
     try {
-      const url = `${baseUrl}/services/data/${API_VER}/query?q=${encodeURIComponent(soql)}`;
-      const res = await fetch(url, { headers });
-      if (!res.ok) {
-        log.warn("sf_entity_by_name_query_failed", {
-          object: objectName,
-          status: res.status,
-        });
-        return;
-      }
-      const json = (await res.json()) as {
-        records?: Array<{ Id?: string; Name?: string }>;
-      };
-      for (const r of json.records ?? []) {
-        const id = r.Id;
-        const name = r.Name?.trim();
-        if (!id || !name) continue;
-        allRows.push({ type: objectName, Id: id, Name: name });
-      }
+      const records = await runSoqlViaMcp(token.access_token, soql);
+      return rowsFromSoql(records, obj);
     } catch (e) {
-      log.warn("sf_entity_by_name_fetch_error", {
-        object: objectName,
+      log.warn("sf_entity_by_name_query_failed", {
+        object: obj,
         err: String(e),
       });
+      return [];
     }
   };
 
-  await runSoql("Contact");
-  await runSoql("Account");
+  const exactContact = `SELECT Id, Name FROM Contact WHERE Name IN (${inList}) LIMIT 50`;
+  const exactAccount = `SELECT Id, Name FROM Account WHERE Name IN (${inList}) LIMIT 50`;
+  const [ec, ea] = await Promise.all([
+    runOne("Contact", exactContact),
+    runOne("Account", exactAccount),
+  ]);
+  allRows.push(...ec, ...ea);
 
   const entities: Entity[] = [];
   const seenPair = new Set<string>();
-
   const pushEntity = (request: string, row: Row) => {
     const key = `${row.Id}\t${norm(request)}`;
     if (seenPair.has(key)) return;
     seenPair.add(key);
-    entities.push({
-      client_id: row.Id,
-      client_name: request.trim(),
-    });
+    entities.push({ client_id: row.Id, client_name: request.trim() });
   };
-
   for (const name of unique) {
     const row = pickBestRow(name, allRows, 100);
     if (row) pushEntity(name, row);
   }
 
-  const runSosl = async (name: string): Promise<Row[]> => {
-    const tokens = tokensForWildcardSosl(name);
-    if (tokens.length === 0) return [];
-    const findClause =
-      tokens.length === 1
-        ? `{${tokens[0]}*}`
-        : tokens.map((t) => `{${t}*}`).join(" AND ");
-    const sosl = `FIND ${findClause} IN NAME FIELDS RETURNING Contact(Id, Name), Account(Id, Name) LIMIT 25`;
-    try {
-      const url = `${baseUrl}/services/data/${API_VER}/search/?q=${encodeURIComponent(sosl)}`;
-      const res = await fetch(url, { headers });
-      if (!res.ok) {
-        log.warn("sf_entity_by_name_sosl_failed", {
-          status: res.status,
-          nameLen: name.length,
-        });
-        return [];
-      }
-      const json = (await res.json()) as {
-        searchRecords?: Array<{
-          Id?: string;
-          Name?: string;
-          attributes?: { type?: string };
-        }>;
-      };
-      const out: Row[] = [];
-      for (const r of json.searchRecords ?? []) {
-        const id = r.Id?.trim();
-        const nm = r.Name?.trim();
-        const t = r.attributes?.type;
-        if (!id || !nm || (t !== "Contact" && t !== "Account")) continue;
-        out.push({ type: t, Id: id, Name: nm });
-      }
-      return out;
-    } catch (e) {
-      log.warn("sf_entity_by_name_sosl_error", { err: String(e) });
-      return [];
+  const unresolved = unique.filter((n) => !pickBestRow(n, allRows, 100));
+  if (unresolved.length > 0 && likeClauses.length < 3000) {
+    const likeContact = `SELECT Id, Name FROM Contact WHERE ${likeClauses} LIMIT 50`;
+    const likeAccount = `SELECT Id, Name FROM Account WHERE ${likeClauses} LIMIT 50`;
+    const [lc, la] = await Promise.all([
+      runOne("Contact", likeContact),
+      runOne("Account", likeAccount),
+    ]);
+    const likeRows = [...lc, ...la];
+    for (const name of unresolved) {
+      const row = pickBestRow(name, likeRows, 58);
+      if (row) pushEntity(name, row);
     }
-  };
-
-  for (const name of unique) {
-    if (pickBestRow(name, allRows, 100)) continue;
-    const soslRows = await runSosl(name);
-    const row = pickBestRow(name, soslRows, 58);
-    if (row) pushEntity(name, row);
   }
 
   return Response.json({ entities });
