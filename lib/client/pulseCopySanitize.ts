@@ -5,7 +5,7 @@
 
 const REPLACEMENTS: Array<[RegExp, string]> = [
   [/Tableau(\s+Next)?/gi, "Analytics"],
-  [/semantic\s+models?/gi, "benchmark data"],
+  [/semantic\s+model(?:s|ing)?/gi, "benchmark data"],
   [/semantic\s+layer/gi, "benchmark layer"],
   [/MCP(\s+servers?|\s+tools?)?/gi, "connected systems"],
   [/\bSOQL\b/gi, "CRM query"],

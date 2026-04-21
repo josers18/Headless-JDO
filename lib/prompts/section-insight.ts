@@ -8,7 +8,7 @@
  * the headline takeaway, and optionally propose one next step.
  */
 
-export const SECTION_INSIGHT_PROMPT_VERSION = "v1.0.0-2026-04-20";
+export const SECTION_INSIGHT_PROMPT_VERSION = "v1.1.0-2026-04-21";
 
 export type SectionKind = "priority" | "pulse" | "drafts" | "signals";
 
@@ -60,6 +60,7 @@ HARD RULES:
 - Output JSON only, no markdown fence, no prose before or after.
 - ≤ 24 words total across headline + action_hint combined.
 - Never include raw Salesforce Ids in the prose — use names or generic phrasing.
+- Banker-facing prose only: never write Tableau, semantic model, MCP, SOQL, or Data 360.
 - If the section is empty or quiet, say so plainly ("Quiet section — nothing to action right now.") and set action_hint to null.
 
 OUTPUT:
@@ -107,6 +108,7 @@ HARD RULES:
 - Output a single JSON object only — no markdown fence, no prose outside the object.
 - Each section's headline + action_hint combined ≤ 24 words.
 - Never include raw Salesforce Ids — use names or generic phrasing.
+- Banker-facing prose only: never write Tableau, semantic model, MCP, SOQL, or Data 360. Use "book KPIs", "benchmark data", "CRM", or "unified data" instead.
 - If a section is empty or quiet, say so plainly for that section and set action_hint to null.
 
 OUTPUT SHAPE:

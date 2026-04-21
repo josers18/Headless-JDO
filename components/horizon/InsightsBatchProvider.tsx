@@ -8,8 +8,13 @@ import {
   type InsightPayload,
   type SectionKind,
 } from "@/lib/prompts/section-insight";
+import { sanitizeBankerFacingPulseCopy } from "@/lib/client/pulseCopySanitize";
 import { sanitizeProseLite } from "@/lib/safety/sanitize";
 import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
+
+function sanitizeInsightLine(s: string): string {
+  return sanitizeBankerFacingPulseCopy(sanitizeProseLite(s));
+}
 
 function parseSlice(v: unknown): InsightPayload | null {
   if (!v || typeof v !== "object") return null;
@@ -18,10 +23,10 @@ function parseSlice(v: unknown): InsightPayload | null {
   return {
     tone:
       o.tone === "attention" || o.tone === "urgent" ? o.tone : "calm",
-    headline: sanitizeProseLite(o.headline),
+    headline: sanitizeInsightLine(o.headline),
     action_hint:
       typeof o.action_hint === "string"
-        ? sanitizeProseLite(o.action_hint)
+        ? sanitizeInsightLine(o.action_hint)
         : null,
   };
 }

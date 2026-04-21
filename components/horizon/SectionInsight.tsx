@@ -9,7 +9,12 @@ import type {
 } from "@/lib/prompts/section-insight";
 import { useInsightsBatch } from "./InsightsBatchProvider";
 import { cn } from "@/lib/utils";
+import { sanitizeBankerFacingPulseCopy } from "@/lib/client/pulseCopySanitize";
 import { sanitizeProseLite } from "@/lib/safety/sanitize";
+
+function sanitizeInsightLine(s: string): string {
+  return sanitizeBankerFacingPulseCopy(sanitizeProseLite(s));
+}
 
 /**
  * C-1 — SectionInsight banner. Sits above a major surface (Priority Queue,
@@ -33,8 +38,8 @@ function parseInsight(raw: string): InsightPayload | null {
     if (!obj || typeof obj.headline !== "string") return null;
     return {
       tone: obj.tone ?? "calm",
-      headline: sanitizeProseLite(obj.headline),
-      action_hint: obj.action_hint ? sanitizeProseLite(obj.action_hint) : null,
+      headline: sanitizeInsightLine(obj.headline),
+      action_hint: obj.action_hint ? sanitizeInsightLine(obj.action_hint) : null,
     };
   } catch {
     return null;
