@@ -72,19 +72,19 @@ function temperatureStyles(t: PulseStripTemperature): {
 } {
   if (t === "URGENT") {
     return {
-      dot: "bg-danger shadow-[0_0_12px_rgba(248,113,113,0.45)]",
-      label: "text-danger/95",
+      dot: "bg-danger shadow-[0_0_12px_color-mix(in_srgb,var(--hz-danger)_45%,transparent)]",
+      label: "font-medium text-danger",
     };
   }
   if (t === "ATTENTION") {
     return {
-      dot: "bg-[#F5A524] shadow-[0_0_10px_rgba(245,165,36,0.35)]",
-      label: "text-amber-200/95",
+      dot: "bg-warn shadow-[0_0_10px_color-mix(in_srgb,var(--hz-warn)_40%,transparent)]",
+      label: "font-medium text-warn",
     };
   }
   return {
-    dot: "bg-emerald-400/90 shadow-[0_0_8px_rgba(74,222,128,0.25)]",
-    label: "text-emerald-200/90",
+    dot: "bg-success shadow-[0_0_8px_color-mix(in_srgb,var(--hz-success)_35%,transparent)]",
+    label: "font-medium text-success",
   };
 }
 
@@ -180,7 +180,7 @@ export function PulseStrip() {
           <div className="hidden items-center gap-3 md:flex md:gap-4">
             <span
               className={cn(
-                "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white/10",
+                "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-border/50",
                 styles.dot
               )}
               aria-hidden
@@ -203,7 +203,7 @@ export function PulseStrip() {
             >
               <span
                 className={cn(
-                  "inline-block h-3 w-3 shrink-0 rounded-full ring-1 ring-white/10",
+                  "inline-block h-3 w-3 shrink-0 rounded-full ring-1 ring-border/50",
                   styles.dot
                 )}
                 aria-hidden
@@ -224,7 +224,7 @@ export function PulseStrip() {
               <p
                 id="pulse-strip-expanded"
                 className={cn(
-                  "mt-2 border-t border-border-soft/60 pt-2 font-mono text-[12px] leading-snug text-text/90",
+                  "mt-2 border-t border-border-soft/60 pt-2 font-mono text-[12px] leading-snug",
                   styles.label
                 )}
               >
@@ -266,7 +266,7 @@ function TappableStripLine({
   return (
     <p
       className={cn(
-        "min-w-0 flex-1 font-mono text-[12px] leading-snug tracking-tight text-text/95 md:text-[13px]",
+        "min-w-0 flex-1 font-mono text-[12px] leading-snug tracking-tight md:text-[13px]",
         labelClass
       )}
     >

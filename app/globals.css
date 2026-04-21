@@ -124,15 +124,25 @@ body {
     text-wrap: balance;
   }
 
-  /* Cinematic gradient text — used sparingly on greeting words. */
+  /* Greeting gradient — MUST follow theme tokens so light palettes stay readable.
+     Hardcoded pale greys vanished on ivory/light surfaces. */
   .text-sheen {
-    background: linear-gradient(135deg, #f2f3f5 0%, #a7b4d8 55%, #8a8f98 100%);
+    background: linear-gradient(
+      135deg,
+      var(--hz-text) 0%,
+      color-mix(in srgb, var(--hz-accent) 62%, var(--hz-text)) 52%,
+      color-mix(in srgb, var(--hz-accent-2) 55%, var(--hz-text-muted)) 100%
+    );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
   .text-accent-sheen {
-    background: linear-gradient(135deg, #5b8def 0%, #a78bfa 100%);
+    background: linear-gradient(
+      135deg,
+      var(--hz-accent) 0%,
+      color-mix(in srgb, var(--hz-accent-2) 78%, var(--hz-accent-dim)) 100%
+    );
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
