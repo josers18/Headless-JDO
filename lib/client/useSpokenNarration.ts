@@ -19,8 +19,13 @@ function cleanupAudio(
   const url = urlRef.current;
   urlRef.current = null;
   if (audioRef.current) {
-    audioRef.current.pause();
-    audioRef.current.src = "";
+    const el = audioRef.current;
+    /** Detach first — revoke/pause during playback can fire `error` and must not trigger fallback TTS */
+    el.onended = null;
+    el.onerror = null;
+    el.pause();
+    el.removeAttribute("src");
+    el.load();
     audioRef.current = null;
   }
   if (url) URL.revokeObjectURL(url);
@@ -36,23 +41,31 @@ export function useSpokenNarration(): SpokenNarration {
   const mountedRef = useRef(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
+  /** Bumped on stop() and each new play(); invalidates in-flight fetch / setup so Stop cannot spawn Web Speech */
+  const playbackGenRef = useRef(0);
 
   useEffect(() => {
     setSupported(true);
     return () => {
       mountedRef.current = false;
+      /** Invalidate in-flight fetch/play; ref bump is intentional (not a stale closure bug). */
+      playbackGenRef.current += 1;
       cleanupAudio(audioRef, objectUrlRef);
       stopSpeaking();
     };
+    // playbackGenRef only used to cancel async work on unmount — dep array stays empty.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const stop = useCallback(() => {
+    playbackGenRef.current++;
     cleanupAudio(audioRef, objectUrlRef);
     stopSpeaking();
     setSpeaking(false);
   }, []);
 
-  const playWeb = useCallback((text: string, reason: string) => {
+  const playWeb = useCallback((text: string, reason: string, forGen: number) => {
+    if (forGen !== playbackGenRef.current) return;
     if (reason) {
       // why: operators need a single grep-friendly line when ElevenLabs path fails in prod.
       // eslint-disable-next-line no-console
@@ -65,6 +78,7 @@ export function useSpokenNarration(): SpokenNarration {
     speak(text, {
       rate: 0.98,
       onEnd: () => {
+        if (forGen !== playbackGenRef.current) return;
         if (mountedRef.current) setSpeaking(false);
       },
     });
@@ -73,6 +87,8 @@ export function useSpokenNarration(): SpokenNarration {
   const play = useCallback(
     (text: string) => {
       if (!text) return;
+      playbackGenRef.current++;
+      const gen = playbackGenRef.current;
       cleanupAudio(audioRef, objectUrlRef);
       stopSpeaking();
       setSpeaking(true);
@@ -84,14 +100,19 @@ export function useSpokenNarration(): SpokenNarration {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text }),
           });
+          if (gen !== playbackGenRef.current) return;
+
           const tag = (res.headers.get("x-tts-result") ?? "").toLowerCase();
           const buf = await res.arrayBuffer();
           const bytes = new Uint8Array(buf);
 
+          if (gen !== playbackGenRef.current) return;
+
           if (res.status === 401) {
             playWeb(
               text,
-              `HTTP 401 (see X-TTS-Result / sign in, or set Heroku TTS_REQUIRE_SF_AUTH=0 for demo-only)`
+              `HTTP 401 (see X-TTS-Result / sign in, or set Heroku TTS_REQUIRE_SF_AUTH=0 for demo-only)`,
+              gen
             );
             return;
           }
@@ -112,6 +133,7 @@ export function useSpokenNarration(): SpokenNarration {
                   }
                 })()))
           ) {
+            if (gen !== playbackGenRef.current) return;
             let extra = tag || "json body";
             if (bytes.length >= 4 && bytes[0] === 0x7b) {
               try {
@@ -124,9 +146,11 @@ export function useSpokenNarration(): SpokenNarration {
                 /* ignore */
               }
             }
-            playWeb(text, `server fallback (${extra})`);
+            playWeb(text, `server fallback (${extra})`, gen);
             return;
           }
+
+          if (gen !== playbackGenRef.current) return;
 
           const minMp3 = 64;
           if (
@@ -134,6 +158,8 @@ export function useSpokenNarration(): SpokenNarration {
             bytes.length >= minMp3 &&
             isLikelyMp3Buffer(bytes)
           ) {
+            if (gen !== playbackGenRef.current) return;
+
             const blob = new Blob([buf], { type: "audio/mpeg" });
             const url = URL.createObjectURL(blob);
             objectUrlRef.current = url;
@@ -141,20 +167,27 @@ export function useSpokenNarration(): SpokenNarration {
             audio.setAttribute("playsinline", "true");
             audioRef.current = audio;
             audio.onended = () => {
+              if (gen !== playbackGenRef.current) return;
               cleanupAudio(audioRef, objectUrlRef);
               if (mountedRef.current) setSpeaking(false);
             };
             audio.onerror = () => {
+              if (gen !== playbackGenRef.current) return;
               cleanupAudio(audioRef, objectUrlRef);
-              playWeb(text, "HTMLAudioElement error (codec / blob)");
+              playWeb(text, "HTMLAudioElement error (codec / blob)", gen);
             };
             try {
               await audio.play();
+              if (gen !== playbackGenRef.current) {
+                cleanupAudio(audioRef, objectUrlRef);
+              }
             } catch (e) {
+              if (gen !== playbackGenRef.current) return;
               cleanupAudio(audioRef, objectUrlRef);
               playWeb(
                 text,
-                `audio.play() rejected — ${e instanceof Error ? e.message : String(e)}`
+                `audio.play() rejected — ${e instanceof Error ? e.message : String(e)}`,
+                gen
               );
             }
             return;
@@ -162,12 +195,15 @@ export function useSpokenNarration(): SpokenNarration {
 
           playWeb(
             text,
-            `response not MP3 (status=${res.status}, bytes=${bytes.length}, x-tts-result=${tag || "none"})`
+            `response not MP3 (status=${res.status}, bytes=${bytes.length}, x-tts-result=${tag || "none"})`,
+            gen
           );
         } catch (e) {
+          if (gen !== playbackGenRef.current) return;
           playWeb(
             text,
-            `fetch failed — ${e instanceof Error ? e.message : String(e)}`
+            `fetch failed — ${e instanceof Error ? e.message : String(e)}`,
+            gen
           );
         }
       })();
