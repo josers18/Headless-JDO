@@ -1,8 +1,8 @@
+@import "./themes.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import "./themes.css";
 
 /*
  * THEMES A-1 — CSS variable system. All brand surfaces are expressed as
@@ -59,22 +59,23 @@ body {
    * viewport — gives the page depth without being noisy. The gradient is
    * fixed so it stays anchored as the banker scrolls.
    */
+  /* Theme tokens so the ambient glow follows the active palette. */
   background-image: radial-gradient(
       70% 55% at 25% -10%,
-      rgba(91, 141, 239, 0.16) 0%,
-      rgba(91, 141, 239, 0) 65%
+      color-mix(in srgb, var(--hz-accent) 16%, transparent) 0%,
+      transparent 65%
     ),
     radial-gradient(
       55% 45% at 85% -5%,
-      rgba(167, 139, 250, 0.1) 0%,
-      rgba(167, 139, 250, 0) 70%
+      color-mix(in srgb, var(--hz-accent-2) 10%, transparent) 0%,
+      transparent 70%
     );
   background-attachment: fixed;
   background-repeat: no-repeat;
 }
 
 ::selection {
-  background: rgba(91, 141, 239, 0.28);
+  background: color-mix(in srgb, var(--hz-accent) 28%, transparent);
   color: var(--text);
 }
 
