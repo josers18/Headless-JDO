@@ -38,7 +38,15 @@ export interface McpCallResult {
   tool: string;
   isError: boolean;
   content: unknown;
+  // Short, UI-facing preview (≤ 2KB). Safe to display in the reasoning trail.
   textPreview: string;
+  // Full-size payload the model sees as tool-result content. Larger than
+  // textPreview so the model does not have to work from a truncated view
+  // — critical for schema-introspection tools like data_360.getDcMetadata
+  // whose responses contain dozens of DMOs and would be cut off mid-table
+  // at 2KB, forcing the model to hallucinate table/column names from
+  // training. Bounded to keep us inside Heroku Inference's context window.
+  modelText: string;
 }
 
 export interface McpRegistry {
@@ -303,16 +311,19 @@ export async function connectMcpClients(
       const res = await c.callTool({ name, arguments: args });
       // MCP content is an array of TextContent | ImageContent | etc.
       const content = res.content as unknown;
-      const textPreview = extractTextPreview(content);
+      const textPreview = extractTextPreview(content, 2_000);
+      const modelText = extractTextPreview(content, modelBudgetFor(server, name));
       const isError = res.isError === true;
-      return { server, tool: name, isError, content, textPreview };
+      return { server, tool: name, isError, content, textPreview, modelText };
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       return {
         server,
         tool: name,
         isError: true,
         content: null,
-        textPreview: e instanceof Error ? e.message : String(e),
+        textPreview: msg,
+        modelText: msg,
       };
     }
   }
@@ -331,8 +342,9 @@ export async function connectMcpClients(
   };
 }
 
-function extractTextPreview(content: unknown): string {
-  if (!Array.isArray(content)) return JSON.stringify(content).slice(0, 500);
+function extractTextPreview(content: unknown, maxChars: number): string {
+  if (!Array.isArray(content))
+    return JSON.stringify(content).slice(0, Math.min(maxChars, 500));
   const texts: string[] = [];
   for (const part of content) {
     const p = part as { type?: string; text?: string };
@@ -340,8 +352,20 @@ function extractTextPreview(content: unknown): string {
       texts.push(p.text);
     }
   }
-  if (texts.length === 0) return JSON.stringify(content).slice(0, 500);
-  return texts.join("\n").slice(0, 2000);
+  if (texts.length === 0)
+    return JSON.stringify(content).slice(0, Math.min(maxChars, 500));
+  return texts.join("\n").slice(0, maxChars);
+}
+
+// Per-tool model-text budget. Schema-introspection responses (getDcMetadata,
+// describeSObject, list-DMOs, etc.) contain dense, non-redundant structure
+// the model must read in full to avoid hallucinating tables and columns.
+// All other tools keep the original 2KB cap to protect the context window.
+function modelBudgetFor(server: McpServerName, tool: string): number {
+  if (server === "data_360" && /^getDcMetadata/i.test(tool)) return 32_000;
+  if (server === "salesforce_crm" && /^(describeSObject|getObjectSchema)/i.test(tool))
+    return 16_000;
+  return 2_000;
 }
 
 export const MCP_TOOL_SEP = TOOL_SEP;

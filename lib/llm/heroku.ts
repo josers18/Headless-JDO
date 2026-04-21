@@ -159,17 +159,10 @@ const FORBIDDEN_DC_SQL_PATTERNS: Array<{ re: RegExp; reason: string }> = [
   // from getDcMetadata feels awkward. Pattern enforcement is whack-a-mole
   // by nature, but each entry here maps 1:1 to an actual INVALID_ARGUMENT
   // we've seen in the trail. Add new entries as new variants surface.
-  {
-    // Quoted or unquoted ssot__ columns that are known NOT to exist in
-    // this org's DMOs. The metadata response uses DMO-specific prefixes
-    // (Acc_*, FinServ_*, etc.) rather than generic ssot__ envelopes on
-    // non-identity DMOs — when the model guesses ssot__OwnerId__c /
-    // ssot__Name__c / ssot__Industry__c / ssot__FullName__c etc.,
-    // Data Cloud returns "unknown column" and the circuit breaker trips.
-    re: /"?ssot__(OwnerId|FullName|Name|Industry|EmailAddress)__c"?/i,
-    reason:
-      "This ssot__* column is a common hallucination and does not exist in most DMOs in this org. Re-read the getDcMetadata response for the DMO you are querying and copy a real column name from its fields array verbatim.",
-  },
+  //
+  // Note: ssot__*__c columns are handled separately in
+  // preflightDataCloudSql via metadataExposesSsot, because whether they
+  // are valid depends on what the CURRENT org's metadata exposes.
   {
     // Bare unquoted lowercase identifiers in SELECT/WHERE that the
     // model sometimes produces as "normalized" versions of quoted
@@ -191,7 +184,8 @@ const FORBIDDEN_DC_SQL_PATTERNS: Array<{ re: RegExp; reason: string }> = [
 function preflightDataCloudSql(
   server: string,
   tool: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  ctx: { metadataExposesSsot: boolean }
 ): string | null {
   if (server !== "data_360") return null;
   // OpenAI tool names are sanitized + max 64 chars; the MCP leaf name is
@@ -210,6 +204,22 @@ function preflightDataCloudSql(
           "Do NOT retry this query. Either call getDcMetadata first and reference only columns from its response, or skip data_360 and finish your answer with the other tools.",
       });
     }
+  }
+  // Observability-driven guard: reject any ssot__* column reference when
+  // THIS turn's getDcMetadata response exposed zero ssot__ columns. The
+  // model pulls ssot__ from training memory for orgs that use DMO-specific
+  // prefixes instead. Scoped by metadata observation so orgs that DO
+  // expose ssot__ columns are unaffected.
+  if (!ctx.metadataExposesSsot && /\bssot__[A-Za-z0-9_]+__c\b/.test(sql)) {
+    return JSON.stringify({
+      rejected: true,
+      server,
+      tool,
+      reason:
+        "This query references ssot__*__c columns, but the getDcMetadata response you just read for this org does not expose any ssot__ columns. Those column names are coming from training memory, not from the metadata in context.",
+      instruction:
+        "Re-read the fields[].name values in the metadata response you just received. Copy real column names verbatim (they will end in __c but use DMO-specific prefixes, not ssot__). Common shapes in this org: Acc_*, FinServ_*, Id__c, DataSource__c. Do NOT retry with ssot__ prefixes.",
+    });
   }
   return null;
 }
@@ -277,9 +287,10 @@ function preflightTableauAnalyze(
 function preflightRejection(
   server: string,
   tool: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  ctx: { metadataExposesSsot: boolean }
 ): string | null {
-  return preflightDataCloudSql(server, tool, args) ??
+  return preflightDataCloudSql(server, tool, args, ctx) ??
     preflightTableauAnalyze(server, tool, args);
 }
 
@@ -348,6 +359,14 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   // dispatcher to short-circuit any postDcQuerySql* call that arrives
   // before metadata has been read. See isDataCloudSqlTool / metadataGatePayload.
   let dataCloudMetadataSeen = false;
+  // Observability-driven hallucination guard. The model reliably writes
+  // SQL against ssot__* columns it remembers from training even when the
+  // current org exposes none. When this turn's getDcMetadata responses
+  // contain zero ssot__ columns, we reject any subsequent SQL that
+  // references ssot__* and cite real prefixes we did see. Flips to true
+  // only if a successful getDcMetadata response actually contains an
+  // ssot__ column name.
+  let dataCloudMetadataExposesSsot = false;
 
   for (iteration = 1; iteration <= maxIterations; iteration++) {
     onEvent({ type: "iteration_start", iteration });
@@ -477,6 +496,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
               isError: true,
               content: null,
               textPreview: `bad JSON from model: ${String(e)}`,
+              modelText: `bad JSON from model: ${String(e)}`,
             },
           };
         }
@@ -505,6 +525,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
               isError: true,
               content: null,
               textPreview: blockedPreview,
+              modelText: blockedPreview,
             },
           };
         }
@@ -542,6 +563,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
               isError: true,
               content: null,
               textPreview: gatePayload,
+              modelText: gatePayload,
             },
           };
         }
@@ -549,7 +571,9 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         // Pre-flight guardrail — intercept obviously-wrong Data Cloud
         // queries before they hit the network. Cheaper than a round-trip
         // and keeps forbidden patterns out of the trail.
-        const rejection = preflightRejection(server, tool, argObj);
+        const rejection = preflightRejection(server, tool, argObj, {
+          metadataExposesSsot: dataCloudMetadataExposesSsot,
+        });
         if (rejection) {
           onEvent({ type: "tool_use", server, tool, input: argObj });
           onEvent({
@@ -573,6 +597,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
               isError: true,
               content: null,
               textPreview: rejection,
+              modelText: rejection,
             },
           };
         }
@@ -608,6 +633,14 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           isDataCloudMetadataTool(server, tool)
         ) {
           dataCloudMetadataSeen = true;
+          // Observability check — does this org's metadata actually expose
+          // any ssot__ columns? Scan the full modelText (post-truncation-
+          // fix this can be 32KB, so we look for the substring pattern
+          // rather than parse). If not, the preflight below rejects any
+          // ssot__ SQL as a hallucination.
+          if (/\bssot__[A-Za-z0-9_]+__c\b/.test(result.modelText)) {
+            dataCloudMetadataExposesSsot = true;
+          }
         }
 
         return { c, server, tool, argObj, result };
@@ -626,14 +659,20 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
       messages.push({
         role: "tool",
         tool_call_id: r.c.id || "unknown",
-        // why: Heroku Inference rejects empty tool-result content the same
-        // way it rejects empty assistant content. An MCP tool can legitimately
-        // return an empty-string preview (e.g. a successful void write), so
+        // why: the model needs the full tool output to reason correctly
+        // (schema-introspection responses like getDcMetadata are multi-KB
+        // and were previously truncated to 2KB, forcing the model to
+        // hallucinate table/column names). modelText carries the larger
+        // per-tool budget; textPreview stays UI-only.
+        //
+        // Heroku Inference rejects empty tool-result content the same way
+        // it rejects empty assistant content. An MCP tool can legitimately
+        // return an empty-string result (e.g. a successful void write), so
         // we substitute a minimal summary so the model still sees the
         // call-happened signal.
         content:
-          r.result.textPreview && r.result.textPreview.length > 0
-            ? r.result.textPreview
+          r.result.modelText && r.result.modelText.length > 0
+            ? r.result.modelText
             : r.result.isError
               ? "(tool error with empty content)"
               : "(tool call succeeded with no output)",
