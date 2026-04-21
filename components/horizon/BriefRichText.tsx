@@ -7,6 +7,8 @@ import {
   segmentTextWithSalesforceIds,
 } from "@/lib/salesforce/recordLink";
 import { resolveSfLabels } from "@/lib/client/sfLabelsCache";
+import { extractNamesForProbing } from "@/lib/client/extractNamesForProbing";
+import { lookupEntityLabel } from "@/lib/salesforce/labelLookup";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import { cn } from "@/lib/utils";
 import type { BriefEntityLink } from "@/types/horizon";
@@ -23,8 +25,13 @@ function displayNameHints(
 ): string[] {
   const out: string[] = [];
   const ex = explicit?.trim();
-  if (ex) out.push(ex);
-  const resolved = labels[id]?.trim();
+  if (ex) {
+    for (const part of ex.split(/\s*\|\s*/)) {
+      const p = part.trim();
+      if (p.length > 1) out.push(p);
+    }
+  }
+  const resolved = lookupEntityLabel(labels, id)?.trim();
   if (resolved) {
     out.push(resolved);
     const beforeComma = resolved.split(",")[0]?.trim();
@@ -160,6 +167,8 @@ export function BriefRichText({
   clientId,
   clientName,
   entityLinks,
+  /** SOQL-resolve capitalized names in this string (comma lists, "Name and Name"). */
+  probeCoListedNames,
 }: {
   text: string;
   className?: string;
@@ -168,16 +177,79 @@ export function BriefRichText({
   clientName?: string;
   /** Extra Accounts/Contacts/etc. named in this copy (e.g. "Also today" multi-account). */
   entityLinks?: BriefEntityLink[];
+  probeCoListedNames?: boolean;
 }) {
   const base = useSfInstanceUrl();
 
-  const entityLinksKey = useMemo(
+  const [probedEntities, setProbedEntities] = useState<BriefEntityLink[]>([]);
+
+  useEffect(() => {
+    if (!probeCoListedNames || !text.trim()) {
+      setProbedEntities([]);
+      return;
+    }
+    const names = extractNamesForProbing(text);
+    if (names.length === 0) {
+      setProbedEntities([]);
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/sf/entity-by-names", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ names }),
+    })
+      .then((r) => r.json())
+      .then((j: { entities?: BriefEntityLink[] }) => {
+        if (!cancelled) setProbedEntities(Array.isArray(j.entities) ? j.entities : []);
+      })
+      .catch(() => {
+        if (!cancelled) setProbedEntities([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [probeCoListedNames, text]);
+
+  const mergedEntityLinks = useMemo(() => {
+    const m = new Map<string, BriefEntityLink>();
+    const merge = (e: BriefEntityLink) => {
+      const id = e.client_id?.trim();
+      if (!id) return;
+      const nm = e.client_name?.trim() ?? "";
+      const prev = m.get(id);
+      if (!prev) {
+        m.set(id, { ...e, client_id: id });
+        return;
+      }
+      const parts = new Set<string>();
+      for (const s of (prev.client_name ?? "").split(/\s*\|\s*/)) {
+        const t = s.trim();
+        if (t) parts.add(t);
+      }
+      for (const s of nm.split(/\s*\|\s*/)) {
+        const t = s.trim();
+        if (t) parts.add(t);
+      }
+      m.set(id, {
+        ...prev,
+        client_id: id,
+        client_name: [...parts].join(" | ") || prev.client_name,
+      });
+    };
+    for (const e of entityLinks ?? []) merge(e);
+    for (const e of probedEntities) merge(e);
+    return [...m.values()];
+  }, [entityLinks, probedEntities]);
+
+  const mergedEntityKey = useMemo(
     () =>
-      (entityLinks ?? [])
-        .map((e) => `${e.client_id.trim()}:${(e.client_name ?? "").trim()}`)
+      mergedEntityLinks
+        .map((e) => `${e.client_id}:${(e.client_name ?? "").trim()}`)
         .sort()
         .join("|"),
-    [entityLinks]
+    [mergedEntityLinks]
   );
 
   const [labels, setLabels] = useState<Record<string, string>>({});
@@ -186,7 +258,7 @@ export function BriefRichText({
     const ids = new Set(collectIdsFromText(text));
     const cid = clientId?.trim();
     if (cid) ids.add(cid);
-    for (const e of entityLinks ?? []) {
+    for (const e of mergedEntityLinks) {
       const id = e.client_id?.trim();
       if (id) ids.add(id);
     }
@@ -202,11 +274,18 @@ export function BriefRichText({
     return () => {
       cancelled = true;
     };
-  }, [text, clientId, entityLinksKey, entityLinks]);
+  }, [text, clientId, mergedEntityKey, mergedEntityLinks]);
 
   const nameAnchors = useMemo(
-    () => buildNameAnchors(base, clientId, clientName, entityLinks, labels),
-    [base, clientId, clientName, entityLinks, labels]
+    () =>
+      buildNameAnchors(
+        base,
+        clientId,
+        clientName,
+        mergedEntityLinks,
+        labels
+      ),
+    [base, clientId, clientName, mergedEntityLinks, labels]
   );
 
   const topSegs = useMemo(() => segmentTextWithSalesforceIds(text), [text]);
@@ -216,7 +295,7 @@ export function BriefRichText({
       {topSegs.map((seg, i) => {
         if (seg.kind === "id") {
           const href = base ? lightningRecordViewUrl(base, seg.value) : null;
-          const display = labels[seg.value] ?? seg.value;
+          const display = lookupEntityLabel(labels, seg.value) ?? seg.value;
           const isResolved = display !== seg.value;
           if (!href) {
             return (
@@ -276,7 +355,8 @@ export function BriefRichText({
                     const href = base
                       ? lightningRecordViewUrl(base, s.value)
                       : null;
-                    const display = labels[s.value] ?? s.value;
+                    const display =
+                      lookupEntityLabel(labels, s.value) ?? s.value;
                     const isResolved = display !== s.value;
                     if (!href) {
                       return (

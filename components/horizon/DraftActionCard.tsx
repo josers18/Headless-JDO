@@ -98,6 +98,7 @@ export function DraftActionCard({
                   text={stripDraftDisplayNoise(draft.title)}
                   clientId={draft.target_id}
                   linkClassName="font-semibold"
+                  probeCoListedNames
                 />
               </div>
               <div className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.12em] text-text-muted/70">
@@ -211,12 +212,14 @@ export function DraftActionCard({
             text={stripDraftDisplayNoise(draft.title)}
             clientId={draft.target_id}
             linkClassName="font-semibold"
+            probeCoListedNames
           />
         </div>
         <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-text-muted">
           <BriefRichText
             text={stripDraftDisplayNoise(draft.body)}
             clientId={draft.target_id}
+            probeCoListedNames
           />
         </p>
         {draft.rationale && (
@@ -229,6 +232,7 @@ export function DraftActionCard({
               <BriefRichText
                 text={stripDraftDisplayNoise(draft.rationale)}
                 clientId={draft.target_id}
+                probeCoListedNames
               />
             </span>
           </div>

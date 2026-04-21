@@ -63,3 +63,11 @@ export function segmentTextWithSalesforceIds(text: string): TextSegment[] {
   if (out.length === 0) out.push({ kind: "text", value: text });
   return out;
 }
+
+/** First Salesforce Id token in prose (for inferring `client_id` on arc rows). */
+export function extractFirstSalesforceId(text: string): string | undefined {
+  for (const seg of segmentTextWithSalesforceIds(text)) {
+    if (seg.kind === "id") return seg.value;
+  }
+  return undefined;
+}

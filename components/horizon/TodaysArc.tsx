@@ -7,6 +7,7 @@ import { ReasoningTrail } from "./ReasoningTrail";
 import { ArcNode } from "./ArcNode";
 import { GhostPrompt } from "./GhostPrompt";
 import { BriefRichText } from "./BriefRichText";
+import { extractFirstSalesforceId } from "@/lib/salesforce/recordLink";
 import { cn } from "@/lib/utils";
 import type { ArcNodePayload, TodaysArcPayload } from "@/types/horizon";
 import { HORIZON_REFRESH_ARC } from "@/lib/client/horizonEvents";
@@ -83,6 +84,16 @@ function displayArcNodeType(type: string): string {
   return map[key] ?? type.replace(/_/g, " ");
 }
 
+function arcRowClientId(n: { client_id?: string; context: string; title: string }):
+  | string
+  | undefined {
+  return (
+    n.client_id ??
+    extractFirstSalesforceId(n.context) ??
+    extractFirstSalesforceId(n.title)
+  );
+}
+
 function formatArcWhen(iso: string, tz?: string): string {
   const d = Date.parse(iso);
   if (Number.isNaN(d)) return iso;
@@ -131,10 +142,18 @@ function ArcLookaheadSection({
               </span>
             </div>
             <div className="mt-1.5 text-[13px] font-medium text-text">
-              <BriefRichText text={n.title} clientId={n.client_id} />
+              <BriefRichText
+                text={n.title}
+                clientId={arcRowClientId(n)}
+                probeCoListedNames
+              />
             </div>
             <div className="mt-1 text-[12px] leading-snug text-text-muted">
-              <BriefRichText text={n.context} clientId={n.client_id} />
+              <BriefRichText
+                text={n.context}
+                clientId={arcRowClientId(n)}
+                probeCoListedNames
+              />
             </div>
           </li>
         ))}
@@ -317,27 +336,37 @@ export function TodaysArc() {
                 ))}
               </div>
 
-              {selected && (
-                <div className="mt-4 rounded-lg border border-border-soft bg-surface2/50 px-4 py-3 text-[13px] leading-relaxed animate-fade-in">
-                  <div className="font-medium text-text">
-                    <BriefRichText
-                      text={selected.title}
-                      clientId={selected.client_id}
-                    />
-                  </div>
-                  <p className="mt-1.5 text-text-muted">
-                    <BriefRichText text={selected.context} clientId={selected.client_id} />
-                  </p>
-                  {selected.client_id && (
-                    <p className="mt-2 font-mono text-[10px] text-text-muted/70">
-                      <BriefRichText
-                        text={`Client: ${selected.client_id}`}
-                        clientId={selected.client_id}
-                      />
-                    </p>
-                  )}
-                </div>
-              )}
+              {selected &&
+                (() => {
+                  const scid = arcRowClientId(selected);
+                  return (
+                    <div className="mt-4 rounded-lg border border-border-soft bg-surface2/50 px-4 py-3 text-[13px] leading-relaxed animate-fade-in">
+                      <div className="font-medium text-text">
+                        <BriefRichText
+                          text={selected.title}
+                          clientId={scid}
+                          probeCoListedNames
+                        />
+                      </div>
+                      <p className="mt-1.5 text-text-muted">
+                        <BriefRichText
+                          text={selected.context}
+                          clientId={scid}
+                          probeCoListedNames
+                        />
+                      </p>
+                      {scid && (
+                        <p className="mt-2 font-mono text-[10px] text-text-muted/70">
+                          <BriefRichText
+                            text={`Client: ${scid}`}
+                            clientId={scid}
+                            probeCoListedNames
+                          />
+                        </p>
+                      )}
+                    </div>
+                  );
+                })()}
 
               {arc.recommended_windows && arc.recommended_windows.length > 0 && (
                 <ul className="mt-4 space-y-2">
@@ -350,7 +379,11 @@ export function TodaysArc() {
                         Suggested focus
                       </span>
                       <p className="mt-1 text-text/90">
-                        <BriefRichText text={w.suggestion} />
+                        <BriefRichText
+                          text={w.suggestion}
+                          clientId={extractFirstSalesforceId(w.suggestion)}
+                          probeCoListedNames
+                        />
                       </p>
                     </li>
                   ))}

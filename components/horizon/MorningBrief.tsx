@@ -243,6 +243,7 @@ export function MorningBrief() {
               clientId={heroItem.client_id}
               clientName={heroItem.client_name}
               entityLinks={heroItem.entity_links}
+              probeCoListedNames
             />
           </h3>
           <p className="mt-3 max-w-[640px] text-[15px] leading-relaxed text-text-muted md:text-[16px]">
@@ -251,6 +252,7 @@ export function MorningBrief() {
               clientId={heroItem.client_id}
               clientName={heroItem.client_name}
               entityLinks={heroItem.entity_links}
+              probeCoListedNames
             />
           </p>
           {heroItem.suggested_action && (
@@ -260,6 +262,7 @@ export function MorningBrief() {
                 clientId={heroItem.client_id}
                 clientName={heroItem.client_name}
                 entityLinks={heroItem.entity_links}
+                probeCoListedNames
               />
             </p>
           )}
@@ -353,6 +356,7 @@ export function MorningBrief() {
                     clientId={heroItem.client_id}
                     clientName={heroItem.client_name}
                     entityLinks={heroItem.entity_links}
+                    probeCoListedNames
                   />
                 </p>
                 {heroItem.sources && heroItem.sources.length > 0 && (
@@ -390,6 +394,7 @@ export function MorningBrief() {
                     clientId={item.client_id}
                     clientName={item.client_name}
                     entityLinks={item.entity_links}
+                    probeCoListedNames
                   />
                 </div>
                 <p className="mt-1.5 max-w-[620px] text-[13px] leading-relaxed text-text-muted">
@@ -398,6 +403,7 @@ export function MorningBrief() {
                     clientId={item.client_id}
                     clientName={item.client_name}
                     entityLinks={item.entity_links}
+                    probeCoListedNames
                   />
                 </p>
                 {item.suggested_action && (
@@ -407,6 +413,7 @@ export function MorningBrief() {
                       clientId={item.client_id}
                       clientName={item.client_name}
                       entityLinks={item.entity_links}
+                      probeCoListedNames
                     />
                   </p>
                 )}

@@ -6,6 +6,7 @@ import {
   segmentTextWithSalesforceIds,
 } from "@/lib/salesforce/recordLink";
 import { resolveSfLabels } from "@/lib/client/sfLabelsCache";
+import { lookupEntityLabel } from "@/lib/salesforce/labelLookup";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +55,7 @@ export function TextWithSalesforceIds({
           return <span key={i}>{seg.value}</span>;
         }
         const href = base ? lightningRecordViewUrl(base, seg.value) : null;
-        const display = labels[seg.value] ?? seg.value;
+        const display = lookupEntityLabel(labels, seg.value) ?? seg.value;
         const isResolved = display !== seg.value;
         if (!href) {
           return (

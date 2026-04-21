@@ -11,6 +11,8 @@ ${a.context}
 
 Resolve the client with salesforce_crm first. Pull one supporting signal from data_360 or tableau_next if it strengthens the action. Then produce a DRAFT — do not execute any writes.
 
+In title and body, use human-readable Account, Contact, and Opportunity names. Put Salesforce record Ids only in target_id — never paste raw 15/18-character Ids into title or body as link text.
+
 Return JSON ONLY:
 {
   "id": "draft_<shortid>",

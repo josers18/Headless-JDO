@@ -69,5 +69,6 @@ Rules:
 - "lookahead_month" = day 8–30 ahead only.
 - Sort each array by start ascending.
 - If today is empty, still populate lookahead_week / lookahead_month when tools return future items, plus 1–2 recommended_windows.
-- Never invent meetings — only tool-backed facts.`;
+- Never invent meetings — only tool-backed facts.
+- For EVERY node in nodes, lookahead_week, and lookahead_month: set "client_id" to the best primary Salesforce Id from tools (prefer Contact Id from WhoId, else Account Id from WhatId or Opportunity.AccountId, else Opportunity Id for opp deadlines). Do not leave client_id blank when the SOQL row included an Id you can copy verbatim. The UI uses client_id to resolve human names in titles.`;
 }
