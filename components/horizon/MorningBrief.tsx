@@ -195,15 +195,17 @@ export function MorningBrief() {
           aria-labelledby="right-now-heading"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
+            {/* FINAL-5 (Option A) — dropped the "· 12:33 PM" suffix.
+                 The top-right sticky header already shows wall-clock
+                 time ("TUESDAY, APRIL 21 · 12:33 PM EDT"); duplicating
+                 it inside the hero wasted prime real estate for no
+                 new information. Keeping the label minimal lets the
+                 headline dominate the card hierarchy. */}
             <h2
               id="right-now-heading"
               className="text-[10px] font-medium uppercase tracking-[0.22em] text-text-muted"
             >
-              Right now ·{" "}
-              {new Date().toLocaleTimeString([], {
-                hour: "numeric",
-                minute: "2-digit",
-              })}
+              Right now
             </h2>
           </div>
 
