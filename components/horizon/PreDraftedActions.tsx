@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { DraftActionCard } from "./DraftActionCard";
 import { useDrafts } from "./DraftsContext";
+import { useSectionContentReporter } from "./SectionContentPresence";
 
 // Pre-drafted actions: drafts whose targets are not shown inline on the
 // priority queue surface here; matched drafts render under their client row.
@@ -24,6 +26,11 @@ export function PreDraftedActions() {
   const isLoading =
     (state === "streaming" || (state === "idle" && draftsKickoffPending)) &&
     drafts.length === 0;
+
+  const reportPresence = useSectionContentReporter("drafts");
+  useEffect(() => {
+    reportPresence(drafts.length > 0);
+  }, [drafts.length, reportPresence]);
 
   return (
     <div data-horizon-section="drafts">

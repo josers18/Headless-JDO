@@ -28,6 +28,7 @@ import {
 import { ActionRow, type ActionSpec } from "./ActionRow";
 import { dispatchAction, isSnoozed } from "@/lib/client/actions/registry";
 import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
+import { useSectionContentReporter } from "./SectionContentPresence";
 
 const PQ_GROUPS_KEY = "hz:pq-groups:v1";
 
@@ -113,6 +114,11 @@ export function PriorityQueue() {
   useEffect(() => {
     setPriorityClientIds(clients.map((c) => c.client_id));
   }, [clients, setPriorityClientIds]);
+
+  const reportPresence = useSectionContentReporter("priority");
+  useEffect(() => {
+    reportPresence(clients.length > 0);
+  }, [clients.length, reportPresence]);
 
   const grouped = useMemo(() => {
     const today: PriorityClient[] = [];

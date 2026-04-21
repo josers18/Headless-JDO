@@ -8,12 +8,28 @@ import type {
   SectionKind,
 } from "@/lib/prompts/section-insight";
 import { useInsightsBatch } from "./InsightsBatchProvider";
+import { useSectionHasContent } from "./SectionContentPresence";
 import { cn } from "@/lib/utils";
 import { sanitizeBankerFacingPulseCopy } from "@/lib/client/pulseCopySanitize";
 import { sanitizeProseLite } from "@/lib/safety/sanitize";
 
 function sanitizeInsightLine(s: string): string {
   return sanitizeBankerFacingPulseCopy(sanitizeProseLite(s));
+}
+
+// Phrases that signal the agent decided the section was empty/broken.
+// When the matching section ACTUALLY has content on screen, we suppress
+// the banner entirely (it would be actively misleading).
+const UNAVAILABLE_RE =
+  /\b(temporarily\s+unavailable|unavailable|check\s+back|connectivity\s+is\s+restored|refresh\s+shortly|not\s+configured|reach\s+out\s+to\s+your\s+analytics\s+admin)\b/i;
+
+function looksPessimistic(payload: InsightPayload | null): boolean {
+  if (!payload) return false;
+  if (UNAVAILABLE_RE.test(payload.headline)) return true;
+  if (payload.action_hint && UNAVAILABLE_RE.test(payload.action_hint)) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -105,10 +121,18 @@ export function SectionInsight({
     state === "streaming" &&
     !(batch?.payloads[section] ?? legacyPayload);
 
+  const sectionHasContent = useSectionHasContent(section);
+
   const style = useMemo(() => TONE[payload?.tone ?? "calm"], [payload]);
   const Icon = style.icon;
 
   if (state === "error") return null;
+  // Suppress "Portfolio metrics temporarily unavailable — check back
+  // shortly." when the section actually has tiles rendered. The insight
+  // agent sometimes decides the surface is empty because one of its
+  // sub-queries failed, even though the real section agent filled it in
+  // a parallel turn.
+  if (payload && sectionHasContent && looksPessimistic(payload)) return null;
 
   return (
     <div

@@ -16,6 +16,7 @@ import { PulseStrip } from "@/components/horizon/PulseStrip";
 import { SignInBanner } from "@/components/horizon/SignInBanner";
 import { HorizonSignedIn } from "@/components/horizon/HorizonSignedIn";
 import { InsightsBatchProvider } from "@/components/horizon/InsightsBatchProvider";
+import { SectionContentPresenceProvider } from "@/components/horizon/SectionContentPresence";
 
 // Force dynamic — we read the Salesforce session cookie server-side to
 // decide whether to show the signed-out banner instead of kicking every
@@ -65,6 +66,7 @@ export default function HorizonHome() {
       {signedIn && (
         <>
           <HorizonSignedIn>
+            <SectionContentPresenceProvider>
             <InsightsBatchProvider>
               {/* B-3 — at >=1280px we pull Signal Feed into a sticky right rail
                   so the banker can see ambient awareness while scrolling the
@@ -123,6 +125,7 @@ export default function HorizonHome() {
               <AgentLog />
             </div>
             </InsightsBatchProvider>
+            </SectionContentPresenceProvider>
           </HorizonSignedIn>
 
           <AskBar />

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 import { sanitizeBankerFacingPulseCopy } from "@/lib/client/pulseCopySanitize";
 import { PulseTile } from "./PulseTile";
+import { useSectionContentReporter } from "./SectionContentPresence";
 
 interface Pulse {
   narrative: string;
@@ -67,6 +68,11 @@ export function PortfolioPulse() {
   const spokenText = useMemo(() => (pulse ? pulseToSpoken(pulse) : ""), [
     pulse,
   ]);
+
+  const reportPresence = useSectionContentReporter("pulse");
+  useEffect(() => {
+    reportPresence(Boolean(pulse && pulse.kpis && pulse.kpis.length > 0));
+  }, [pulse, reportPresence]);
 
   function toggleVoice() {
     if (speaking) stop();

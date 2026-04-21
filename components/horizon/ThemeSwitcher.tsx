@@ -31,6 +31,22 @@ export function ThemeSwitcher() {
     if (!open) stopPreview();
   }, [open, stopPreview]);
 
+  // Esc closes the sheet and body scroll locks while it's open — both
+  // standard modal affordances that were missing.
+  useEffect(() => {
+    if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   const grouped = useMemo(() => {
     const subset = THEMES.filter((t) => {
       if (filter === "all") return true;
@@ -68,14 +84,19 @@ export function ThemeSwitcher() {
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          // Anchored to the top of the viewport, not centered — so the
+          // first family row is always visible even when the browser's
+          // bookmarks bar or extension bars eat into `100vh`. The
+          // backdrop itself scrolls, so if the dialog is taller than the
+          // visible area the user can page through the whole sheet.
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-black/50 px-4 py-[max(3vh,16px)] backdrop-blur-sm"
           onClick={() => setOpen(false)}
           role="dialog"
           aria-modal
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative mx-4 max-h-[86vh] w-full max-w-[960px] overflow-y-auto rounded-2xl border border-border bg-surface p-6 shadow-2xl"
+            className="relative my-auto w-full max-w-[960px] rounded-2xl border border-border bg-surface p-6 shadow-2xl"
           >
             <div className="flex items-center justify-between gap-3">
               <div>

@@ -31,6 +31,7 @@ import { dispatchAction } from "@/lib/client/actions/registry";
 import { primaryActionForSignal } from "@/lib/signals/signalRowActions";
 import type { HorizonAction } from "@/lib/client/actions/registry";
 import type { McpServerName } from "@/types/horizon";
+import { useSectionContentReporter } from "./SectionContentPresence";
 
 const POLL_INTERVAL_MS = 45_000;
 
@@ -87,6 +88,11 @@ export function SignalFeed() {
       abortRef.current?.abort();
     };
   }, [fetchOnce]);
+
+  const reportPresence = useSectionContentReporter("signals");
+  useEffect(() => {
+    reportPresence(signals.length > 0);
+  }, [signals.length, reportPresence]);
 
   return (
     <div data-horizon-section="signals">
