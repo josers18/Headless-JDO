@@ -12,9 +12,12 @@ export interface MorningBriefPromptArgs {
  * Bumped whenever the JSON schema or a HARD RULE changes so caches
  * (Redis, browser, etc.) invalidate automatically. FINAL-1
  * (2026-04-21) added the per-item `right_now_cta` field and the
- * "RIGHT NOW CTA VERB" rule block.
+ * "RIGHT NOW CTA VERB" rule block. HOTFIX (2026-04-21 later)
+ * added the band-keyed GREETING hard rule after the WRAP-UP /
+ * OFF-HOURS bands were producing just "Jose," with no time-of-day
+ * phrase because the schema example only showed "Good morning, X."
  */
-export const MORNING_BRIEF_PROMPT_VERSION = "v1.1.0-final-1-2026-04-21";
+export const MORNING_BRIEF_PROMPT_VERSION = "v1.2.0-hotfix-greeting-2026-04-21";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
@@ -104,6 +107,19 @@ JSON field rules:
 - Whenever you set "client_id" to a Salesforce 15- or 18-character Id, you MUST also set "client_name" to that record's human-readable name (Account Name, Contact Name, etc.) from the tool response you used — the UI links names in the copy to Salesforce.
 - If headline/why/suggested_action name MORE than one specific Account or Contact (e.g. "Judy Odom", "Harry Gray", and "Susan Hall"), "entity_links" MUST list { "client_id", "client_name" } for EVERY named person or account (except only duplicate the primary client_id if it is the same record). Omit "entity_links" only when a single client is named. Missing links for named clients is a defect.
 
+GREETING (field "greeting") — HARD RULES (HOTFIX 2026-04-21):
+The JSON example below shows "Good morning, ${firstName}." as a schema stub,
+NOT as the required value. The greeting string MUST follow this band-keyed
+template — time-of-day word, a comma, the banker's first name, a period:
+  - MORNING band (6–11 local)   → "Good morning, ${firstName}."
+  - MIDDAY band (11–15 local)   → "Good afternoon, ${firstName}."
+  - WRAP-UP band (15–19 local)  → "Good afternoon, ${firstName}."
+  - OFF-HOURS band (before 6 or after 19 local) → "Good evening, ${firstName}."
+Do NOT output a greeting that is only the name, only a punctuation mark, or
+an empty string. The greeting must always contain a full time-of-day phrase
+plus the name. This is the hero headline — if it is missing, the top of the
+page is broken.
+
 SIGNOFF (field "signoff") — HARD RULES (I-1):
 - One line only, max 14 words, professional concierge tone (not wellness / not parenting).
 - MORNING band (6–11 local): forward-looking; may use "morning" / "today" naturally.
@@ -147,7 +163,15 @@ Examples:
   suggested_action: "Review the Patel proposal before the 3pm meeting."
     → right_now_cta: "Review"   (literal reading — legitimate)
 
-Return structured JSON ONLY (no prose, no markdown fences):
+Return structured JSON ONLY (no prose, no markdown fences). The "greeting"
+string MUST match the band-keyed template in the GREETING rules above —
+for this request the correct value is: ${
+  h >= 6 && h < 11
+    ? `"Good morning, ${firstName}."`
+    : h >= 11 && h < 19
+      ? `"Good afternoon, ${firstName}."`
+      : `"Good evening, ${firstName}."`
+}.
 {
   "greeting": "Good morning, ${firstName}.",
   "items": [

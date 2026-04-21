@@ -65,7 +65,7 @@ function clampLabel(s: string): string {
   return `${t.slice(0, LABEL_MAX_CHARS - 1).trimEnd()}…`;
 }
 
-function axisLabelFor(node: ArcNodePayload): string {
+export function axisLabelFor(node: ArcNodePayload): string {
   const fromAgent = node.label?.trim();
   if (fromAgent) return clampLabel(fromAgent);
   if (node.type === "blocked") return "Blocked";
@@ -194,6 +194,104 @@ export function ArcNode({
         />
         <span className="max-w-[110px] whitespace-nowrap text-center font-mono text-[9px] uppercase leading-tight tracking-tight text-text-muted group-hover:text-text/90">
           {axisLabel}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+// ISSUE 2 (C) — Collision cluster. When two or more nodes land on
+// the same x-coordinate (late-in-day compression, morning-dense
+// schedules, or just unlucky synchronous meetings) we were stacking
+// their labels character-by-character and rendering garbled text
+// soup. Collapse them into one cluster dot with a "×N" count badge;
+// clicking expands a popover listing each child by title.
+export function ArcCluster({
+  nodes,
+  leftPct,
+  selected,
+  onActivate,
+  onSelectChild,
+}: {
+  nodes: ArcNodePayload[];
+  leftPct: number;
+  selected: boolean;
+  onActivate: () => void;
+  onSelectChild: (node: ArcNodePayload) => void;
+}) {
+  const clamped = Math.min(96, Math.max(2, leftPct));
+  const earliestType = nodes[0]?.type ?? "event";
+  const st = typeStyles[earliestType];
+
+  return (
+    <div
+      className="group pointer-events-auto absolute z-20"
+      style={{
+        left: `${clamped}%`,
+        top: ARC_TRACK_LINE_PX,
+        transform: "translate(-50%, -50%)",
+      }}
+    >
+      {selected && (
+        <div
+          className="pointer-events-auto absolute bottom-[calc(100%+10px)] left-1/2 z-40 w-max max-w-[min(260px,calc(100vw-2rem))] -translate-x-1/2 rounded-lg border border-border-soft bg-surface2/95 px-3 py-2 text-left text-[11.5px] leading-snug text-text shadow-lg shadow-black/40"
+          role="dialog"
+        >
+          <div className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-text-muted">
+            {nodes.length} items at this time
+          </div>
+          <ul className="space-y-1">
+            {nodes.map((n) => (
+              <li key={n.id}>
+                <button
+                  type="button"
+                  className="w-full truncate rounded-sm px-1 py-0.5 text-left text-[12px] text-text transition hover:bg-surface/60"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectChild(n);
+                  }}
+                >
+                  <span className="mr-1.5 font-mono text-[9px] uppercase text-text-muted">
+                    {axisLabelFor(n)}
+                  </span>
+                  {titleShort(n.title)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onActivate}
+        className={cn(
+          "relative flex min-h-[44px] min-w-[44px] flex-col items-center gap-1 rounded-md px-0.5 py-1 transition duration-med ease-out md:min-h-0 md:min-w-0",
+          selected && "scale-105"
+        )}
+        aria-haspopup="dialog"
+        aria-expanded={selected}
+        aria-label={`${nodes.length} items at this time`}
+      >
+        <span
+          className={cn(
+            "relative flex items-center justify-center shadow-sm transition group-hover:scale-110 group-focus-visible:ring-2 group-focus-visible:ring-accent/40",
+            // Cluster dot is slightly larger than a solo node so the
+            // ×N badge has room to sit top-right without occluding.
+            "h-4 w-4 rounded-full",
+            st.fill ?? "bg-surface2",
+            st.ring
+          )}
+        >
+          <span
+            className="absolute -right-1.5 -top-1.5 rounded-full border border-border bg-bg px-[5px] py-[1px] font-mono text-[9px] font-medium leading-none text-text"
+            aria-hidden
+          >
+            ×{nodes.length}
+          </span>
+        </span>
+        <span className="max-w-[110px] whitespace-nowrap text-center font-mono text-[9px] uppercase leading-tight tracking-tight text-text-muted group-hover:text-text/90">
+          {nodes.length} items
         </span>
       </button>
     </div>

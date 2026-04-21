@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { ReasoningTrail } from "./ReasoningTrail";
-import { ArcNode } from "./ArcNode";
+import { ArcNode, ArcCluster } from "./ArcNode";
 import { ArcTimeline, arcLeftPct } from "./ArcTimeline";
 import { ClientDetailSheet } from "./ClientDetailSheet";
 import { GhostPrompt } from "./GhostPrompt";
@@ -205,6 +205,55 @@ export function TodaysArc() {
     return ((u - nowMs) / span) * 100;
   }, [nowMs, endMs]);
 
+  // ISSUE 2 (A) — "Wrapping up today" state. When ≤ 30 minutes
+  // remain until end_of_day the timeline compresses so hard every
+  // node collapses onto the same x-coordinate. Instead of drawing
+  // a broken axis, show a concierge line + a compact list. The
+  // threshold is measured against `endMs`, not `Date.now()`, so it
+  // stays correct whether the agent used business hours (6pm) or a
+  // later wall-clock end.
+  const remainingMinutes = useMemo(() => {
+    if (!arc || !endMs) return Number.POSITIVE_INFINITY;
+    const ms = endMs - Date.now();
+    return ms / 60_000;
+  }, [arc, endMs]);
+  const isWrappingUp = remainingMinutes <= 30 && remainingMinutes > -60;
+
+  // ISSUE 2 (C) — Collision clustering. Any two nodes whose leftPct
+  // differ by less than this threshold get folded into an ArcCluster
+  // so their labels stop overlapping. 4% of a 520px-wide track is
+  // ~21px, roughly a dot diameter + a hair of breathing room.
+  const CLUSTER_PCT_THRESHOLD = 4;
+
+  const renderGroups = useMemo(() => {
+    if (!arc || !nowMs || !endMs) return [];
+    type Group = { leftPct: number; nodes: ArcNodePayload[] };
+    const withPct = displayNodes
+      .map((n) => {
+        const ev = Date.parse(n.start);
+        if (Number.isNaN(ev)) return null;
+        return { node: n, leftPct: arcLeftPct(nowMs, endMs, ev) };
+      })
+      .filter((x): x is { node: ArcNodePayload; leftPct: number } => x !== null)
+      .sort((a, b) => a.leftPct - b.leftPct);
+
+    const groups: Group[] = [];
+    for (const { node, leftPct } of withPct) {
+      const last = groups[groups.length - 1];
+      if (last && Math.abs(last.leftPct - leftPct) < CLUSTER_PCT_THRESHOLD) {
+        last.nodes.push(node);
+        // Re-center the group so subsequent nodes compare against the
+        // running mean, not the first bucket's anchor.
+        last.leftPct =
+          (last.leftPct * (last.nodes.length - 1) + leftPct) /
+          last.nodes.length;
+      } else {
+        groups.push({ leftPct, nodes: [node] });
+      }
+    }
+    return groups;
+  }, [displayNodes, nowMs, endMs, arc]);
+
   const hasArcContent =
     !!arc &&
     (arc.nodes.length > 0 ||
@@ -253,7 +302,7 @@ export function TodaysArc() {
         </div>
       )}
 
-      {arc && nowMs && endMs && (
+      {arc && nowMs && endMs && !isWrappingUp && (
         <div className="mt-6 animate-fade-rise">
           <div className="overflow-x-auto overscroll-x-contain pb-2 [-webkit-overflow-scrolling:touch] snap-x snap-mandatory md:snap-none md:overflow-visible">
             <div className="relative min-w-[min(100%,520px)] snap-center md:min-w-0">
@@ -263,17 +312,41 @@ export function TodaysArc() {
                 nowRailPct={nowRailPct}
                 tz={tz}
               >
-                {displayNodes.map((node) => {
-                  const ev = Date.parse(node.start);
-                  const lp = arcLeftPct(nowMs, endMs, ev);
+                {renderGroups.map((group) => {
+                  if (group.nodes.length === 1) {
+                    const node = group.nodes[0]!;
+                    return (
+                      <ArcNode
+                        key={node.id}
+                        node={node}
+                        leftPct={group.leftPct}
+                        selected={selectedId === node.id}
+                        onActivate={() => activateNode(node)}
+                        onRescheduleIntent={onRescheduleIntent}
+                      />
+                    );
+                  }
+                  // Cluster — uses a synthetic id derived from its
+                  // members so selection survives a re-render as long
+                  // as the bucket composition is stable.
+                  const clusterId = `cluster:${group.nodes
+                    .map((n) => n.id)
+                    .join("|")}`;
                   return (
-                    <ArcNode
-                      key={node.id}
-                      node={node}
-                      leftPct={lp}
-                      selected={selectedId === node.id}
-                      onActivate={() => activateNode(node)}
-                      onRescheduleIntent={onRescheduleIntent}
+                    <ArcCluster
+                      key={clusterId}
+                      nodes={group.nodes}
+                      leftPct={group.leftPct}
+                      selected={selectedId === clusterId}
+                      onActivate={() =>
+                        setSelectedId((id) =>
+                          id === clusterId ? null : clusterId
+                        )
+                      }
+                      onSelectChild={(n) => {
+                        setSelectedId(null);
+                        activateNode(n);
+                      }}
                     />
                   );
                 })}
@@ -346,6 +419,93 @@ export function TodaysArc() {
                   shape only. */}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ISSUE 2 (A) — Wrapping-up state. Replaces the timeline
+          entirely when less than ~30 minutes remain until end_of_day,
+          since a 5-minute window cannot meaningfully render a
+          chronological axis. Shows a concierge line + a compact
+          stacked list of the day's remaining items. Suggested-focus
+          windows (if any) render below, matching the normal layout. */}
+      {arc && nowMs && endMs && isWrappingUp && (
+        <div className="mt-6 animate-fade-rise">
+          <div className="rounded-xl border border-border-soft/70 bg-gradient-to-b from-surface/50 to-black/20 px-5 py-4 shadow-inner">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="font-display text-[18px] leading-tight tracking-tight text-text">
+                Wrapping up today.
+              </p>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-text-muted">
+                {remainingMinutes > 0
+                  ? `${Math.max(1, Math.round(remainingMinutes))} min left`
+                  : "Day closed"}
+              </span>
+            </div>
+            <p className="mt-1 text-[13px] leading-relaxed text-text-muted">
+              {displayNodes.length === 0
+                ? "Nothing left on the calendar. Tomorrow starts fresh."
+                : displayNodes.length === 1
+                  ? "One item still open before the day closes."
+                  : `${displayNodes.length} items still open before the day closes.`}
+            </p>
+
+            {displayNodes.length > 0 && (
+              <ul className="mt-4 space-y-1.5">
+                {displayNodes.map((n) => {
+                  const scid = arcRowClientId(n);
+                  return (
+                    <li key={n.id}>
+                      <button
+                        type="button"
+                        onClick={() => activateNode(n)}
+                        className="flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition hover:bg-surface2/60"
+                      >
+                        <span className="w-[68px] shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted/90">
+                          {new Date(
+                            Number.isFinite(Date.parse(n.start))
+                              ? Date.parse(n.start)
+                              : Date.now()
+                          ).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        <span className="truncate text-[13px] text-text">
+                          <BriefRichText
+                            text={n.title}
+                            clientId={scid}
+                            probeCoListedNames
+                          />
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          {arc.recommended_windows && arc.recommended_windows.length > 0 && (
+            <ul className="mt-4 space-y-2">
+              {arc.recommended_windows.map((w, i) => (
+                <li
+                  key={`${w.start}-${i}`}
+                  className="rounded-md border border-border-soft/60 bg-black/15 px-3 py-2 text-[12px] text-text-muted"
+                >
+                  <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent/90">
+                    Suggested focus
+                  </span>
+                  <p className="mt-1 text-text/90">
+                    <BriefRichText
+                      text={sanitizeProseLite(w.suggestion)}
+                      clientId={extractFirstSalesforceId(w.suggestion)}
+                      probeCoListedNames
+                    />
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 

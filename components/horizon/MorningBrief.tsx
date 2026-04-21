@@ -28,6 +28,31 @@ import type { BriefItem, MorningBrief as Brief } from "@/types/horizon";
 import { cn } from "@/lib/utils";
 import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 
+// HOTFIX 2026-04-21: When the agent returns a malformed greeting
+// (bare name, empty string, just ", Jose.") the hero area was
+// rendering "Jose," with no time-of-day phrase. Client-side fallback
+// reconstructs the greeting from the browser's wall clock so the
+// page header is never broken even if the prompt regresses again.
+function timeOfDayPhrase(): string {
+  const h = new Date().getHours();
+  if (h >= 6 && h < 11) return "Good morning";
+  if (h >= 11 && h < 19) return "Good afternoon";
+  return "Good evening";
+}
+
+function repairGreeting(raw: string | undefined): string {
+  const g = (raw ?? "").trim();
+  const hasPrefix = /^(good\s+(morning|afternoon|evening|day))\b/i.test(g);
+  if (hasPrefix) return g;
+  // Strip a leading bare-name + comma ("Jose," / "Jose.") and prepend a
+  // band-appropriate time-of-day phrase. If the raw greeting is empty
+  // or just punctuation, fall through to a name-less hello.
+  const stripped = g.replace(/^[\s,.]+/u, "").replace(/[\s,.]+$/u, "");
+  const prefix = timeOfDayPhrase();
+  if (!stripped) return `${prefix}.`;
+  return `${prefix}, ${stripped.endsWith(".") ? stripped : stripped + "."}`;
+}
+
 function normalizeBrief(raw: Brief | null): Brief | null {
   if (!raw || !raw.items?.length) return raw;
   let idx: number | undefined = raw.right_now_index;
@@ -36,7 +61,11 @@ function normalizeBrief(raw: Brief | null): Brief | null {
   }
   if (idx !== 0 && idx !== 1 && idx !== 2) idx = 0;
   if (!raw.items[idx]) idx = 0;
-  return { ...raw, right_now_index: idx as 0 | 1 | 2 };
+  return {
+    ...raw,
+    right_now_index: idx as 0 | 1 | 2,
+    greeting: repairGreeting(raw.greeting),
+  };
 }
 
 function resolveHeroIndex(brief: Brief): number {
