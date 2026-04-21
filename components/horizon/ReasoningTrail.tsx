@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ChevronRight, Loader2, Check, X, Activity, ShieldOff } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatToolLeafForDisplay } from "@/lib/utils";
 
 export interface Step {
   server: string;
@@ -168,7 +168,9 @@ function AggregateRow({
           className="shrink-0 text-amber-300"
         />
         <span className="text-accent">{server}</span>
-        <span className="text-text-muted/70">.{tool}</span>
+        <span className="text-text-muted/70">
+          .{formatToolLeafForDisplay(tool)}
+        </span>
         <span className="ml-2 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-[1px] text-[10px] tabular-nums text-amber-200/90">
           ×{count}
         </span>
@@ -297,7 +299,9 @@ function TrailRow({ step }: { step: Step }) {
       >
         <StatusDot status={step.status} handled={handled} />
         <span className="text-accent">{step.server}</span>
-        <span className="text-text-muted/70">.{step.tool}</span>
+        <span className="text-text-muted/70">
+          .{formatToolLeafForDisplay(step.tool)}
+        </span>
         <span className="ml-auto truncate text-[10px] text-text-muted/60">
           {handled
             ? "schema mismatch — handled"

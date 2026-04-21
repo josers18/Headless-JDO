@@ -33,6 +33,12 @@ import {
 import { extractActions } from "@/lib/client/extractActions";
 import { stripDraftDisplayNoise } from "@/lib/client/stripSalesforceIds";
 import { MarkdownView } from "./MarkdownView";
+import { PrepBriefingPanel } from "./PrepBriefingPanel";
+import { tryParseJson } from "@/lib/client/jsonStream";
+import {
+  isValidPrepPayload,
+  type PrepBriefingPayload,
+} from "@/lib/client/prepDraft";
 import type { DraftAction } from "@/types/horizon";
 import type { AskThreadMessage } from "@/types/ask-thread";
 import { ASK_THREAD_STORAGE_KEY } from "@/types/ask-thread";
@@ -50,6 +56,11 @@ export function AskBar() {
   const [actionStatus, setActionStatus] = useState<
     Record<string, InlineActionStatus>
   >({});
+  /** When set, floating panel renders prep JSON as PrepBriefingPanel (not raw prose). */
+  const [prepSession, setPrepSession] = useState<{
+    clientId: string;
+    clientName?: string;
+  } | null>(null);
   const [focusLine, setFocusLine] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { placeholder: scrollPlaceholder, contextLine } = useViewportSection();
@@ -98,6 +109,7 @@ export function AskBar() {
     setLastQuestion("");
     setValue("");
     setActionStatus({});
+    setPrepSession(null);
   }, [reset]);
 
   // Pipe live dictation into the input. `interim` is the word-in-progress;
@@ -151,6 +163,7 @@ export function AskBar() {
       const q = qRaw.trim();
       if (!q || state === "streaming") return;
       if (speech.listening) speech.stop();
+      setPrepSession(null);
       setLastQuestion(q);
       setValue("");
       setActionStatus({});
@@ -188,6 +201,7 @@ export function AskBar() {
       if (!id || state === "streaming") return;
       if (speech.listening) speech.stop();
       const label = detail.clientName?.trim() ?? id;
+      setPrepSession({ clientId: id, clientName: detail.clientName });
       setLastQuestion(
         `Prep briefing · ${label}${detail.reason ? ` (${detail.reason})` : ""}`
       );
@@ -251,6 +265,17 @@ export function AskBar() {
   );
   const prose = useMemo(() => stripActionsTail(rawProse), [rawProse]);
 
+  const prepPayload = useMemo((): PrepBriefingPayload | null => {
+    if (!prepSession) return null;
+    const parsed = tryParseJson<unknown>(cleanNarrative);
+    if (!parsed || !isValidPrepPayload(parsed)) return null;
+    return parsed;
+  }, [prepSession, cleanNarrative]);
+
+  const showPrepStructured = Boolean(prepSession && prepPayload);
+  const showPrepPlaceholder =
+    Boolean(prepSession) && !prepPayload && state === "streaming";
+
   async function approveAction(d: DraftAction) {
     setActionStatus((s) => ({ ...s, [d.id]: { kind: "executing" } }));
     try {
@@ -311,7 +336,7 @@ export function AskBar() {
                     state === "streaming" && "animate-glow-pulse"
                   )}
                 />
-                Asked
+                {prepSession ? "Prep briefing" : "Asked"}
               </div>
               <div className="flex items-center gap-1">
                 <button
@@ -326,6 +351,7 @@ export function AskBar() {
                   onClick={() => {
                     reset();
                     setLastQuestion("");
+                    setPrepSession(null);
                   }}
                   className="rounded-md p-1 text-text-muted hover:bg-surface2 hover:text-text"
                   aria-label="Dismiss"
@@ -341,18 +367,56 @@ export function AskBar() {
                   {error}
                 </div>
               )}
-              {prose && (
-                <div className="mt-3">
-                  <MarkdownView source={prose} />
-                  {state === "streaming" && (
-                    <span className="ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] animate-pulse bg-accent" />
-                  )}
+              {showPrepStructured && prepSession && prepPayload && (
+                <PrepBriefingPanel
+                  payload={prepPayload}
+                  clientId={prepSession.clientId}
+                  actionStatus={actionStatus}
+                  onExecute={approveAction}
+                />
+              )}
+              {showPrepPlaceholder && (
+                <div className="mt-4 space-y-3 text-left">
+                  <p className="text-[13px] text-text-muted">
+                    Generating briefing…
+                  </p>
+                  <div className="h-16 w-full max-w-md rounded-lg shimmer" />
+                  <div className="h-10 w-full max-w-sm rounded-lg shimmer" />
                 </div>
               )}
-              {!prose && state === "streaming" && steps.length === 0 && (
-                <div className="mt-3 h-4 w-32 rounded shimmer" />
-              )}
-              {actions.length > 0 && (
+              {!showPrepStructured &&
+                prose &&
+                !(prepSession && !prepPayload && state === "streaming") && (
+                  <div className="mt-3">
+                    <MarkdownView source={prose} />
+                    {state === "streaming" && (
+                      <span className="ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] animate-pulse bg-accent" />
+                    )}
+                  </div>
+                )}
+              {!showPrepStructured &&
+                prepSession &&
+                !prepPayload &&
+                state !== "streaming" &&
+                prose && (
+                  <>
+                    <div className="mt-3 rounded-md border border-border-soft/80 bg-surface2/40 px-3 py-2 text-[12px] text-text-muted">
+                      Briefing did not parse as structured JSON. Showing raw
+                      response below.
+                    </div>
+                    <div className="mt-2">
+                      <MarkdownView source={prose} />
+                    </div>
+                  </>
+                )}
+              {!prose &&
+                !showPrepStructured &&
+                !showPrepPlaceholder &&
+                state === "streaming" &&
+                steps.length === 0 && (
+                  <div className="mt-3 h-4 w-32 rounded shimmer" />
+                )}
+              {!showPrepStructured && actions.length > 0 && (
                 <InlineActions
                   actions={actions}
                   status={actionStatus}
