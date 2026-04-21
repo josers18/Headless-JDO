@@ -10,6 +10,8 @@ export const HORIZON_ASK_SUBMIT = "horizon:ask-submit";
 /** C-2 — fires `POST /api/prep` from the Ask surface (Prep me everywhere). */
 export const HORIZON_PREP_SUBMIT = "horizon:prep-submit";
 export const HORIZON_FOCUS_CLIENT = "horizon:focus-client";
+/** Clears Ask Bar thread + in-flight stream before navigating to logout. */
+export const HORIZON_SIGN_OUT = "horizon:sign-out";
 
 export type HorizonAskSubmitDetail = { q: string; context?: string };
 

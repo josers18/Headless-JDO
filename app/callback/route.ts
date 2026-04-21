@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken } from "@/lib/salesforce/oauth";
-import { setTokenCookie } from "@/lib/salesforce/token";
+import { persistTokenFromOAuthResponse } from "@/lib/salesforce/token";
 import { cookies } from "next/headers";
 import { log } from "@/lib/log";
 
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
       code,
       codeVerifier: verifier,
     });
-    setTokenCookie(token);
+    await persistTokenFromOAuthResponse(token);
     log.info("sf.oauth.success", { scope: token.scope });
     return NextResponse.redirect(new URL("/", origin));
   } catch (e) {

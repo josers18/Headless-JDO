@@ -6,6 +6,7 @@ import {
   HORIZON_ASK_SUBMIT,
   HORIZON_FOCUS_CLIENT,
   HORIZON_PREP_SUBMIT,
+  HORIZON_SIGN_OUT,
   type HorizonAskSubmitDetail,
   type HorizonPrepSubmitDetail,
 } from "@/lib/client/horizonEvents";
@@ -111,6 +112,12 @@ export function AskBar() {
     setActionStatus({});
     setPrepSession(null);
   }, [reset]);
+
+  useEffect(() => {
+    const fn = () => newConversation();
+    window.addEventListener(HORIZON_SIGN_OUT, fn);
+    return () => window.removeEventListener(HORIZON_SIGN_OUT, fn);
+  }, [newConversation]);
 
   // Pipe live dictation into the input. `interim` is the word-in-progress;
   // `transcript` is the finalized text. Concatenating gives the banker

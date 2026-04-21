@@ -10,6 +10,8 @@ import { SignalFeed } from "@/components/horizon/SignalFeed";
 import { SectionInsight } from "@/components/horizon/SectionInsight";
 import { AgentLog } from "@/components/horizon/AgentLog";
 import { ThemeSwitcher } from "@/components/horizon/ThemeSwitcher";
+import { UserMenu } from "@/components/horizon/UserMenu";
+import { getBankerMenuProfile } from "@/lib/salesforce/token";
 import { InstitutionDemoMode } from "@/components/horizon/InstitutionDemoMode";
 import { AskBar } from "@/components/horizon/AskBar";
 import { PulseStrip } from "@/components/horizon/PulseStrip";
@@ -25,6 +27,7 @@ export const dynamic = "force-dynamic";
 
 export default function HorizonHome() {
   const signedIn = Boolean(cookies().get("hz_sf")?.value);
+  const bankerMenu = signedIn ? getBankerMenuProfile() : null;
 
   return (
     <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56 xl:max-w-[1400px]">
@@ -46,6 +49,12 @@ export default function HorizonHome() {
           <header className="flex items-center justify-between animate-fade-rise">
             <HorizonMark />
             <div className="flex items-center gap-3">
+              {bankerMenu && (
+                <UserMenu
+                  bankerName={bankerMenu.name}
+                  bankerEmail={bankerMenu.email}
+                />
+              )}
               <ThemeSwitcher />
               <HeaderClock />
             </div>

@@ -3,7 +3,7 @@
  * routes against a live dev server.
  *
  * Reads SF_ACCESS_TOKEN + SF_INSTANCE_URL from env, crafts the `hz_sf` session
- * cookie the same way setTokenCookie() does, and hits:
+ * cookie the same shape as persistTokenFromOAuthResponse() writes, and hits:
  *
  *   GET  /api/health
  *   POST /api/brief   (SSE)
