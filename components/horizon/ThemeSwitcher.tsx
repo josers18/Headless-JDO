@@ -89,7 +89,15 @@ export function ThemeSwitcher() {
           // bookmarks bar or extension bars eat into `100vh`. The
           // backdrop itself scrolls, so if the dialog is taller than the
           // visible area the user can page through the whole sheet.
-          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overscroll-contain bg-black/50 px-4 py-[max(3vh,16px)] backdrop-blur-sm"
+          // z-[100] so the sheet beats every sticky header, the AskBar
+          // fixed at the bottom, the pulse strip, and the Reasoning
+          // Trail sticky summaries. The app's own stacking goes:
+          //   sticky top header .............. z-40
+          //   fixed AskBar .................... z-40
+          //   floating client detail sheet .... z-50
+          // so 100 is comfortably above all of them without being
+          // arbitrary-huge.
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto overscroll-contain bg-black/50 px-4 py-[max(3vh,16px)] backdrop-blur-sm"
           onClick={() => setOpen(false)}
           role="dialog"
           aria-modal

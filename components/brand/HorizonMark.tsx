@@ -1,10 +1,12 @@
 /**
  * HorizonMark — the product wordmark.
  *
- * F-4 (UI_V3_FIX): the header renders **Horizon** only. The tenant
- * ("Cumulus Bank" today, another institution under institution-demo mode)
- * is surfaced separately — in the user menu, the theme switcher, and the
- * B-1 institution overlay — so the wordmark stays stable as themes cycle.
+ * Reads "Cumulus Bank · Horizon" to anchor the product inside its
+ * demo-tenant context. The tenant label de-emphasizes (muted text +
+ * thin separator) so the eye still lands on "Horizon" as the product.
+ * If Institution Demo Mode swaps tenants at runtime, the overlay
+ * (InstitutionDemoMode) calls out the swap — this wordmark stays on
+ * the home tenant to keep a stable brand anchor.
  */
 export function HorizonMark({ className = "" }: { className?: string }) {
   return (
@@ -45,8 +47,12 @@ export function HorizonMark({ className = "" }: { className?: string }) {
           />
         </svg>
       </span>
-      <span className="font-display text-[13px] leading-tight tracking-tight text-text sm:text-[15px] md:text-[16px]">
-        Horizon
+      <span className="font-display text-[13px] leading-tight tracking-tight sm:text-[15px] md:text-[16px]">
+        <span className="text-text-muted">Cumulus Bank</span>
+        <span className="mx-1.5 text-text-muted/50" aria-hidden>
+          ·
+        </span>
+        <span className="text-text">Horizon</span>
       </span>
     </div>
   );
