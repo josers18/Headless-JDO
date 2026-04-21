@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
 import { dispatchAction } from "@/lib/client/actions/registry";
-import { ArrowDownRight, ArrowUpRight, Minus, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, X } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,11 @@ import {
   inferSalesforceObjectFromId,
   lightningRecordViewUrl,
 } from "@/lib/salesforce/recordLink";
-import type { McpServerName } from "@/types/horizon";
+import type { DraftAction, McpServerName } from "@/types/horizon";
+import {
+  extractRecordIdFromActionResult,
+  type DraftCardStatus,
+} from "@/components/horizon/DraftActionCard";
 
 function RecordNameLink({
   id,
@@ -98,6 +102,179 @@ interface ClientDetail {
     title: string;
     rationale: string;
   }>;
+}
+
+function targetObjectForDraft(clientId: string): DraftAction["target_object"] {
+  const o = inferSalesforceObjectFromId(clientId);
+  if (
+    o === "Account" ||
+    o === "Contact" ||
+    o === "Opportunity" ||
+    o === "Task" ||
+    o === "Case"
+  ) {
+    return o;
+  }
+  return "Account";
+}
+
+/** Same payload shape as pre-drafted actions — POST `/api/actions` executes via MCP. */
+function draftFromRecommendation(
+  a: ClientDetail["recommended_actions"][number],
+  clientId: string,
+  index: number
+): DraftAction {
+  const id =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? `sheet-rec-${crypto.randomUUID()}`
+      : `sheet-rec-${clientId}-${index}-${Date.now()}`;
+  const title = a.title.trim() || "Recommended action";
+  return {
+    id,
+    kind: a.kind,
+    title: title.slice(0, 500),
+    body: a.rationale.trim().slice(0, 12000),
+    target_object: targetObjectForDraft(clientId),
+    target_id: clientId,
+    confidence: 82,
+  };
+}
+
+function SheetRecommendedActionRow({
+  action,
+  index,
+  clientId,
+  sheetAccountId,
+  clientName,
+  base,
+}: {
+  action: ClientDetail["recommended_actions"][number];
+  index: number;
+  clientId: string;
+  sheetAccountId: string;
+  clientName?: string;
+  base: string | null;
+}) {
+  const [status, setStatus] = useState<DraftCardStatus>({ kind: "idle" });
+  const draft = useMemo(
+    () => draftFromRecommendation(action, clientId, index),
+    [action, clientId, index]
+  );
+
+  const run = useCallback(async () => {
+    setStatus({ kind: "executing" });
+    try {
+      const res = await fetch("/api/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: draft }),
+      });
+      const json = (await res.json().catch(() => null)) as {
+        result?: string;
+        error?: string;
+      } | null;
+      if (!res.ok) {
+        setStatus({
+          kind: "error",
+          message: json?.error ?? `Execute failed (${res.status})`,
+        });
+        return;
+      }
+      const recordId = extractRecordIdFromActionResult(json?.result ?? "");
+      setStatus({
+        kind: "done",
+        recordId,
+        message: json?.result ?? "",
+      });
+    } catch (e) {
+      setStatus({
+        kind: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }, [draft]);
+
+  const createdHref =
+    status.kind === "done" &&
+    status.recordId &&
+    base &&
+    inferSalesforceObjectFromId(status.recordId)
+      ? lightningRecordViewUrl(base, status.recordId)
+      : null;
+
+  return (
+    <li className="relative overflow-hidden rounded-xl border border-accent/25 bg-accent/5 px-4 py-3 transition hover:border-accent/45">
+      <div className="pointer-events-none absolute inset-0 bg-card-sheen opacity-60" aria-hidden />
+      <div className="relative space-y-3">
+        <div>
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-accent">
+            <span>{action.kind}</span>
+          </div>
+          <div className="mt-1 text-[14px] font-medium text-text">
+            <BriefRichText
+              text={action.title}
+              clientId={sheetAccountId}
+              clientName={clientName}
+              linkClassName="font-medium"
+              probeCoListedNames
+            />
+          </div>
+          <div className="mt-1 text-[12px] text-text-muted">
+            <BriefRichText
+              text={action.rationale}
+              clientId={sheetAccountId}
+              clientName={clientName}
+              probeCoListedNames
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border-soft/60 pt-3">
+          {status.kind === "idle" && (
+            <button
+              type="button"
+              onClick={() => void run()}
+              className="group/approve relative flex min-h-[44px] items-center justify-center gap-2 overflow-hidden rounded-md bg-accent-sheen px-4 py-2 text-[12px] font-medium text-bg shadow-glow transition hover:shadow-glow-2 md:min-h-0"
+            >
+              <Check size={12} strokeWidth={2.6} />
+              Approve &amp; run in Salesforce
+              <span className="sheen-overlay" aria-hidden />
+            </button>
+          )}
+          {status.kind === "executing" && (
+            <span className="flex items-center gap-2 text-[12px] text-text-muted">
+              <Loader2 size={12} className="animate-spin text-accent" />
+              Writing through salesforce_crm…
+            </span>
+          )}
+          {status.kind === "done" && (
+            <div className="flex flex-wrap items-center gap-2 text-[12px] text-emerald-300">
+              <span className="flex items-center gap-1.5">
+                <Check size={12} />
+                Executed in Salesforce
+              </span>
+              {createdHref && (
+                <a
+                  href={createdHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-md border border-emerald-400/40 px-2 py-1 text-[11px] text-emerald-200/90 underline-offset-2 hover:border-emerald-400/70"
+                >
+                  Open record
+                </a>
+              )}
+            </div>
+          )}
+          {status.kind === "error" && (
+            <div className="flex items-center gap-2 text-[12px] text-red-300">
+              <X size={12} />
+              {status.message}
+            </div>
+          )}
+        </div>
+      </div>
+    </li>
+  );
 }
 
 export function ClientDetailSheet({
@@ -456,36 +633,22 @@ export function ClientDetailSheet({
 
           {detail?.recommended_actions && detail.recommended_actions.length > 0 && (
             <Section title="Recommended actions">
-              <ul className="space-y-2">
+              <p className="mb-4 max-w-prose text-[12px] leading-relaxed text-text-muted">
+                Tap <span className="text-text/90">Approve &amp; run</span> to
+                commit this draft to Salesforce under your session — same path
+                as Pre-drafted actions.
+              </p>
+              <ul className="space-y-3">
                 {detail.recommended_actions.map((a, i) => (
-                  <li
-                    key={i}
-                    className="relative overflow-hidden rounded-xl border border-accent/25 bg-accent/5 px-4 py-3"
-                  >
-                    <div className="pointer-events-none absolute inset-0 bg-card-sheen opacity-60" aria-hidden />
-                    <div className="relative">
-                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-accent">
-                        <span>{a.kind}</span>
-                      </div>
-                      <div className="mt-1 text-[14px] font-medium text-text">
-                        <BriefRichText
-                          text={a.title}
-                          clientId={sheetAccountId}
-                          clientName={detail.name ?? clientName}
-                          linkClassName="font-medium"
-                          probeCoListedNames
-                        />
-                      </div>
-                      <div className="mt-1 text-[12px] text-text-muted">
-                        <BriefRichText
-                          text={a.rationale}
-                          clientId={sheetAccountId}
-                          clientName={detail.name ?? clientName}
-                          probeCoListedNames
-                        />
-                      </div>
-                    </div>
-                  </li>
+                  <SheetRecommendedActionRow
+                    key={`recommended-${sheetAccountId}-${i}`}
+                    action={a}
+                    index={i}
+                    clientId={clientId}
+                    sheetAccountId={sheetAccountId}
+                    clientName={detail.name ?? clientName}
+                    base={base}
+                  />
                 ))}
               </ul>
             </Section>
