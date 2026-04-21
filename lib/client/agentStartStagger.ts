@@ -6,10 +6,10 @@
 export const AGENT_STAGGER_MS = {
   /** Morning brief — keep first. */
   brief: 0,
-  pulseStrip: 100,
-  insightsBatch: 200,
-  arc: 320,
-  priority: 440,
-  portfolioPulse: 560,
-  drafts: 680,
+  pulseStrip: 280,
+  insightsBatch: 560,
+  arc: 900,
+  priority: 1280,
+  portfolioPulse: 1680,
+  drafts: 2080,
 } as const;

@@ -34,6 +34,13 @@ export interface AgentStreamState {
   reset: () => void;
 }
 
+const RETRYABLE_STATUS = new Set([502, 503]);
+const FETCH_MAX_ATTEMPTS = 3;
+
+function backoffMs(attemptIndex: number): number {
+  return 450 * (attemptIndex + 1) + Math.floor(Math.random() * 350);
+}
+
 type IncomingEvent =
   | { type: "text_delta"; text: string }
   | { type: "tool_use"; server: string; tool: string; input: unknown }
@@ -89,33 +96,66 @@ export function useAgentStream(): AgentStreamState {
 
       const method = opts?.method ?? (body !== undefined ? "POST" : "GET");
 
-      let res: Response;
-      try {
-        res = await fetch(url, {
-          method,
-          headers:
-            method === "POST"
-              ? { "Content-Type": "application/json" }
-              : undefined,
-          body:
-            method === "POST" && body !== undefined
-              ? JSON.stringify(body)
-              : undefined,
-          signal: ctrl.signal,
-        });
-      } catch (e) {
+      let res: Response | undefined;
+      for (let attempt = 0; attempt < FETCH_MAX_ATTEMPTS; attempt++) {
         if (ctrl.signal.aborted) return;
-        setError(e instanceof Error ? e.message : String(e));
+        try {
+          res = await fetch(url, {
+            method,
+            headers:
+              method === "POST"
+                ? { "Content-Type": "application/json" }
+                : undefined,
+            body:
+              method === "POST" && body !== undefined
+                ? JSON.stringify(body)
+                : undefined,
+            signal: ctrl.signal,
+          });
+        } catch (e) {
+          if (ctrl.signal.aborted) return;
+          const retryable =
+            attempt < FETCH_MAX_ATTEMPTS - 1 &&
+            e instanceof TypeError &&
+            /fetch|network|load failed|failed to fetch/i.test(
+              e.message || String(e)
+            );
+          if (retryable) {
+            await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+            continue;
+          }
+          setError(e instanceof Error ? e.message : String(e));
+          setState("error");
+          return;
+        }
+
+        if (res.ok && res.body) break;
+
+        if (res.status === 401) {
+          setError("Session expired. Visit /api/connect to reactivate.");
+          setState("error");
+          return;
+        }
+
+        const canRetry =
+          attempt < FETCH_MAX_ATTEMPTS - 1 &&
+          RETRYABLE_STATUS.has(res.status);
+        if (canRetry) {
+          await new Promise((r) => setTimeout(r, backoffMs(attempt)));
+          continue;
+        }
+
+        setError(
+          res.status === 503 || res.status === 502
+            ? `Request failed: ${res.status} (service busy — try Refresh)`
+            : `Request failed: ${res.status}`
+        );
         setState("error");
         return;
       }
 
-      if (!res.ok || !res.body) {
-        setError(
-          res.status === 401
-            ? "Session expired. Visit /api/connect to reactivate."
-            : `Request failed: ${res.status}`
-        );
+      if (!res?.ok || !res.body) {
+        setError("Request failed: no response body");
         setState("error");
         return;
       }
