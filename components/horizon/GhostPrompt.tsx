@@ -10,15 +10,19 @@ export function GhostPrompt({
   text,
   className,
   context,
+  title,
 }: {
   text: string;
   className?: string;
   /** Optional extra scroll/focus line merged into the ask payload. */
   context?: string;
+  /** Tooltip / a11y name when the label is truncated. */
+  title?: string;
 }) {
   return (
     <button
       type="button"
+      title={title ?? text}
       onClick={() => {
         const detail: HorizonAskSubmitDetail = { q: text };
         if (context && context.trim()) detail.context = context.trim();

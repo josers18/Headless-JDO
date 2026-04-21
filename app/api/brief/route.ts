@@ -6,6 +6,7 @@ import { morningBriefPrompt } from "@/lib/prompts/morning-brief";
 import { makeSseStream } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
+import { hourInTimeZone } from "@/lib/signoffPolicy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,10 +24,12 @@ export async function POST(_req: NextRequest) {
   // banker's intended zone via an env var. Defaults to America/New_York
   // which fits the demo; swap via DEMO_BANKER_TZ for any other TZDB name.
   const tz = optionalEnv("DEMO_BANKER_TZ", "America/New_York");
+  const localHour24 = hourInTimeZone(now, tz);
   const prompt = morningBriefPrompt({
     bankerName: optionalEnv("DEMO_BANKER_NAME", "there"),
     bankerUserId:
       token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown"),
+    localHour24,
     localTime: now.toLocaleTimeString([], {
       hour: "numeric",
       minute: "2-digit",

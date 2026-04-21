@@ -4,11 +4,23 @@ export interface MorningBriefPromptArgs {
   dayOfWeek: string;
   date: string;
   bankerUserId: string;
+  /** Banker's wall-clock hour 0–23 in DEMO_BANKER_TZ (I-1 signoff bands). */
+  localHour24: number;
 }
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
+  const h = a.localHour24;
+  const band =
+    h >= 6 && h < 11
+      ? "MORNING (6–11 local)"
+      : h >= 11 && h < 15
+        ? "MIDDAY (11–15 local)"
+        : h >= 15 && h < 19
+          ? "WRAP-UP (15–19 local)"
+          : "OFF-HOURS (before 6 or after 19 local)";
   return `Generate today's morning brief for ${a.bankerName}. It is ${a.localTime} on ${a.dayOfWeek}, ${a.date}.
+Banker's local hour (24h clock): ${h}. Signoff time band: ${band}.
 
 TOOL SELECTION — STRICT RULES
 For ANY morning brief, you MUST call at least TWO different MCP servers.
@@ -83,6 +95,14 @@ Always set right_now_index — default 0 only when item 0 is clearly the best.
 JSON field rules:
 - Whenever you set "client_id" to a Salesforce 15- or 18-character Id, you MUST also set "client_name" to that record's human-readable name (Account Name, Contact Name, etc.) from the tool response you used — the UI links names in the copy to Salesforce.
 - If headline/why/suggested_action name MORE than one specific Account or Contact (e.g. "Judy Odom", "Harry Gray", and "Susan Hall"), "entity_links" MUST list { "client_id", "client_name" } for EVERY named person or account (except only duplicate the primary client_id if it is the same record). Omit "entity_links" only when a single client is named. Missing links for named clients is a defect.
+
+SIGNOFF (field "signoff") — HARD RULES (I-1):
+- One line only, max 14 words, professional concierge tone (not wellness / not parenting).
+- MORNING band (6–11 local): forward-looking; may use "morning" / "today" naturally.
+- MIDDAY band (11–15 local): mid-day check; reference the next concrete move; do NOT use the words "morning" or "Good morning".
+- WRAP-UP band (15–19 local): end-of-day framing, tomorrow prep allowed, but no rest/sleep/wellness language; do NOT use "morning" or "Good morning".
+- OFF-HOURS band (before 6 or after 19 local): NEUTRAL only — e.g. "Two items flagged for tomorrow — everything else can wait." FORBIDDEN: rest, sleep, wellness, "get some rest", "go to sleep", "first thing in the morning", scolding about lateness. Do NOT use "morning" or "Good morning".
+- The substring "morning" (any case) may appear in signoff ONLY in the MORNING band.
 
 Return structured JSON ONLY (no prose, no markdown fences):
 {

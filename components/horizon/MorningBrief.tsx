@@ -216,7 +216,7 @@ export function MorningBrief() {
 
       {heroItem && cta && (
         <section
-          className="relative mt-12 animate-fade-rise rounded-2xl border border-border-soft/80 bg-surface2/50 p-6 shadow-[0_24px_60px_-40px_rgba(0,0,0,0.55)] md:p-8"
+          className="relative mt-10 animate-fade-rise rounded-2xl border border-border-soft/80 bg-surface2/50 p-6 shadow-[0_24px_60px_-40px_rgba(0,0,0,0.55)] md:p-8"
           aria-labelledby="right-now-heading"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -382,7 +382,7 @@ export function MorningBrief() {
           the Priority Queue. */}
 
       {brief?.signoff && (
-        <div className="relative mt-12 max-w-prose text-[13px] italic leading-relaxed text-text-muted">
+        <div className="relative mt-8 max-w-prose text-[13px] italic leading-relaxed text-text-muted">
           {brief.signoff}
         </div>
       )}

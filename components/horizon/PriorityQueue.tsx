@@ -133,10 +133,25 @@ export function PriorityQueue() {
     });
   }, []);
 
-  const ghost =
-    clients[0]?.name != null
-      ? `Why is ${clients[0].name} ranked first today?`
-      : "What should I focus on first in my book today?";
+  const ghostPrompt = useMemo((): { text: string; title: string } | null => {
+    if (clients.length === 0) return null;
+    if (clients.length >= 4) {
+      return {
+        text: "Four names are on deck — want similar follow-ups drafted in one batch?",
+        title: "Batch drafting for similar follow-ups",
+      };
+    }
+    if (clients.length >= 2) {
+      return {
+        text: "Want a tight read on what ties the top two rows together?",
+        title: "Pattern read across top priority rows",
+      };
+    }
+    return {
+      text: "What moved for this client in the last week that pushed them to the top?",
+      title: "Recent movement on the #1 priority client",
+    };
+  }, [clients.length]);
 
   return (
     <div data-horizon-section="priority">
@@ -159,10 +174,11 @@ export function PriorityQueue() {
         )}
       </div>
 
-      {clients.length > 0 && (
+      {ghostPrompt && (
         <div className="mt-4">
           <GhostPrompt
-            text={ghost}
+            text={ghostPrompt.text}
+            title={ghostPrompt.title}
             context="The banker is viewing the priority queue."
           />
         </div>

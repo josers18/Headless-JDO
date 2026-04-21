@@ -3,7 +3,7 @@
 // F-5 rules: temperature label FIRST in ALL CAPS · positives over negatives ·
 // ≤ 4 segments · 2–4 words per segment · max 12 words total.
 
-export const PULSE_STRIP_PROMPT_VERSION = "v1.1.0-2026-04-20";
+export const PULSE_STRIP_PROMPT_VERSION = "v1.2.0-2026-04-20";
 
 export interface PulseStripPromptArgs {
   bankerUserId: string;
@@ -30,23 +30,23 @@ TEMPERATURE — pick exactly one:
 - ATTENTION — one or two time-sensitive items OR a notable pattern; nothing requiring action within 4 hours that is material/compliance-critical.
 - URGENT — something should happen within 4 hours OR tool results show a material anomaly / time-bound risk for this banker today.
 
-STRIP COPY RULES (flight-deck callout style — these are hard rules, not suggestions):
-- Lead with the TEMPERATURE LABEL in ALL CAPS (e.g. "QUIET MONDAY", "ATTENTION", "URGENT"). It is always the first thing the eye sees.
-- Max 4 segments separated by " · ". Fewer is better.
-- Each segment is 2–4 words. No sentences, no verbs-of-being, no connectives.
-- Prefer positives over negatives: "open afternoon" beats "no events today"; "calendar clear" beats "nothing scheduled"; "book steady" beats "no flags".
-- Use specific, mildly urgent nouns when something is real: "2 long-overdue" beats "2 tasks overdue"; "Chen flag review" beats "1 client flagged".
-- Never pad with filler ("as of today", "for you", "right now") — bankers already know that.
-- Total word count across all segments ≤ 12 words (not counting a single optional leading emoji).
+STRIP COPY RULES (flight-deck callout — hard rules, I-2):
+- Segment 1: TEMPERATURE LABEL in ALL CAPS (e.g. "QUIET MONDAY", "ATTENTION", "URGENT") — always first.
+- Segments 2–3 (optional 4th): ONLY urgency-relevant counts, deadlines, flags, or named risks. No neutral or "good news" padding mixed into ATTENTION/URGENT.
+- Segment 4 (optional): next scheduled event only, form "next: 10AM Patel" — OR omit if none.
+- Each segment 2–4 words. No sentences, no verbs-of-being, no filler ("as of today", "for you", "right now").
+- NEVER put neutral/positive housekeeping in ATTENTION or URGENT strips (e.g. "calendar clear", "nothing overdue", "book stable", "open afternoon", "5 tasks created this week"). Positive slack belongs in Portfolio Pulse tiles, not here.
+- QUIET days: SHORT strip (temperature + at most one workload count + optional "next: …"). Do not pad QUIET with filler to reach 4 segments.
+- Total words across all segments ≤ 12 (excluding one optional leading emoji).
 
 GOOD EXAMPLES:
-- "QUIET MONDAY · 8 open tasks · 2 long-overdue · open afternoon"
+- "QUIET TUESDAY · 8 open tasks · next: 3PM Patel"
 - "ATTENTION · 5 due today · Chen flag · next 10AM Patel"
-- "URGENT · HNW overdraft · draft ready · send before EOD"
+- "URGENT · HNW overdraft · draft ready · before EOD"
 
 BAD EXAMPLES (do not produce these):
-- "8 open tasks · 2 overdue from July · no events today" — no temperature lead, negative framing
-- "You have 5 tasks due today and 2 overdue" — sentence, not a callout
+- "URGENT · 2 long-overdue · 8 open tasks · calendar clear" — mixes danger with irrelevant good news
+- "8 open tasks · 2 overdue from July · no events today" — no temperature lead
 - "QUIET MONDAY · There are 8 open tasks to review today" — filler words
 
 OUTPUT — return a single JSON object ONLY (no markdown fence, no prose before or after):
@@ -60,5 +60,5 @@ OUTPUT — return a single JSON object ONLY (no markdown fence, no prose before 
   "strip_line": "string — the entire one-line strip for the UI, following STRIP COPY RULES above. ≤ 12 words. Always begins with temperature_label in ALL CAPS."
 }
 
-Never invent client names, times, or Ids — only facts from tool results. If tools are empty, set temperature QUIET, review_count 0, next_event null, flag_count 0, strip_line: "QUIET · nothing pressing · open day".`;
+Never invent client names, times, or Ids — only facts from tool results. If tools are empty, set temperature QUIET, review_count 0, next_event null, flag_count 0, strip_line: "QUIET · nothing pressing".`;
 }

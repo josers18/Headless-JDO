@@ -70,45 +70,45 @@ export default function HorizonHome() {
                   so the banker can see ambient awareness while scrolling the
                   main briefing column. Below 1280px the layout stays single-
                   column with Signals at the bottom (original rhythm). */}
-              <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:gap-12">
+              <div className="xl:grid xl:grid-cols-[minmax(0,3fr)_minmax(0,1fr)] xl:gap-10">
                 <div className="min-w-0">
-                <section className="mt-16 md:mt-20 animate-fade-rise stagger-1">
+                <section className="mt-12 md:mt-16 animate-fade-rise stagger-1">
                   <MorningBrief />
                 </section>
 
                 <Divider className="stagger-2" />
-                <section className="mt-16 animate-fade-rise stagger-2">
+                <section className="mt-12 animate-fade-rise stagger-2">
                   <TodaysArc />
                 </section>
 
                 <Divider className="stagger-3" />
-                <section className="mt-16 animate-fade-rise stagger-3">
+                <section className="mt-12 animate-fade-rise stagger-3">
                   <SectionInsight section="priority" label="Priority queue" className="mb-6" />
                   <PriorityQueue />
                 </section>
 
                 <Divider className="stagger-4" />
-                <section className="mt-16 animate-fade-rise stagger-4">
+                <section className="mt-12 animate-fade-rise stagger-4">
                   <SectionInsight section="pulse" label="Portfolio pulse" className="mb-6" />
                   <PortfolioPulse />
                 </section>
 
                 <Divider className="stagger-5" />
-                <section className="mt-16 animate-fade-rise stagger-5">
+                <section className="mt-12 animate-fade-rise stagger-5">
                   <SectionInsight section="drafts" label="Pre-drafted actions" className="mb-6" />
                   <PreDraftedActions />
                 </section>
 
                 <div className="xl:hidden">
                   <Divider className="stagger-6" />
-                  <section className="mt-16 animate-fade-rise stagger-6">
+                  <section className="mt-12 animate-fade-rise stagger-6">
                     <SectionInsight section="signals" label="Live signals" className="mb-6" />
                     <SignalFeed />
                   </section>
                 </div>
               </div>
 
-              <aside className="mt-16 hidden xl:block">
+              <aside className="mt-12 hidden min-w-0 xl:block">
                 <div className="sticky top-[180px] animate-fade-rise stagger-2 space-y-4">
                   <SectionInsight section="signals" label="Live signals" />
                   <SignalFeed />
@@ -135,5 +135,5 @@ export default function HorizonHome() {
 // Hairline section divider — used between the five surface sections of
 // the home page to establish rhythm without adding heavy borders.
 function Divider({ className = "" }: { className?: string }) {
-  return <div className={`mt-20 hairline animate-fade-in ${className}`} aria-hidden />;
+  return <div className={`mt-14 hairline animate-fade-in ${className}`} aria-hidden />;
 }

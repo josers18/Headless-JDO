@@ -1,6 +1,17 @@
 "use client";
 
-import { Check, Loader2, Mail, Phone, Pencil, ListTodo, X, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Check,
+  Loader2,
+  Mail,
+  MoreHorizontal,
+  Phone,
+  Pencil,
+  ListTodo,
+  X,
+  Sparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { stripDraftDisplayNoise } from "@/lib/client/stripSalesforceIds";
 import { tryParseJson } from "@/lib/client/jsonStream";
@@ -31,6 +42,168 @@ export function extractRecordIdFromActionResult(text: string): string | undefine
   if (m?.[1]) return m[1];
   const bare = text.match(/\b([a-zA-Z0-9]{15,18})\b/);
   return bare?.[1];
+}
+
+/** I-5 — three visible actions + overflow (Prep, Dismiss, Approve + ⋯). */
+function DraftIdleActions({
+  draft,
+  onApprove,
+  onDismiss,
+}: {
+  draft: StreamedDraft;
+  onApprove: () => void;
+  onDismiss: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <>
+      {draft.target_id && (
+        <button
+          type="button"
+          onClick={() =>
+            void dispatchAction({
+              kind: "prep",
+              label: "Prep me",
+              clientId: draft.target_id!,
+            })
+          }
+          className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-border hover:text-text md:min-h-0"
+        >
+          <Sparkles size={12} />
+          <span className="hidden sm:inline">Prep me</span>
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-border hover:text-text md:min-h-0 md:min-w-0"
+      >
+        <X size={12} />
+        <span className="hidden sm:inline">Dismiss</span>
+      </button>
+      <button
+        type="button"
+        onClick={onApprove}
+        className="group/approve relative flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 overflow-hidden rounded-md bg-accent-sheen px-3.5 py-1.5 text-[12px] font-medium text-bg shadow-glow transition hover:shadow-glow-2 md:min-h-0 md:min-w-0"
+      >
+        <Check size={12} strokeWidth={2.6} />
+        <span className="hidden sm:inline">Approve & execute</span>
+        <span className="sheen-overlay" aria-hidden />
+      </button>
+
+      <div className="relative" ref={wrapRef}>
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="inline-flex size-10 items-center justify-center rounded-md border border-border-soft text-text-muted transition hover:border-border hover:text-text md:size-9"
+          title="More actions"
+        >
+          <MoreHorizontal size={16} />
+        </button>
+        {open && (
+          <div
+            role="menu"
+            className="absolute bottom-[calc(100%+6px)] right-0 z-30 w-[220px] overflow-hidden rounded-xl border border-border bg-surface shadow-[0_24px_60px_-30px_rgba(0,0,0,0.6)] sm:bottom-auto sm:top-[calc(100%+6px)]"
+          >
+            {draft.kind === "task" && draft.target_id && (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full px-3 py-2.5 text-left text-[12px] text-amber-200 transition hover:bg-surface2"
+                onClick={() => {
+                  setOpen(false);
+                  void dispatchAction({
+                    kind: "do_for_me",
+                    label: "Do this for me",
+                    plan: {
+                      kind: "task",
+                      clientId: draft.target_id,
+                      subject: draft.title,
+                    },
+                    reason: draft.body,
+                  });
+                }}
+              >
+                Do this for me
+              </button>
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full px-3 py-2.5 text-left text-[12px] text-text transition hover:bg-surface2"
+              onClick={() => {
+                setOpen(false);
+                void dispatchAction({
+                  kind: "investigate",
+                  label: "Edit draft",
+                  question: `Sharpen this ${draft.kind} draft before I approve.\nTitle: ${draft.title}\nBody: ${draft.body}`,
+                  context: draft.target_id
+                    ? `Client id: ${draft.target_id}`
+                    : undefined,
+                });
+              }}
+            >
+              Edit draft
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full px-3 py-2.5 text-left text-[12px] text-text transition hover:bg-surface2"
+              onClick={() => {
+                setOpen(false);
+                void dispatchAction({
+                  kind: "snooze",
+                  label: "Snooze 1d",
+                  itemKey: `draft:${draft.id}`,
+                  minutes: 1440,
+                });
+              }}
+            >
+              Snooze 1d
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full px-3 py-2.5 text-left text-[12px] text-text transition hover:bg-surface2"
+              onClick={() => {
+                setOpen(false);
+                void dispatchAction({
+                  kind: "investigate",
+                  label: "Reassign",
+                  question: `Who else on the team should own the next step for this ${draft.kind} (${draft.title})? Internal reassignment only — draft a recommendation.`,
+                  context: draft.target_id
+                    ? `Client id: ${draft.target_id}`
+                    : undefined,
+                });
+              }}
+            >
+              Reassign
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
 }
 
 function KindIcon({ kind }: { kind: DraftAction["kind"] }) {
@@ -176,16 +349,15 @@ export function DraftActionCard({
             >
               <KindIcon kind={draft.kind} />
             </span>
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-text-muted">
+            <div
+              className="flex items-center gap-2 text-[11px] uppercase tracking-[0.14em] text-text-muted"
+              title={
+                typeof draft.confidence === "number"
+                  ? `Internal fit estimate: ${Math.round(draft.confidence)}%`
+                  : undefined
+              }
+            >
               <span>{draft.kind}</span>
-              {typeof draft.confidence === "number" && (
-                <>
-                  <span className="text-text-muted/40">·</span>
-                  <span className="font-mono">
-                    {Math.round(draft.confidence)}%
-                  </span>
-                </>
-              )}
             </div>
           </div>
           {targetHref ? (
@@ -241,73 +413,12 @@ export function DraftActionCard({
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
           {status.kind === "idle" && (
-            <>
-              {/* C-2 — Prep me everywhere. Available on every draft card so
-                  the banker can fetch a per-client briefing before approving. */}
-              {draft.target_id && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void dispatchAction({
-                      kind: "prep",
-                      label: "Prep me",
-                      clientId: draft.target_id!,
-                    })
-                  }
-                  className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-border hover:text-text md:min-h-0"
-                >
-                  <Sparkles size={12} />
-                  <span className="hidden sm:inline">Prep me</span>
-                </button>
-              )}
-              {/* C-3 — Do this for me. Only exposed on task-kind drafts since
-                  the autonomy allowlist only permits internal Task writes
-                  without explicit per-action approval. Email / update still
-                  route through the Approve button. */}
-              {draft.kind === "task" && draft.target_id && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    void dispatchAction({
-                      kind: "do_for_me",
-                      label: "Do this for me",
-                      plan: {
-                        kind: "task",
-                        clientId: draft.target_id,
-                        subject: draft.title,
-                      },
-                      reason: draft.body,
-                    })
-                  }
-                  className="flex min-h-[44px] items-center gap-1.5 rounded-md border border-accent/40 bg-accent/5 px-3 py-1.5 text-[12px] text-accent transition hover:border-accent hover:bg-accent/10 md:min-h-0"
-                  title="Auto-execute — allowed by autonomy rules (internal Task creation)."
-                >
-                  Do this for me
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onDismiss}
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-md border border-border-soft px-3 py-1.5 text-[12px] text-text-muted transition hover:border-border hover:text-text md:min-h-0 md:min-w-0"
-              >
-                <X size={12} />
-                <span className="hidden sm:inline">Dismiss</span>
-              </button>
-              <button
-                type="button"
-                onClick={onApprove}
-                className="group/approve relative flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 overflow-hidden rounded-md bg-accent-sheen px-3.5 py-1.5 text-[12px] font-medium text-bg shadow-glow transition hover:shadow-glow-2 md:min-h-0 md:min-w-0"
-              >
-                <Check size={12} strokeWidth={2.6} />
-                <span className="hidden sm:inline">Approve & execute</span>
-                <span className="sheen-overlay" aria-hidden />
-              </button>
-            </>
+            <DraftIdleActions draft={draft} onApprove={onApprove} onDismiss={onDismiss} />
           )}
           {status.kind === "executing" && (
             <span className="flex items-center gap-2 text-[12px] text-text-muted">
               <Loader2 size={12} className="animate-spin text-accent" />
-              Writing through salesforce_crm…
+              Writing through CRM…
             </span>
           )}
           {status.kind === "done" && (

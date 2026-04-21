@@ -4,8 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  Check,
+  ChevronRight,
+  ClipboardList,
   Heart,
   Loader2,
+  Mail,
+  MessageSquare,
+  Phone,
   RefreshCw,
   TrendingUp,
   Zap,
@@ -22,6 +28,9 @@ import {
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
 import { dispatchAction } from "@/lib/client/actions/registry";
+import { primaryActionForSignal } from "@/lib/signals/signalRowActions";
+import type { HorizonAction } from "@/lib/client/actions/registry";
+import type { McpServerName } from "@/types/horizon";
 
 const POLL_INTERVAL_MS = 45_000;
 
@@ -168,10 +177,7 @@ export function SignalFeed() {
   );
 }
 
-// Individual signal row. A severity-colored left border + a soft matching
-// glow gives bankers an instant visual read. The kind icon on the right
-// adds a second layer of pattern recognition (transaction, engagement,
-// life event, KPI, risk).
+// I-3 / P-4 — compact rail row: ≤2 lines, source on hover, right-edge icon primary.
 function SignalRow({
   signal,
   index,
@@ -193,23 +199,32 @@ function SignalRow({
     signal.severity === "high"
       ? "bg-red-400"
       : signal.severity === "med"
-      ? "bg-amber-400"
-      : "bg-emerald-400";
+        ? "bg-amber-400"
+        : "bg-emerald-400";
   const glowClass =
     signal.severity === "high"
       ? "glow-down"
       : signal.severity === "med"
-      ? "glow-warn"
-      : undefined;
+        ? "glow-warn"
+        : undefined;
   const stagger =
-    index < 6 ? ["stagger-1", "stagger-2", "stagger-3", "stagger-4", "stagger-5", "stagger-6"][index] : "stagger-6";
+    index < 6
+      ? ["stagger-1", "stagger-2", "stagger-3", "stagger-4", "stagger-5", "stagger-6"][index]
+      : "stagger-6";
 
   const interactive = Boolean(signal.client_id);
+  const primary = primaryActionForSignal(signal);
+  const PrimaryIcon = iconForPrimaryAction(primary.action);
+  const sourceHover = sourceChipLabel(signal.source);
+  const displayName = signal.client_name
+    ? truncateEllipsis(signal.client_name, 24)
+    : null;
 
   return (
     <li
+      title={`${signal.summary}${sourceHover ? ` — ${sourceHover}` : ""}`}
       className={cn(
-        "group relative animate-fade-rise flex items-center gap-4 overflow-hidden rounded-lg border border-border-soft bg-surface px-4 py-3 transition-colors duration-med hover:border-border",
+        "group relative animate-fade-rise flex items-start gap-3 overflow-hidden rounded-lg border border-border-soft bg-surface px-3 py-2.5 transition-colors duration-med hover:border-border",
         interactive && "cursor-pointer",
         glowClass,
         stagger
@@ -228,121 +243,159 @@ function SignalRow({
       }}
     >
       <span
-        className={cn("absolute left-0 top-0 h-full w-[2px]", severityBar, signal.severity === "high" && "animate-glow-pulse")}
+        className={cn(
+          "absolute left-0 top-0 h-full w-[2px]",
+          severityBar,
+          signal.severity === "high" && "animate-glow-pulse"
+        )}
         aria-hidden
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] text-text">
-            <BriefRichText
-              text={signal.summary}
-              clientId={signal.client_id}
-              clientName={signal.client_name}
-            />
+        <p className="line-clamp-2 text-[13px] leading-snug text-text">
+          <BriefRichText
+            text={signal.summary}
+            clientId={signal.client_id}
+            clientName={signal.client_name}
+          />
+        </p>
+        <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-[10px] text-text-muted">
+          <div className="min-w-0 truncate normal-case tracking-normal">
+            {displayName && (
+              <>
+                {clientHref ? (
+                  <a
+                    href={clientHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-text/90 underline decoration-border underline-offset-2 hover:decoration-accent hover:text-accent"
+                    title={signal.client_name}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {displayName}
+                  </a>
+                ) : (
+                  <span title={signal.client_name}>{displayName}</span>
+                )}
+                <span className="text-text-muted/50"> · </span>
+              </>
+            )}
+            <span className="font-mono text-[10px] text-text-muted/80">
+              {signal.timestamp ? formatTimestamp(signal.timestamp) : ""}
+            </span>
+          </div>
+          <span className="hidden max-w-[100px] shrink-0 truncate font-mono text-[9px] uppercase tracking-[0.1em] text-text-muted/70 xl:group-hover:inline">
+            {sourceHover}
           </span>
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
-          {signal.client_name && (
-            <>
-              {clientHref ? (
-                <a
-                  href={clientHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="normal-case tracking-normal text-accent underline decoration-accent/35 underline-offset-2 hover:decoration-accent"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {signal.client_name}
-                </a>
-              ) : (
-                <span className="normal-case tracking-normal text-text-muted">
-                  {signal.client_name}
-                </span>
-              )}
-              <span>·</span>
-            </>
-          )}
-          <span>{signal.kind}</span>
-          <span>·</span>
-          <span>{signal.source}</span>
-          {signal.timestamp && (
-            <>
-              <span>·</span>
-              <span className="normal-case tracking-normal text-text-muted/80">
-                {formatTimestamp(signal.timestamp)}
-              </span>
-            </>
-          )}
         </div>
       </div>
 
-      {/* A-4 — per-signal quick actions. Shown on row hover so the feed
-          still reads as ambient awareness, but every signal is one tap
-          from an agent investigation or a drafted response. Kind-aware
-          CTA: transactions → "Call", risk → "Draft note", engagement →
-          "Why?", default → "Why?". */}
       <div
-        className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+        className="flex shrink-0 flex-col items-end gap-1"
         data-actionrow-noclick
       >
-        {signal.client_id && signal.kind === "transaction" && (
+        <div className="hidden items-center gap-0.5 xl:group-hover:flex">
+          {signal.client_id && signal.kind === "transaction" && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void dispatchAction({
+                  kind: "draft_call",
+                  label: "Call",
+                  clientId: signal.client_id,
+                  clientName: signal.client_name,
+                  reason: signal.summary,
+                });
+              }}
+              className="rounded border border-border-soft px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-muted hover:border-border"
+            >
+              Call
+            </button>
+          )}
+          {signal.client_id && signal.severity === "high" && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void dispatchAction({
+                  kind: "draft_email",
+                  label: "Respond",
+                  clientId: signal.client_id,
+                  clientName: signal.client_name,
+                  reason: signal.summary,
+                });
+              }}
+              className="rounded border border-border-soft px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-muted hover:border-border"
+            >
+              Respond
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               void dispatchAction({
-                kind: "draft_call",
-                label: "Call",
-                clientId: signal.client_id,
-                clientName: signal.client_name,
-                reason: signal.summary,
+                kind: "investigate",
+                label: "Why?",
+                question: `Investigate this signal: "${signal.summary}". What is the context from unified data and CRM, and what should I do next?`,
+                context: signal.client_id
+                  ? `Client id: ${signal.client_id}`
+                  : undefined,
               });
             }}
-            className="rounded-md border border-border-soft px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-text-muted transition hover:border-border hover:text-text"
+            className="rounded border border-border-soft px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-text-muted hover:border-border"
           >
-            Call
+            Why?
           </button>
-        )}
-        {signal.client_id && signal.severity === "high" && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              void dispatchAction({
-                kind: "draft_email",
-                label: "Respond",
-                clientId: signal.client_id,
-                clientName: signal.client_name,
-                reason: signal.summary,
-              });
-            }}
-            className="rounded-md border border-border-soft px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-text-muted transition hover:border-border hover:text-text"
-          >
-            Respond
-          </button>
-        )}
+        </div>
         <button
           type="button"
+          aria-label={primary.aria}
+          title={primary.action.label}
           onClick={(e) => {
             e.stopPropagation();
-            void dispatchAction({
-              kind: "investigate",
-              label: "Why?",
-              question: `Investigate this signal: "${signal.summary}". What's the context from data_360 and salesforce_crm, and what should I do next?`,
-              context: signal.client_id
-                ? `Client id: ${signal.client_id}`
-                : undefined,
-            });
+            void dispatchAction(primary.action);
           }}
-          className="rounded-md border border-border-soft px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-text-muted transition hover:border-border hover:text-text"
+          className="inline-flex size-9 items-center justify-center rounded-lg border border-border-soft text-text-muted transition hover:border-accent/50 hover:bg-surface2 hover:text-accent"
         >
-          Why?
+          <PrimaryIcon size={15} strokeWidth={2.1} />
         </button>
       </div>
 
-      <KindIcon kind={signal.kind} severity={signal.severity} />
     </li>
   );
+}
+
+function truncateEllipsis(s: string, max: number): string {
+  const t = s.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function sourceChipLabel(s: McpServerName): string {
+  if (s === "salesforce_crm") return "CRM";
+  if (s === "data_360") return "Unified";
+  if (s === "tableau_next") return "Book KPIs";
+  return "Toolkit";
+}
+
+function iconForPrimaryAction(a: HorizonAction) {
+  switch (a.kind) {
+    case "draft_call":
+      return Phone;
+    case "draft_email":
+      return Mail;
+    case "prep":
+      return ClipboardList;
+    case "investigate": {
+      if (a.label === "Review") return ChevronRight;
+      if (a.label === "Log outcome") return Check;
+      if (a.label === "Acknowledge") return AlertTriangle;
+      return MessageSquare;
+    }
+    default:
+      return MessageSquare;
+  }
 }
 
 function KindIcon({

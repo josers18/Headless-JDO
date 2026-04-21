@@ -26,6 +26,10 @@ METRIC HYGIENE (mandatory — bankers lose trust on noisy tiles):
 4. ZERO / TINY COUNTS: For Activity (7d) with a single task and no meaningful prior window, delta should be one short factual line such as "Single task created this week." Do NOT append "no prior-week comparison available" — that adds no value.
 5. Never invent prior-window numbers. If you cannot compute a honest delta, use "—" and direction "flat".
 
+BANKER-FACING COPY (field "narrative", "delta", "explanation" — P-2 / C-2):
+- Never write the words "Tableau", "semantic model", "MCP", "SOQL", or "Data 360" in any user-facing string. If analytics or governed metrics are unavailable, say e.g. "Benchmark comparisons unavailable this session." or "Period-over-period context will return once analytics reconnect."
+- When closed wins are $0 for the period, pivot forward: name 2–3 pipeline opportunities that could still close this month instead of implying someone "drove" a zero.
+
 Return JSON ONLY (no prose, no fences):
 {
   "narrative": "<= 60 words, lead with the most important number, plain prose, reads like an analyst summary",
