@@ -55,13 +55,20 @@ function DraftIdleActions({
   draft,
   onApprove,
   onDismiss,
+  onOverflowOpenChange,
 }: {
   draft: StreamedDraft;
   onApprove: () => void;
   onDismiss: () => void;
+  /** Elevates the card z-index while open so the menu isn’t covered by the next draft row. */
+  onOverflowOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onOverflowOpenChange?.(open);
+  }, [open, onOverflowOpenChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -113,7 +120,7 @@ function DraftIdleActions({
         {open && (
           <div
             role="menu"
-            className="absolute bottom-[calc(100%+6px)] right-0 z-30 w-[220px] overflow-hidden rounded-xl border border-border bg-surface shadow-[0_24px_60px_-30px_rgba(0,0,0,0.6)] sm:bottom-auto sm:top-[calc(100%+6px)]"
+            className="absolute right-0 top-[calc(100%+6px)] z-[200] w-[220px] overflow-hidden rounded-xl border border-border bg-surface shadow-[0_24px_60px_-30px_rgba(0,0,0,0.6)]"
           >
             {draft.target_id && (
               <button
@@ -236,6 +243,7 @@ export function DraftActionCard({
   onDismiss: () => void;
   compact?: boolean;
 }) {
+  const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
   const base = useSfInstanceUrl();
   const targetHref =
     base && inferSalesforceObjectFromId(draft.target_id)
@@ -327,19 +335,21 @@ export function DraftActionCard({
   return (
     <li
       className={cn(
-        "group relative animate-fade-rise overflow-hidden rounded-xl border border-border-soft bg-surface",
+        /** `overflow-visible` — overflow menu must not be clipped by the card */
+        "group relative animate-fade-rise overflow-visible rounded-xl border border-border-soft bg-surface",
+        overflowMenuOpen && "z-[210]",
         stagger
       )}
     >
       <div
         className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b",
+          "pointer-events-none absolute inset-x-0 top-0 h-20 rounded-t-xl bg-gradient-to-b",
           kindColor
         )}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute inset-0 bg-card-sheen"
+        className="pointer-events-none absolute inset-0 rounded-xl bg-card-sheen"
         aria-hidden
       />
 
@@ -421,7 +431,12 @@ export function DraftActionCard({
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2">
           {status.kind === "idle" && (
-            <DraftIdleActions draft={draft} onApprove={onApprove} onDismiss={onDismiss} />
+            <DraftIdleActions
+              draft={draft}
+              onApprove={onApprove}
+              onDismiss={onDismiss}
+              onOverflowOpenChange={setOverflowMenuOpen}
+            />
           )}
           {status.kind === "executing" && (
             <span className="flex items-center gap-2 text-[12px] text-text-muted">
