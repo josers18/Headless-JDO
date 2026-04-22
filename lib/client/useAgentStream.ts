@@ -47,6 +47,39 @@ const FETCH_MAX_ATTEMPTS = 5;
 /** Hard cap for one SSE read (agent loop can run minutes; Heroku router may stall). */
 const STREAM_READ_DEADLINE_MS = 240_000;
 
+/**
+ * If `reader.read()` never resolves (TCP open but no bytes), the loop never
+ * reaches the wall-clock check above — race each read with this stall budget.
+ */
+const STREAM_STALL_MS = 120_000;
+
+/** Waiting for HTTP response headers / connection (before body reader exists). */
+const FETCH_HEADERS_MS = 55_000;
+
+async function readChunkWithStallTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  stallMs: number
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let stallId: ReturnType<typeof setTimeout> | undefined;
+  const stall = new Promise<ReadableStreamReadResult<Uint8Array>>(
+    (_, reject) => {
+      stallId = setTimeout(() => {
+        void reader.cancel().catch(() => {});
+        reject(
+          new Error(
+            `Stream stalled — no data for ${Math.round(stallMs / 1000)}s. Try Refresh.`
+          )
+        );
+      }, stallMs);
+    }
+  );
+  try {
+    return await Promise.race([reader.read(), stall]);
+  } finally {
+    if (stallId) clearTimeout(stallId);
+  }
+}
+
 function backoffMs(attemptIndex: number): number {
   return 550 * (attemptIndex + 1) + Math.floor(Math.random() * 450);
 }
@@ -116,7 +149,13 @@ export function useAgentStream(): AgentStreamState {
       let res: Response | undefined;
       for (let attempt = 0; attempt < FETCH_MAX_ATTEMPTS; attempt++) {
         if (ctrl.signal.aborted) return;
+        let headerTimer: ReturnType<typeof setTimeout> | undefined;
+        let timedOutWaitingHeaders = false;
         try {
+          headerTimer = setTimeout(() => {
+            timedOutWaitingHeaders = true;
+            ctrl.abort();
+          }, FETCH_HEADERS_MS);
           res = await fetch(url, {
             method,
             headers:
@@ -130,6 +169,14 @@ export function useAgentStream(): AgentStreamState {
             signal: ctrl.signal,
           });
         } catch (e) {
+          if (abortRef.current !== ctrl) return;
+          if (ctrl.signal.aborted && timedOutWaitingHeaders) {
+            setError(
+              "Connection timed out waiting for response. Try Refresh."
+            );
+            setState("error");
+            return;
+          }
           if (ctrl.signal.aborted) return;
           const retryable =
             attempt < FETCH_MAX_ATTEMPTS - 1 &&
@@ -144,6 +191,8 @@ export function useAgentStream(): AgentStreamState {
           setError(e instanceof Error ? e.message : String(e));
           setState("error");
           return;
+        } finally {
+          if (headerTimer) clearTimeout(headerTimer);
         }
 
         if (res.ok && res.body) break;
@@ -245,7 +294,10 @@ export function useAgentStream(): AgentStreamState {
             ctrl.abort();
             break;
           }
-          const { done, value } = await reader.read();
+          const { done, value } = await readChunkWithStallTimeout(
+            reader,
+            STREAM_STALL_MS
+          );
           if (done) break;
           buf += decoder.decode(value, { stream: true });
           const frames = buf.split("\n\n");
@@ -264,6 +316,7 @@ export function useAgentStream(): AgentStreamState {
             applyEvent(msg);
           }
         }
+        if (abortRef.current !== ctrl) return;
         if (streamTimedOut) {
           setError(
             "Response timed out — the agent is taking too long. Try Refresh."
@@ -275,6 +328,7 @@ export function useAgentStream(): AgentStreamState {
           setState("done");
         }
       } catch (e) {
+        if (abortRef.current !== ctrl) return;
         if (!ctrl.signal.aborted) {
           setError(e instanceof Error ? e.message : String(e));
           setState("error");
