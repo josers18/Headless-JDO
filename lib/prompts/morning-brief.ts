@@ -20,7 +20,7 @@ export interface MorningBriefPromptArgs {
  * v1.4.0: FinServ life events — hierarchy + recent_life_events JSON + SOQL step 0.
  */
 export const MORNING_BRIEF_PROMPT_VERSION =
-  "v1.4.1-valid-json-hotfix-2026-04-22";
+  "v1.4.2-json-parse-recovery-2026-04-22";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;

@@ -66,8 +66,8 @@ function parseJsonLenient(fragment: string): unknown | null {
 }
 
 /** Collect `{…}` slices at every brace position (handles leading prose / junk). */
-function enumerateJsonObjectSlices(text: string): string[] {
-  const stripped = stripFence(text);
+function enumerateJsonObjectSlicesFromStem(stem: string): string[] {
+  const stripped = stem.trim();
   const seen = new Set<string>();
   const out: string[] = [];
   for (let i = 0; i < stripped.length; i++) {
@@ -82,14 +82,49 @@ function enumerateJsonObjectSlices(text: string): string[] {
   return out;
 }
 
+/** Every ```json … ``` body plus the full text (models often mix fences + prose). */
+function stemsForJsonScan(text: string): string[] {
+  const stems: string[] = [];
+  const re = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const body = m[1]?.trim();
+    if (body) stems.push(body);
+  }
+  stems.push(text.replace(/\uFEFF/g, "").trim());
+  return stems;
+}
+
+/** Curly/smart quotes break JSON.parse — normalize before retry. */
+function normalizeSmartQuotes(s: string): string {
+  return s
+    .replace(/\u201C|\u201D|\u201E|\u00AB|\u00BB/g, '"')
+    .replace(/\u2018|\u2019|\u201A|\u2032/g, "'");
+}
+
 export function tryParseJson<T>(text: string): T | null {
   if (!text) return null;
-  const candidates = enumerateJsonObjectSlices(text);
-  if (candidates.length === 0) return null;
 
-  // Longest fragments first — usually the full agent payload vs. accidental inner `{…}`.
+  const stemSeen = new Set<string>();
+  const candidates: string[] = [];
+  const sliceSeen = new Set<string>();
+
+  for (const stem of stemsForJsonScan(text)) {
+    if (!stem || stemSeen.has(stem)) continue;
+    stemSeen.add(stem);
+    for (const slice of enumerateJsonObjectSlicesFromStem(stem)) {
+      if (!sliceSeen.has(slice)) {
+        sliceSeen.add(slice);
+        candidates.push(slice);
+      }
+    }
+  }
+
+  candidates.sort((a, b) => b.length - a.length);
+
   for (const frag of candidates) {
-    const val = parseJsonLenient(frag);
+    let val = parseJsonLenient(frag);
+    if (val === null) val = parseJsonLenient(normalizeSmartQuotes(frag));
     if (val !== null && typeof val === "object" && !Array.isArray(val)) {
       return val as T;
     }
