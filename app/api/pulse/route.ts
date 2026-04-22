@@ -34,6 +34,7 @@ export async function GET(_req: NextRequest) {
       ],
       salesforceToken: token.access_token,
       maxIterations: 10,
+      routeHint: "portfolio-pulse",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
           send({ type: "text_delta", text: e.text });

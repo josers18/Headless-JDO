@@ -12,6 +12,10 @@ import { optionalEnv, requireEnv } from "@/lib/utils";
 
 export type InferenceBackend = "heroku" | "onyx";
 
+/** Default HEROKU_INFERENCE_ONYX_ROUTES when env is unset; align with routeHint in API routes. */
+export const DEFAULT_ONYX_ROUTE_LIST =
+  "signals,pulse-strip,portfolio-pulse,priority,drafts,morning-brief,arc,insights,prep,client-detail,ghost-ask";
+
 let _herokuClient: OpenAI | null = null;
 let _onyxClient: OpenAI | null = null;
 
@@ -60,7 +64,8 @@ export function modelIdFor(backend: InferenceBackend): string {
  * - Explicit `inferenceBackend` wins (tests / emergency override).
  * - Otherwise, if `HEROKU_INFERENCE_ONYX_URL` and `HEROKU_INFERENCE_ONYX_KEY`
  *   are set and `routeHint` matches `HEROKU_INFERENCE_ONYX_ROUTES`, use onyx.
- * - Default routes: `signals,pulse-strip,client-detail,ghost-ask`.
+ * - Default routes: see `DEFAULT_ONYX_ROUTE_LIST` (most agent surfaces +
+ *   insights/prep; Ask Bar stays primary unless ghost-ask).
  */
 export function resolveInferenceBackend(input: {
   inferenceBackend?: InferenceBackend;
@@ -74,7 +79,7 @@ export function resolveInferenceBackend(input: {
   if (!hint) return "heroku";
   const routes = optionalEnv(
     "HEROKU_INFERENCE_ONYX_ROUTES",
-    "signals,pulse-strip,client-detail,ghost-ask"
+    DEFAULT_ONYX_ROUTE_LIST
   )
     .split(",")
     .map((s) => s.trim())

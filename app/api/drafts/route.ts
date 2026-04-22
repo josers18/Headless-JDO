@@ -36,6 +36,7 @@ export async function GET(_req: NextRequest) {
       ],
       salesforceToken: token.access_token,
       maxIterations: 12,
+      routeHint: "drafts",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
           send({ type: "text_delta", text: e.text });

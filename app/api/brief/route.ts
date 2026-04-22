@@ -55,6 +55,7 @@ export async function POST(_req: NextRequest) {
       messages: [{ role: "user", content: prompt }],
       salesforceToken: token.access_token,
       maxIterations: 16,
+      routeHint: "morning-brief",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
           send({ type: "text_delta", text: e.text });
