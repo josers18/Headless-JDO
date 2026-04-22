@@ -3,7 +3,7 @@ import { ensureFreshToken } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { draftQueuePrompt } from "@/lib/prompts/draft-queue";
-import { makeSseStream } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 
@@ -57,6 +57,7 @@ export async function GET(_req: NextRequest) {
         }
       },
     });
+    sendInferenceMeta(send, result.inferenceBackend);
     log.info("drafts.done", {
       cid,
       iterations: result.iterations,

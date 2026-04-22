@@ -6,6 +6,7 @@ import type { PriorityClient } from "@/types/horizon";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { cn } from "@/lib/utils";
+import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ClientDetailSheet } from "./ClientDetailSheet";
 import { GhostPrompt } from "./GhostPrompt";
@@ -65,7 +66,8 @@ function writeGroupOpen(next: Record<string, boolean>) {
 }
 
 export function PriorityQueue() {
-  const { narrative, steps, state, error, start, reset } = useAgentStream();
+  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+    useAgentStream();
   /** True until the staggered first fetch is handed to `start` (skeleton vs idle). */
   const [awaitingKickoff, setAwaitingKickoff] = useState(true);
   const [selectedClient, setSelectedClient] = useState<PriorityClient | null>(
@@ -171,7 +173,7 @@ export function PriorityQueue() {
   return (
     <div data-horizon-section="priority">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between">
-        <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+        <h2 className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-accent-2/80",
@@ -179,6 +181,7 @@ export function PriorityQueue() {
             )}
           />
           Priority queue
+          <InferenceModelBadge meta={inferenceMeta} />
         </h2>
         {isLoading && (
           <span className="font-mono text-[10px] text-text-muted/70">

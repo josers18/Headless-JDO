@@ -10,6 +10,7 @@ import {
   Square,
   Volume2,
 } from "lucide-react";
+import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { BriefRichText } from "./BriefRichText";
 import { ClientDetailSheet } from "./ClientDetailSheet";
@@ -98,7 +99,8 @@ function resolveHeroIndex(brief: Brief): number {
 }
 
 export function MorningBrief() {
-  const { narrative, steps, state, error, start, reset } = useAgentStream();
+  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+    useAgentStream();
   const { supported: voiceSupported, speaking, play, stop } =
     useSpokenNarration();
   const [snoozeTick, setSnoozeTick] = useState(0);
@@ -171,8 +173,8 @@ export function MorningBrief() {
         aria-hidden
       />
 
-      <div className="relative flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+      <div className="relative flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-accent",
@@ -180,6 +182,7 @@ export function MorningBrief() {
             )}
           />
           Today
+          <InferenceModelBadge meta={inferenceMeta} />
         </div>
         {voiceSupported && isComplete && spokenText && (
           <button

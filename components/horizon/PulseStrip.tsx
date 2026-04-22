@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
+import { InferenceModelBadge } from "@/components/horizon/InferenceModelBadge";
 import { ReasoningTrail } from "@/components/horizon/ReasoningTrail";
 import { cn } from "@/lib/utils";
 import { PULSE_REFRESH_EVENT } from "@/lib/client/rightNowSnooze";
@@ -93,7 +94,8 @@ function temperatureStyles(t: PulseStripTemperature): {
  * UI v2 T0-1 — single-row flight-deck read; sticky wrapper lives in page.tsx.
  */
 export function PulseStrip() {
-  const { narrative, steps, state, error, start, reset } = useAgentStream();
+  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+    useAgentStream();
   const [mobileOpen, setMobileOpen] = useState(false);
   const lastRefetchRef = useRef(0);
 
@@ -183,7 +185,7 @@ export function PulseStrip() {
       {data && styles && (
         <>
           {/* Desktop / tablet: full strip with tappable segments (A-5). */}
-          <div className="hidden items-center gap-3 md:flex md:gap-4">
+          <div className="hidden w-full items-center gap-3 md:flex md:gap-4">
             <span
               className={cn(
                 "inline-block h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-border/50",
@@ -195,6 +197,10 @@ export function PulseStrip() {
               line={displayLine}
               data={data}
               labelClass={styles.label}
+            />
+            <InferenceModelBadge
+              meta={inferenceMeta}
+              className="ml-auto shrink-0"
             />
           </div>
 
@@ -214,16 +220,19 @@ export function PulseStrip() {
                 )}
                 aria-hidden
               />
-              <span className="font-mono text-[12px] text-text/90">
+              <span className="min-w-0 flex-1 font-mono text-[12px] text-text/90">
                 {data.review_count} to review
               </span>
-              <span className="ml-auto flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-text-muted">
-                {data.temperature}
-                {mobileOpen ? (
-                  <ChevronUp size={14} className="opacity-70" />
-                ) : (
-                  <ChevronDown size={14} className="opacity-70" />
-                )}
+              <span className="flex shrink-0 items-center gap-2">
+                <InferenceModelBadge meta={inferenceMeta} />
+                <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-text-muted">
+                  {data.temperature}
+                  {mobileOpen ? (
+                    <ChevronUp size={14} className="opacity-70" />
+                  ) : (
+                    <ChevronDown size={14} className="opacity-70" />
+                  )}
+                </span>
               </span>
             </button>
             {mobileOpen && (

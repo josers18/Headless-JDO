@@ -13,7 +13,12 @@ export const HORIZON_FOCUS_CLIENT = "horizon:focus-client";
 /** Clears Ask Bar thread + in-flight stream before navigating to logout. */
 export const HORIZON_SIGN_OUT = "horizon:sign-out";
 
-export type HorizonAskSubmitDetail = { q: string; context?: string };
+export type HorizonAskSubmitDetail = {
+  q: string;
+  context?: string;
+  /** True when the ask was launched from a GhostPrompt click (routes to Onyx when configured). */
+  fromGhost?: boolean;
+};
 
 export function dispatchHorizonAskSubmit(detail: HorizonAskSubmitDetail): void {
   window.dispatchEvent(

@@ -5,6 +5,7 @@ import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { signalsPrompt } from "@/lib/prompts/signals";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
+import { modelIdFor } from "@/lib/llm/inferenceClients";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,12 @@ export async function GET(_req: NextRequest) {
       tools: res.toolCalls.length,
     });
     return NextResponse.json(
-      { result: res.text, toolCalls: res.toolCalls.length },
+      {
+        result: res.text,
+        toolCalls: res.toolCalls.length,
+        inference_backend: res.inferenceBackend,
+        model: modelIdFor(res.inferenceBackend),
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (e) {

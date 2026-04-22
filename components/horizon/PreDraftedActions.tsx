@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { DraftActionCard } from "./DraftActionCard";
 import { useDrafts } from "./DraftsContext";
@@ -12,6 +13,7 @@ import { useSectionContentReporter } from "./SectionContentPresence";
 
 export function PreDraftedActions() {
   const {
+    inferenceMeta,
     orphanDrafts,
     drafts,
     steps,
@@ -35,7 +37,7 @@ export function PreDraftedActions() {
   return (
     <div data-horizon-section="drafts">
       <div className="flex items-baseline justify-between">
-        <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+        <h2 className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-accent/80",
@@ -44,6 +46,7 @@ export function PreDraftedActions() {
             )}
           />
           Pre-drafted actions
+          <InferenceModelBadge meta={inferenceMeta} />
         </h2>
         {state === "streaming" && (
           <span className="font-mono text-[10px] text-text-muted/70">

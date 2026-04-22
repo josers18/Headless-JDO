@@ -4,6 +4,7 @@ import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import type { DraftAction } from "@/types/horizon";
 import { log, correlationId } from "@/lib/log";
+import { modelIdFor } from "@/lib/llm/inferenceClients";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -58,6 +59,8 @@ ${JSON.stringify(action, null, 2)}`;
     });
     return NextResponse.json({
       result: text,
+      inference_backend: res.inferenceBackend,
+      model: modelIdFor(res.inferenceBackend),
       toolCalls: res.toolCalls.map((c) => ({
         server: c.server,
         tool: c.tool,

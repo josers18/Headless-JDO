@@ -9,7 +9,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAgentStream } from "@/lib/client/useAgentStream";
+import {
+  useAgentStream,
+  type InferenceMeta,
+} from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { HORIZON_REFRESH_DRAFTS } from "@/lib/client/horizonEvents";
 import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
@@ -21,6 +24,7 @@ import {
 import type { Step } from "@/components/horizon/ReasoningTrail";
 
 type DraftsContextValue = {
+  inferenceMeta: InferenceMeta | null;
   drafts: StreamedDraft[];
   /** Drafts whose `target_id` is not in the current priority queue client ids. */
   orphanDrafts: StreamedDraft[];
@@ -38,7 +42,8 @@ type DraftsContextValue = {
 const DraftsContext = createContext<DraftsContextValue | null>(null);
 
 export function DraftsProvider({ children }: { children: ReactNode }) {
-  const { narrative, steps, state, error, start, reset } = useAgentStream();
+  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+    useAgentStream();
   const [draftsKickoffPending, setDraftsKickoffPending] = useState(true);
   const [priorityIds, setPriorityIds] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, DraftCardStatus>>({});
@@ -127,6 +132,7 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     (): DraftsContextValue => ({
+      inferenceMeta,
       drafts,
       orphanDrafts,
       steps,
@@ -139,6 +145,7 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
       dismiss,
     }),
     [
+      inferenceMeta,
       approve,
       dismiss,
       drafts,

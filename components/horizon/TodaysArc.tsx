@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
+import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { ArcNode, ArcCluster } from "./ArcNode";
 import { ArcTimeline, arcLeftPct } from "./ArcTimeline";
@@ -74,7 +75,8 @@ function titleShort(s: string): string {
 }
 
 export function TodaysArc() {
-  const { narrative, steps, state, error, start, reset } = useAgentStream();
+  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+    useAgentStream();
   const [awaitingKickoff, setAwaitingKickoff] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<{
@@ -264,7 +266,7 @@ export function TodaysArc() {
   return (
     <div data-horizon-section="arc">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+        <h2 className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-accent-2/80",
@@ -272,6 +274,7 @@ export function TodaysArc() {
             )}
           />
           Today&apos;s arc
+          <InferenceModelBadge meta={inferenceMeta} />
         </h2>
         {isLoading && steps.length > 0 && (
           <span className="font-mono text-[10px] text-text-muted/70">

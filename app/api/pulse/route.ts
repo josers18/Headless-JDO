@@ -3,7 +3,7 @@ import { ensureFreshToken } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { portfolioPulsePrompt } from "@/lib/prompts/portfolio-pulse";
-import { makeSseStream } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 
@@ -55,6 +55,7 @@ export async function GET(_req: NextRequest) {
         }
       },
     });
+    sendInferenceMeta(send, result.inferenceBackend);
     log.info("pulse.done", {
       cid,
       iterations: result.iterations,

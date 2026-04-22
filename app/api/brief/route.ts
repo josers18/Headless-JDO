@@ -3,7 +3,7 @@ import { ensureFreshToken } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { morningBriefPrompt } from "@/lib/prompts/morning-brief";
-import { makeSseStream } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 import { hourInTimeZone } from "@/lib/signoffPolicy";
@@ -76,6 +76,7 @@ export async function POST(_req: NextRequest) {
         }
       },
     });
+    sendInferenceMeta(send, result.inferenceBackend);
     log.info("brief.done", {
       cid,
       iterations: result.iterations,

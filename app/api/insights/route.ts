@@ -7,7 +7,7 @@ import {
   sectionInsightPrompt,
   type SectionKind,
 } from "@/lib/prompts/section-insight";
-import { makeSseStream } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 
@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
           }
         },
       });
+      sendInferenceMeta(send, result.inferenceBackend);
       log.info("insight.batch.done", {
         cid,
         iterations: result.iterations,
@@ -132,6 +133,7 @@ export async function POST(req: NextRequest) {
         }
       },
     });
+    sendInferenceMeta(send, result.inferenceBackend);
     log.info("insight.done", {
       cid,
       section,

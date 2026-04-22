@@ -4,6 +4,8 @@
  * Primary path: `LLM_PROVIDER=heroku` — per-request `inferenceBackend` can be
  * `heroku` (INFERENCE_*) or `onyx` (HEROKU_INFERENCE_ONYX_*) when `routeHint`
  * matches `HEROKU_INFERENCE_ONYX_ROUTES`. Same OpenAI-compatible chat API.
+ * If Onyx throws before the run completes, we retry once on the primary
+ * Heroku Inference endpoint (`agent.inference.onyx.fallback` in logs).
  * Anthropic direct (`LLM_PROVIDER=anthropic`) is not wired through here.
  *
  * Callers use `runAgentWithMcp` and pass optional `routeHint`.
@@ -11,7 +13,7 @@
 
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { connectMcpClients } from "@/lib/mcp/client";
-import { runAgent, type AgentEvent } from "./heroku";
+import { runAgent, type AgentEvent, type AgentRunResult } from "./heroku";
 import type { McpServerName } from "@/types/horizon";
 import {
   modelIdFor,
@@ -61,6 +63,15 @@ export interface RunAgentOutput {
   }>;
   iterations: number;
   transcript: ChatCompletionMessageParam[];
+  /** Inference stack that completed this run (`heroku` primary after Onyx fallback). */
+  inferenceBackend: InferenceBackend;
+}
+
+function withInferenceBackend(
+  result: AgentRunResult,
+  inferenceBackend: InferenceBackend
+): RunAgentOutput {
+  return { ...result, inferenceBackend };
 }
 
 /**
@@ -93,8 +104,9 @@ export async function runAgentWithMcp(
   const registry = await connectMcpClients({
     salesforceToken: input.salesforceToken,
   });
-  try {
-    const result = await runAgent({
+
+  const runOnce = (backend: InferenceBackend) =>
+    runAgent({
       system: input.system,
       messages: input.messages,
       registry,
@@ -103,9 +115,29 @@ export async function runAgentWithMcp(
       temperature: input.temperature,
       maxTokens: input.maxTokens,
       forceFirstToolCall: input.forceFirstToolCall,
-      inferenceBackend,
+      inferenceBackend: backend,
     });
-    return result;
+
+  try {
+    if (inferenceBackend !== "onyx") {
+      return withInferenceBackend(
+        await runOnce(inferenceBackend),
+        inferenceBackend
+      );
+    }
+    try {
+      return withInferenceBackend(await runOnce("onyx"), "onyx");
+    } catch (firstErr) {
+      const reason =
+        firstErr instanceof Error ? firstErr.message : String(firstErr);
+      log.warn("agent.inference.onyx.fallback", {
+        routeHint: input.routeHint ?? "",
+        error: reason.slice(0, 500),
+      });
+      // Do not emit AgentEvent type "error" here — `useAgentStream` treats it
+      // as a terminal failure and would break the UI while primary still runs.
+      return withInferenceBackend(await runOnce("heroku"), "heroku");
+    }
   } finally {
     await registry.close();
   }

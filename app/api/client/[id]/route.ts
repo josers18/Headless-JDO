@@ -3,7 +3,7 @@ import { ensureFreshToken } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { clientDetailPrompt } from "@/lib/prompts/client-detail";
-import { makeSseStream } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 
@@ -43,6 +43,7 @@ export async function GET(
       ],
       salesforceToken: token.access_token,
       maxIterations: 14,
+      routeHint: "client-detail",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
           send({ type: "text_delta", text: e.text });
@@ -64,6 +65,7 @@ export async function GET(
         }
       },
     });
+    sendInferenceMeta(send, result.inferenceBackend);
     log.info("client.done", {
       cid,
       clientId,

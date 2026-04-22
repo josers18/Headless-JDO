@@ -4,7 +4,7 @@ import { ensureFreshToken } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { askAnythingPrompt } from "@/lib/prompts/ask-anything";
-import { makeSseStream } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 import { validateAskThreadMessages } from "@/lib/ask/thread";
@@ -12,7 +12,13 @@ import { validateAskThreadMessages } from "@/lib/ask/thread";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type AskBody = { messages?: unknown; q?: string; context?: string };
+type AskBody = {
+  messages?: unknown;
+  q?: string;
+  context?: string;
+  /** Client sets when the submission came from a GhostPrompt (Onyx routing). */
+  source?: unknown;
+};
 
 export async function POST(req: NextRequest) {
   const cid = correlationId();
@@ -66,11 +72,14 @@ export async function POST(req: NextRequest) {
 
   const forceFirstToolCall = !hasPriorToolContext;
 
+  const fromGhostClick = body.source === "ghost";
+
   log.info("ask.start", {
     cid,
     turns: messagesForApi.length,
     banker: bankerUserId,
     forceFirstToolCall,
+    fromGhost: fromGhostClick,
   });
 
   return makeSseStream(async (send) => {
@@ -80,6 +89,7 @@ export async function POST(req: NextRequest) {
       salesforceToken: token.access_token,
       maxIterations: 12,
       forceFirstToolCall,
+      routeHint: fromGhostClick ? "ghost-ask" : undefined,
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
           send({ type: "text_delta", text: e.text });
@@ -101,6 +111,7 @@ export async function POST(req: NextRequest) {
         }
       },
     });
+    sendInferenceMeta(send, result.inferenceBackend);
     send({ type: "thread_snapshot", messages: result.transcript });
     log.info("ask.done", {
       cid,

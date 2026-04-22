@@ -9,6 +9,7 @@ import type {
 } from "@/lib/prompts/section-insight";
 import { useInsightsBatch } from "./InsightsBatchProvider";
 import { useSectionHasContent } from "./SectionContentPresence";
+import { InferenceModelBadge } from "./InferenceModelBadge";
 import { cn } from "@/lib/utils";
 import { sanitizeBankerFacingPulseCopy } from "@/lib/client/pulseCopySanitize";
 import { sanitizeProseLite } from "@/lib/safety/sanitize";
@@ -98,6 +99,8 @@ export function SectionInsight({
 }) {
   const batch = useInsightsBatch();
   const legacy = useAgentStream();
+  const insightInferenceMeta =
+    batch?.inferenceMeta ?? legacy.inferenceMeta;
   const [legacyPayload, setLegacyPayload] = useState<InsightPayload | null>(
     null
   );
@@ -137,7 +140,7 @@ export function SectionInsight({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-lg border border-border-soft/40 bg-surface/20 px-4 py-2.5 text-[12px] leading-snug",
+        "flex items-start gap-3 rounded-lg border border-border-soft/40 bg-surface/20 px-4 py-2.5 text-[12px] leading-snug sm:items-center",
         className
       )}
       role="note"
@@ -156,7 +159,7 @@ export function SectionInsight({
         className={cn("mt-[2px] shrink-0", style.accent)}
         aria-hidden
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 sm:pr-1">
         {payload ? (
           <p className={cn("text-text", style.accent)}>
             <span className="text-text">{payload.headline}</span>
@@ -175,6 +178,10 @@ export function SectionInsight({
           </p>
         )}
       </div>
+      <InferenceModelBadge
+        meta={insightInferenceMeta}
+        className="shrink-0 self-start pt-[2px] sm:self-center sm:pt-0"
+      />
     </div>
   );
 }

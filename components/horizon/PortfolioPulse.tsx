@@ -7,6 +7,7 @@ import { useAgentStream } from "@/lib/client/useAgentStream";
 import { useSpokenNarration } from "@/lib/client/useSpokenNarration";
 import { applyPulseHygieneToKpis } from "@/lib/client/pulseMetricHygiene";
 import { tryParseJson } from "@/lib/client/jsonStream";
+import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { GhostPrompt } from "./GhostPrompt";
 import { cn } from "@/lib/utils";
@@ -30,7 +31,8 @@ interface Pulse {
 // playback piggybacks on the same hook Morning Brief uses — two of our
 // "protect at all costs" features share the same surface for narration.
 export function PortfolioPulse() {
-  const { narrative, steps, state, error, start, reset } = useAgentStream();
+  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+    useAgentStream();
   const { supported: voiceSupported, speaking, play, stop } =
     useSpokenNarration();
   const [awaitingKickoff, setAwaitingKickoff] = useState(true);
@@ -81,8 +83,8 @@ export function PortfolioPulse() {
 
   return (
     <div data-horizon-section="pulse">
-      <div className="flex items-baseline justify-between">
-        <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-accent-warm/80",
@@ -90,6 +92,7 @@ export function PortfolioPulse() {
             )}
           />
           Portfolio pulse
+          <InferenceModelBadge meta={inferenceMeta} />
         </h2>
         {voiceSupported && pulse && spokenText && (
           <button

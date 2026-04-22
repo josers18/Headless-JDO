@@ -24,7 +24,10 @@ export function GhostPrompt({
       type="button"
       title={title ?? text}
       onClick={() => {
-        const detail: HorizonAskSubmitDetail = { q: text };
+        const detail: HorizonAskSubmitDetail = {
+          q: text,
+          fromGhost: true,
+        };
         if (context && context.trim()) detail.context = context.trim();
         dispatchHorizonAskSubmit(detail);
       }}

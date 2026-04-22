@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { useSpeechInput } from "@/lib/client/useSpeechInput";
+import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
 import {
   sanitizeNarrative,
@@ -67,7 +68,7 @@ export function AskBar() {
   const [focusLine, setFocusLine] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { placeholder: scrollPlaceholder, contextLine } = useViewportSection();
-  const { narrative, steps, state, error, start, cancel, reset } =
+  const { narrative, steps, state, error, inferenceMeta, start, cancel, reset } =
     useAgentStream();
   const speech = useSpeechInput();
 
@@ -168,7 +169,7 @@ export function AskBar() {
   }, [state, cancel]);
 
   const submitWithQuestion = useCallback(
-    async (qRaw: string, ghostContext?: string) => {
+    async (qRaw: string, ghostContext?: string, fromGhost?: boolean) => {
       const q = qRaw.trim();
       if (!q || state === "streaming") return;
       if (speech.listening) speech.stop();
@@ -195,11 +196,12 @@ export function AskBar() {
           /* ignore */
         }
       }
-      await start(
-        "/api/ask",
-        merged ? { messages, context: merged } : { messages },
-        { onThreadSnapshot: persistThreadFromServer }
-      );
+      const base = merged ? { messages, context: merged } : { messages };
+      const body =
+        fromGhost === true ? { ...base, source: "ghost" as const } : base;
+      await start("/api/ask", body, {
+        onThreadSnapshot: persistThreadFromServer,
+      });
     },
     [askContext, persistThreadFromServer, speech, start, state, thread]
   );
@@ -230,7 +232,11 @@ export function AskBar() {
       const ce = e as CustomEvent<HorizonAskSubmitDetail>;
       const q = ce.detail?.q?.trim();
       if (!q || state === "streaming") return;
-      void submitWithQuestion(q, ce.detail?.context);
+      void submitWithQuestion(
+        q,
+        ce.detail?.context,
+        Boolean(ce.detail?.fromGhost)
+      );
     };
     window.addEventListener(HORIZON_ASK_SUBMIT, onAsk as EventListener);
     return () =>
@@ -360,7 +366,7 @@ export function AskBar() {
         {showPanel && (
           <div className="animate-fade-rise overflow-hidden rounded-2xl border border-border-soft bg-surface/95 shadow-[0_28px_60px_-30px_rgba(0,0,0,0.7)] backdrop-blur-md">
             <div className="flex items-start justify-between gap-3 border-b border-border-soft/80 bg-black/20 px-5 py-3">
-              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-text-muted">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-text-muted">
                 <span
                   className={cn(
                     "inline-block h-[6px] w-[6px] rounded-full bg-accent",
@@ -368,6 +374,7 @@ export function AskBar() {
                   )}
                 />
                 {prepSession ? "Prep briefing" : "Asked"}
+                <InferenceModelBadge meta={inferenceMeta} />
               </div>
               <div className="flex items-center gap-1">
                 <button

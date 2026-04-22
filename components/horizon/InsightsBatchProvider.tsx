@@ -1,7 +1,16 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
-import { useAgentStream } from "@/lib/client/useAgentStream";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  type ReactNode,
+} from "react";
+import {
+  useAgentStream,
+  type InferenceMeta,
+} from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import {
   sectionInsightBatchSections,
@@ -46,6 +55,7 @@ export type InsightsBatchContextValue = {
   payloads: Partial<Record<SectionKind, InsightPayload>>;
   state: "idle" | "streaming" | "done" | "error";
   error: string | null;
+  inferenceMeta: InferenceMeta | null;
 };
 
 const InsightsBatchContext = createContext<InsightsBatchContextValue | null>(
@@ -53,7 +63,7 @@ const InsightsBatchContext = createContext<InsightsBatchContextValue | null>(
 );
 
 export function InsightsBatchProvider({ children }: { children: ReactNode }) {
-  const { narrative, state, error, start } = useAgentStream();
+  const { narrative, state, error, inferenceMeta, start } = useAgentStream();
 
   useEffect(() => {
     let cancelled = false;
@@ -79,8 +89,9 @@ export function InsightsBatchProvider({ children }: { children: ReactNode }) {
       payloads,
       state,
       error,
+      inferenceMeta,
     }),
-    [payloads, state, error]
+    [payloads, state, error, inferenceMeta]
   );
 
   return (

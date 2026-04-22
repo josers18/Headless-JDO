@@ -1,5 +1,9 @@
 import type { ReasoningStep, McpServerName } from "@/types/horizon";
 import type { AskThreadMessage } from "@/types/ask-thread";
+import {
+  modelIdFor,
+  type InferenceBackend,
+} from "@/lib/llm/inferenceClients";
 
 export type SseEvent =
   | { type: "text_delta"; text: string }
@@ -11,10 +15,27 @@ export type SseEvent =
       is_error?: boolean;
       preview: string;
     }
+  | {
+      type: "inference_meta";
+      backend: InferenceBackend;
+      model: string;
+    }
   | { type: "reasoning"; step: ReasoningStep }
   | { type: "thread_snapshot"; messages: AskThreadMessage[] }
   | { type: "done" }
   | { type: "error"; message: string };
+
+/** Emit once after `runAgentWithMcp` so clients can show which stack ran. */
+export function sendInferenceMeta(
+  send: (e: SseEvent) => void,
+  backend: InferenceBackend
+): void {
+  send({
+    type: "inference_meta",
+    backend,
+    model: modelIdFor(backend),
+  });
+}
 
 export function sseEncode(event: SseEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;

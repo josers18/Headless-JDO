@@ -7,6 +7,7 @@ import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, X } from "lucide-r
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import { cn } from "@/lib/utils";
+import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
 import { BriefRichText } from "./BriefRichText";
@@ -291,7 +292,8 @@ export function ClientDetailSheet({
     base && inferSalesforceObjectFromId(clientId)
       ? lightningRecordViewUrl(base, clientId)
       : null;
-  const { narrative, steps, state, error, start } = useAgentStream();
+  const { narrative, steps, state, error, inferenceMeta, start } =
+    useAgentStream();
 
   useEffect(() => {
     const url = clientName
@@ -349,8 +351,8 @@ export function ClientDetailSheet({
         />
 
         <div className="relative px-8 pb-16 pt-8">
-          <div className="flex items-center justify-between">
-            <div className="min-w-0 pr-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 pr-4">
               {recordHref && (detail?.name ?? clientName)?.trim() ? (
                 <a
                   href={recordHref}
@@ -369,13 +371,16 @@ export function ClientDetailSheet({
                 {clientId}
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="rounded-md p-1.5 text-text-muted transition hover:bg-surface2 hover:text-text"
-              aria-label="Close"
-            >
-              <X size={14} />
-            </button>
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <InferenceModelBadge meta={inferenceMeta} />
+              <button
+                onClick={onClose}
+                className="rounded-md p-1.5 text-text-muted transition hover:bg-surface2 hover:text-text"
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
 
           <div className="mt-8 flex items-start gap-4">

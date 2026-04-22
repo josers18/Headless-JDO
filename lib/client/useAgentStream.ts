@@ -3,6 +3,10 @@
 import { useCallback, useRef, useState } from "react";
 import type { Step } from "@/components/horizon/ReasoningTrail";
 import type { AskThreadMessage } from "@/types/ask-thread";
+import type { InferenceBackend } from "@/lib/llm/inferenceClients";
+
+/** Last inference stack reported by the server for this stream (SSE `inference_meta`). */
+export type InferenceMeta = { backend: InferenceBackend; model: string };
 
 /**
  * Shared client hook for streaming `/api/ask`, `/api/brief`, and
@@ -11,6 +15,7 @@ import type { AskThreadMessage } from "@/types/ask-thread";
  *   - `narrative`: accumulating text deltas (raw model output)
  *   - `steps`: reasoning trail with live per-step status
  *   - `state`: 'idle' | 'streaming' | 'done' | 'error'
+ *   - `inferenceMeta`: backend + model id after the stream completes
  *
  * start(url)                → GET  (used for /api/priority)
  * start(url, body)          → POST (used for /api/ask, /api/brief)
@@ -21,6 +26,7 @@ export interface AgentStreamState {
   steps: Step[];
   state: "idle" | "streaming" | "done" | "error";
   error: string | null;
+  inferenceMeta: InferenceMeta | null;
   toolCount: number;
   start: (
     url: string,
@@ -53,6 +59,7 @@ type IncomingEvent =
     }
   | { type: "error"; message: string }
   | { type: "thread_snapshot"; messages: AskThreadMessage[] }
+  | { type: "inference_meta"; backend: InferenceBackend; model: string }
   | { type: "done" };
 
 export function useAgentStream(): AgentStreamState {
@@ -60,6 +67,9 @@ export function useAgentStream(): AgentStreamState {
   const [steps, setSteps] = useState<Step[]>([]);
   const [state, setState] = useState<AgentStreamState["state"]>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [inferenceMeta, setInferenceMeta] = useState<InferenceMeta | null>(
+    null
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   const reset = useCallback(() => {
@@ -68,12 +78,14 @@ export function useAgentStream(): AgentStreamState {
     setNarrative("");
     setSteps([]);
     setError(null);
+    setInferenceMeta(null);
     setState("idle");
   }, []);
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    setInferenceMeta(null);
     setState("idle");
   }, []);
 
@@ -92,6 +104,7 @@ export function useAgentStream(): AgentStreamState {
       setNarrative("");
       setSteps([]);
       setError(null);
+      setInferenceMeta(null);
       setState("streaming");
 
       const method = opts?.method ?? (body !== undefined ? "POST" : "GET");
@@ -211,6 +224,8 @@ export function useAgentStream(): AgentStreamState {
           setState("error");
         } else if (msg.type === "thread_snapshot" && Array.isArray(msg.messages)) {
           opts?.onThreadSnapshot?.(msg.messages);
+        } else if (msg.type === "inference_meta") {
+          setInferenceMeta({ backend: msg.backend, model: msg.model });
         }
       };
 
@@ -251,6 +266,7 @@ export function useAgentStream(): AgentStreamState {
     steps,
     state,
     error,
+    inferenceMeta,
     toolCount: steps.length,
     start,
     cancel,

@@ -60,7 +60,7 @@ export function modelIdFor(backend: InferenceBackend): string {
  * - Explicit `inferenceBackend` wins (tests / emergency override).
  * - Otherwise, if `HEROKU_INFERENCE_ONYX_URL` and `HEROKU_INFERENCE_ONYX_KEY`
  *   are set and `routeHint` matches `HEROKU_INFERENCE_ONYX_ROUTES`, use onyx.
- * - Default routes: `signals,pulse-strip`.
+ * - Default routes: `signals,pulse-strip,client-detail,ghost-ask`.
  */
 export function resolveInferenceBackend(input: {
   inferenceBackend?: InferenceBackend;
@@ -74,7 +74,7 @@ export function resolveInferenceBackend(input: {
   if (!hint) return "heroku";
   const routes = optionalEnv(
     "HEROKU_INFERENCE_ONYX_ROUTES",
-    "signals,pulse-strip"
+    "signals,pulse-strip,client-detail,ghost-ask"
   )
     .split(",")
     .map((s) => s.trim())

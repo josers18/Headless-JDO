@@ -1,3 +1,4 @@
+// SOQL via MCP only (no chat model; secondary inference routing does not apply).
 import { ensureFreshToken } from "@/lib/salesforce/token";
 import { runSoqlViaMcp } from "@/lib/salesforce/mcpQuery";
 import { log } from "@/lib/log";

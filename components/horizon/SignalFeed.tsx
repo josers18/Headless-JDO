@@ -32,6 +32,9 @@ import { primaryActionForSignal } from "@/lib/signals/signalRowActions";
 import type { HorizonAction } from "@/lib/client/actions/registry";
 import type { McpServerName } from "@/types/horizon";
 import { useSectionContentReporter } from "./SectionContentPresence";
+import { InferenceModelBadge } from "./InferenceModelBadge";
+import type { InferenceMeta } from "@/lib/client/useAgentStream";
+import type { InferenceBackend } from "@/lib/llm/inferenceClients";
 
 const POLL_INTERVAL_MS = 45_000;
 /** FINAL-4 — default collapsed cap for the Live Signals rail. Keeps
@@ -56,6 +59,9 @@ export function SignalFeed() {
     clientName?: string;
   } | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [inferenceMeta, setInferenceMeta] = useState<InferenceMeta | null>(
+    null
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   const fetchOnce = useCallback(async () => {
@@ -69,10 +75,21 @@ export function SignalFeed() {
       const json = (await res.json().catch(() => null)) as {
         result?: string;
         error?: string;
+        inference_backend?: string;
+        model?: string;
       } | null;
       if (!res.ok) {
         setError(json?.error ?? `Request failed (${res.status})`);
         return;
+      }
+      const ib = json?.inference_backend;
+      if (ib === "heroku" || ib === "onyx") {
+        setInferenceMeta({
+          backend: ib as InferenceBackend,
+          model: typeof json?.model === "string" ? json.model : "",
+        });
+      } else {
+        setInferenceMeta(null);
       }
       const parsed = tryParseJson<{ signals?: Signal[] }>(json?.result ?? "");
       const incoming = Array.isArray(parsed?.signals) ? parsed!.signals! : [];
@@ -105,7 +122,7 @@ export function SignalFeed() {
   return (
     <div data-horizon-section="signals">
       <div className="flex items-center justify-between">
-        <h2 className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+        <h2 className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-emerald-400/80",
@@ -113,6 +130,7 @@ export function SignalFeed() {
             )}
           />
           Live signals
+          <InferenceModelBadge meta={inferenceMeta} />
         </h2>
         <div className="flex items-center gap-3">
           {lastUpdated && (
