@@ -1,14 +1,10 @@
 /**
  * lib/llm/provider.ts — LLM provider selection + unified agent runner.
  *
- * Primary path: `LLM_PROVIDER=heroku` — per-request `inferenceBackend` can be
- * `heroku` (INFERENCE_*) or `onyx` (HEROKU_INFERENCE_ONYX_*) when `routeHint`
- * matches `HEROKU_INFERENCE_ONYX_ROUTES`. Same OpenAI-compatible chat API.
- * If Onyx throws before the run completes, we retry once on the primary
- * Heroku Inference endpoint (`agent.inference.onyx.fallback` in logs).
+ * Primary: Claude via Heroku Managed Inference (`INFERENCE_*`).
+ * Fallback: optional second deployment (`HEROKU_INFERENCE_ONYX_*`, e.g. Kimi)
+ * only if the primary run throws — see `agent.inference.heroku.fallback_kimi`.
  * Anthropic direct (`LLM_PROVIDER=anthropic`) is not wired through here.
- *
- * Callers use `runAgentWithMcp` and pass optional `routeHint`.
  */
 
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -16,6 +12,7 @@ import { connectMcpClients } from "@/lib/mcp/client";
 import { runAgent, type AgentEvent, type AgentRunResult } from "./heroku";
 import type { McpServerName } from "@/types/horizon";
 import {
+  isOnyxInferenceConfigured,
   modelIdFor,
   resolveInferenceBackend,
   type InferenceBackend,
@@ -41,14 +38,9 @@ export interface RunAgentInput {
   maxTokens?: number;
   /** See `AgentRunArgs.forceFirstToolCall` in lib/llm/heroku.ts. */
   forceFirstToolCall?: boolean;
-  /**
-   * When set, steers primary vs Onyx Heroku Inference (see
-   * HEROKU_INFERENCE_ONYX_* in .env). Example: "signals", "pulse-strip".
-   */
+  /** Optional label for logs (no longer selects a model — primary is always Claude). */
   routeHint?: string;
-  /**
-   * Force a specific backend; normally leave unset and use `routeHint` + env.
-   */
+  /** Force `"onyx"` for Kimi-only runs (tests). Omit for Claude primary + optional Kimi fallback. */
   inferenceBackend?: InferenceBackend;
 }
 
@@ -63,7 +55,7 @@ export interface RunAgentOutput {
   }>;
   iterations: number;
   transcript: ChatCompletionMessageParam[];
-  /** Inference stack that completed this run (`heroku` primary after Onyx fallback). */
+  /** Inference stack that completed this run (usually `heroku`; `onyx` if Kimi fallback succeeded). */
   inferenceBackend: InferenceBackend;
 }
 
@@ -90,16 +82,10 @@ export async function runAgentWithMcp(
     );
   }
 
-  const inferenceBackend = resolveInferenceBackend({
+  const requested = resolveInferenceBackend({
     inferenceBackend: input.inferenceBackend,
     routeHint: input.routeHint,
   });
-  if (inferenceBackend === "onyx") {
-    log.info("agent.inference.onyx", {
-      routeHint: input.routeHint ?? "",
-      model: modelIdFor("onyx"),
-    });
-  }
 
   const registry = await connectMcpClients({
     salesforceToken: input.salesforceToken,
@@ -119,24 +105,25 @@ export async function runAgentWithMcp(
     });
 
   try {
-    if (inferenceBackend !== "onyx") {
-      return withInferenceBackend(
-        await runOnce(inferenceBackend),
-        inferenceBackend
-      );
-    }
-    try {
+    if (requested === "onyx") {
+      log.info("agent.inference.kimi_only", {
+        routeHint: input.routeHint ?? "",
+        model: modelIdFor("onyx"),
+      });
       return withInferenceBackend(await runOnce("onyx"), "onyx");
-    } catch (firstErr) {
+    }
+
+    try {
+      return withInferenceBackend(await runOnce("heroku"), "heroku");
+    } catch (primaryErr) {
+      if (!isOnyxInferenceConfigured()) throw primaryErr;
       const reason =
-        firstErr instanceof Error ? firstErr.message : String(firstErr);
-      log.warn("agent.inference.onyx.fallback", {
+        primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+      log.warn("agent.inference.heroku.fallback_kimi", {
         routeHint: input.routeHint ?? "",
         error: reason.slice(0, 500),
       });
-      // Do not emit AgentEvent type "error" here — `useAgentStream` treats it
-      // as a terminal failure and would break the UI while primary still runs.
-      return withInferenceBackend(await runOnce("heroku"), "heroku");
+      return withInferenceBackend(await runOnce("onyx"), "onyx");
     }
   } finally {
     await registry.close();

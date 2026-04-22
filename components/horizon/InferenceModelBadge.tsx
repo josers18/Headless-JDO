@@ -13,9 +13,10 @@ export function InferenceModelBadge({
 }) {
   if (!meta) return null;
   const label = meta.backend === "onyx" ? "Kimi" : "Claude";
+  const note = meta.backend === "onyx" ? "fallback" : "primary";
   return (
     <span
-      title={`${label} (secondary inference) · ${meta.model}`}
+      title={`${label} (${note}) · ${meta.model}`}
       className={cn(
         "inline-flex items-center gap-1 rounded-md border border-border-soft/70 bg-surface2/50 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-text-muted/90 tabular-nums",
         className

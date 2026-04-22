@@ -1,9 +1,8 @@
 /**
  * lib/llm/heroku.ts — OpenAI-compatible agent loop (multi-backend).
  *
- * Defaults to Heroku Managed Inference (Claude 4.5 Sonnet). Optionally uses a
- * second Heroku Inference deployment (`inferenceBackend: "onyx"`) — see
- * inferenceClients.ts.
+ * Defaults to Heroku Managed Inference (Claude 4.5 Sonnet). Uses a second
+ * deployment (`inferenceBackend: "onyx"`) only when provider.ts falls back.
  *
  * Heroku's Managed Inference exposes an OpenAI-compatible
  * /v1/chat/completions endpoint. This file orchestrates the tool-calling

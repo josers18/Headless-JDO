@@ -38,7 +38,7 @@ export async function GET(_req: NextRequest) {
       ],
       salesforceToken: token.access_token,
       maxIterations: 6,
-      /** When HEROKU_INFERENCE_ONYX_* is set, uses Onyx deployment (ONYX_ROUTES) to save primary TPM. */
+      /** Primary is always Claude; Kimi (Onyx) is only used if primary fails. */
       routeHint: "signals",
     });
     log.info("signals.ok", {

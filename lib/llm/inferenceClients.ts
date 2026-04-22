@@ -1,20 +1,15 @@
 /**
  * OpenAI SDK clients for Horizon's inference backends.
  *
- * - heroku — Primary Heroku Managed Inference (INFERENCE_URL + INFERENCE_KEY).
- * - onyx   — Second Heroku Inference deployment (HEROKU_INFERENCE_ONYX_*),
- *            same OpenAI-compatible /v1/chat/completions contract. Opt-in per
- *            route via HEROKU_INFERENCE_ONYX_ROUTES to offload TPM on hot paths.
+ * - heroku — Primary Heroku Managed Inference (Claude via INFERENCE_*).
+ * - onyx   — Optional secondary deployment (HEROKU_INFERENCE_ONYX_*), e.g. Kimi,
+ *            used only when primary fails — see lib/llm/provider.ts.
  */
 
 import OpenAI from "openai";
 import { optionalEnv, requireEnv } from "@/lib/utils";
 
 export type InferenceBackend = "heroku" | "onyx";
-
-/** Default HEROKU_INFERENCE_ONYX_ROUTES when env is unset; align with routeHint in API routes. */
-export const DEFAULT_ONYX_ROUTE_LIST =
-  "signals,pulse-strip,portfolio-pulse,priority,drafts,morning-brief,arc,insights,prep,client-detail,ghost-ask";
 
 let _herokuClient: OpenAI | null = null;
 let _onyxClient: OpenAI | null = null;
@@ -58,31 +53,22 @@ export function modelIdFor(backend: InferenceBackend): string {
   );
 }
 
+/** True when Kimi/Onyx fallback can be attempted (both URL and key set). */
+export function isOnyxInferenceConfigured(): boolean {
+  const url = optionalEnv("HEROKU_INFERENCE_ONYX_URL");
+  const key = optionalEnv("HEROKU_INFERENCE_ONYX_KEY");
+  return Boolean(url?.trim() && key?.trim());
+}
+
 /**
- * Pick primary Heroku Inference vs secondary Onyx deployment for this agent run.
- *
- * - Explicit `inferenceBackend` wins (tests / emergency override).
- * - Otherwise, if `HEROKU_INFERENCE_ONYX_URL` and `HEROKU_INFERENCE_ONYX_KEY`
- *   are set and `routeHint` matches `HEROKU_INFERENCE_ONYX_ROUTES`, use onyx.
- * - Default routes: see `DEFAULT_ONYX_ROUTE_LIST` (most agent surfaces +
- *   insights/prep; Ask Bar stays primary unless ghost-ask).
+ * Default model stack for this run. Route-based switching is disabled: all
+ * surfaces use Claude (heroku) first; Onyx is only used on primary failure.
+ * Explicit `inferenceBackend: "onyx"` forces Kimi-only (tests / ops).
  */
 export function resolveInferenceBackend(input: {
   inferenceBackend?: InferenceBackend;
   routeHint?: string;
 }): InferenceBackend {
   if (input.inferenceBackend) return input.inferenceBackend;
-  const url = optionalEnv("HEROKU_INFERENCE_ONYX_URL");
-  const key = optionalEnv("HEROKU_INFERENCE_ONYX_KEY");
-  if (!url?.length || !key?.length) return "heroku";
-  const hint = input.routeHint?.trim();
-  if (!hint) return "heroku";
-  const routes = optionalEnv(
-    "HEROKU_INFERENCE_ONYX_ROUTES",
-    DEFAULT_ONYX_ROUTE_LIST
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  return routes.includes(hint) ? "onyx" : "heroku";
+  return "heroku";
 }
