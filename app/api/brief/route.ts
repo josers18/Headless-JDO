@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, resolveBankerDisplayName } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { morningBriefPrompt } from "@/lib/prompts/morning-brief";
@@ -26,7 +26,7 @@ export async function POST(_req: NextRequest) {
   const tz = optionalEnv("DEMO_BANKER_TZ", "America/New_York");
   const localHour24 = hourInTimeZone(now, tz);
   const prompt = morningBriefPrompt({
-    bankerName: optionalEnv("DEMO_BANKER_NAME", "there"),
+    bankerName: resolveBankerDisplayName(token),
     bankerUserId:
       token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown"),
     localHour24,

@@ -102,15 +102,26 @@ export function clearTokenCookie() {
   cookies().delete(COOKIE_NAME);
 }
 
+/**
+ * Display name for agent prompts (morning brief, insights, prep). Prefers
+ * Salesforce identity from the session cookie (OAuth `id` URL) over
+ * `DEMO_BANKER_NAME` so copy matches the signed-in user, not demo env.
+ */
+export function resolveBankerDisplayName(token: StoredToken | null): string {
+  const envName = optionalEnv("DEMO_BANKER_NAME", "").trim();
+  return (
+    (token?.banker_display_name && token.banker_display_name.trim()) ||
+    envName ||
+    "there"
+  );
+}
+
 /** Server-only: banker row for the signed-in header user menu. */
 export function getBankerMenuProfile(): { name: string; email: string } {
   const t = getTokenCookie();
-  const envName = optionalEnv("DEMO_BANKER_NAME", "").trim();
   const envEmail = optionalEnv("DEMO_BANKER_EMAIL", "").trim();
-  const name =
-    (t?.banker_display_name && t.banker_display_name.trim()) ||
-    envName ||
-    "Banker";
+  const raw = resolveBankerDisplayName(t);
+  const name = raw === "there" ? "Banker" : raw;
   const email =
     (t?.banker_email && t.banker_email.trim()) || envEmail || "\u2014";
   return { name, email };

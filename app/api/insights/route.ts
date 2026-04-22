@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, resolveBankerDisplayName } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import {
@@ -9,7 +9,6 @@ import {
 } from "@/lib/prompts/section-insight";
 import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
-import { optionalEnv } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,7 +51,7 @@ export async function POST(req: NextRequest) {
     }
 
     const prompt = sectionInsightBatchPrompt({
-      bankerName: optionalEnv("DEMO_BANKER_NAME", "the banker"),
+      bankerName: resolveBankerDisplayName(token),
     });
 
     log.info("insight.batch.start", { cid, sections });
@@ -102,7 +101,7 @@ export async function POST(req: NextRequest) {
 
   const prompt = sectionInsightPrompt({
     section,
-    bankerName: optionalEnv("DEMO_BANKER_NAME", "the banker"),
+    bankerName: resolveBankerDisplayName(token),
   });
 
   log.info("insight.start", { cid, section });

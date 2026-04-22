@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, resolveBankerDisplayName } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { prepPrompt } from "@/lib/prompts/prep";
 import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
 import { log, correlationId } from "@/lib/log";
-import { optionalEnv } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +37,7 @@ export async function POST(req: NextRequest) {
       typeof body.clientName === "string" && body.clientName.trim()
         ? body.clientName.trim()
         : undefined,
-    bankerName: optionalEnv("DEMO_BANKER_NAME", "the banker"),
+    bankerName: resolveBankerDisplayName(token),
     reason:
       typeof body.reason === "string" && body.reason.trim()
         ? body.reason.trim()
