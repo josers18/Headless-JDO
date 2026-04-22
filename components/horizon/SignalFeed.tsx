@@ -28,6 +28,7 @@ import {
 import { useSfInstanceUrl } from "./SfInstanceProvider";
 import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
 import { dispatchAction } from "@/lib/client/actions/registry";
+import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 import { primaryActionForSignal } from "@/lib/signals/signalRowActions";
 import type { HorizonAction } from "@/lib/client/actions/registry";
 import type { McpServerName } from "@/types/horizon";
@@ -104,11 +105,16 @@ export function SignalFeed() {
   }, []);
 
   useEffect(() => {
-    void fetchOnce();
+    let cancelled = false;
+    const kickoff = window.setTimeout(() => {
+      if (!cancelled) void fetchOnce();
+    }, AGENT_STAGGER_MS.signals);
     const t = window.setInterval(() => {
       void fetchOnce();
     }, POLL_INTERVAL_MS);
     return () => {
+      cancelled = true;
+      window.clearTimeout(kickoff);
       window.clearInterval(t);
       abortRef.current?.abort();
     };

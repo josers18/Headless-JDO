@@ -41,10 +41,11 @@ export interface AgentStreamState {
 }
 
 const RETRYABLE_STATUS = new Set([502, 503]);
-const FETCH_MAX_ATTEMPTS = 3;
+/** Inference occasionally returns 503 during bursts — extra attempts + backoff. */
+const FETCH_MAX_ATTEMPTS = 5;
 
 function backoffMs(attemptIndex: number): number {
-  return 450 * (attemptIndex + 1) + Math.floor(Math.random() * 350);
+  return 550 * (attemptIndex + 1) + Math.floor(Math.random() * 450);
 }
 
 type IncomingEvent =
