@@ -602,7 +602,8 @@ export function MorningBrief() {
   );
 }
 
-function extractNameHint(headline: string): string | undefined {
+function extractNameHint(headline: string | undefined | null): string | undefined {
+  if (!headline || typeof headline !== "string") return undefined;
   const m = headline.match(
     /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/
   );
@@ -626,9 +627,11 @@ function briefToSpokenText(brief: Brief): string {
   const ordinals = ["First", "Second", "Third", "Fourth", "Fifth"];
   const bodyLines = (brief.items ?? []).map((item, i) => {
     const lead = ordinals[i] ?? `Item ${i + 1}`;
-    const parts = [item.headline, item.why, item.suggested_action]
-      .filter(Boolean)
-      .map((s) => s.trim());
+    if (!item || typeof item !== "object") return `${lead}:`;
+    const o = item as unknown as Record<string, unknown>;
+    const parts = [o.headline, o.why, o.suggested_action]
+      .filter((x) => x !== undefined && x !== null && String(x).trim() !== "")
+      .map((s) => String(s).trim());
     return `${lead}: ${parts.join(" ")}`;
   });
   const lifeLines =

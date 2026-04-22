@@ -171,7 +171,8 @@ export function BriefRichText({
   /** SOQL-resolve capitalized names in this string (comma lists, "Name and Name"). */
   probeCoListedNames,
 }: {
-  text: string;
+  /** Plain copy; coerce non-strings — malformed agent JSON must not crash the shell. */
+  text?: string | null;
   className?: string;
   linkClassName?: string;
   clientId?: string;
@@ -180,16 +181,17 @@ export function BriefRichText({
   entityLinks?: BriefEntityLink[];
   probeCoListedNames?: boolean;
 }) {
+  const prose = typeof text === "string" ? text : "";
   const base = useSfInstanceUrl();
 
   const [probedEntities, setProbedEntities] = useState<BriefEntityLink[]>([]);
 
   useEffect(() => {
-    if (!probeCoListedNames || !text.trim()) {
+    if (!probeCoListedNames || !prose.trim()) {
       setProbedEntities([]);
       return;
     }
-    const names = extractNamesForProbing(sanitizeProseLite(text));
+    const names = extractNamesForProbing(sanitizeProseLite(prose));
     if (names.length === 0) {
       setProbedEntities([]);
       return;
@@ -211,7 +213,7 @@ export function BriefRichText({
     return () => {
       cancelled = true;
     };
-  }, [probeCoListedNames, text]);
+  }, [probeCoListedNames, prose]);
 
   const mergedEntityLinks = useMemo(() => {
     const m = new Map<string, BriefEntityLink>();
@@ -256,7 +258,7 @@ export function BriefRichText({
   const [labels, setLabels] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const ids = new Set(collectIdsFromText(text));
+    const ids = new Set(collectIdsFromText(prose));
     const cid = clientId?.trim();
     if (cid) ids.add(cid);
     for (const e of mergedEntityLinks) {
@@ -275,7 +277,7 @@ export function BriefRichText({
     return () => {
       cancelled = true;
     };
-  }, [text, clientId, mergedEntityKey, mergedEntityLinks]);
+  }, [prose, clientId, mergedEntityKey, mergedEntityLinks]);
 
   const nameAnchors = useMemo(
     () =>
@@ -289,7 +291,7 @@ export function BriefRichText({
     [base, clientId, clientName, mergedEntityLinks, labels]
   );
 
-  const cleanText = useMemo(() => sanitizeProseLite(text), [text]);
+  const cleanText = useMemo(() => sanitizeProseLite(prose), [prose]);
   const topSegs = useMemo(
     () => segmentTextWithSalesforceIds(cleanText),
     [cleanText]

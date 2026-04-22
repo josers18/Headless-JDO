@@ -10,12 +10,13 @@ export interface RightNowSnooze {
 
 export function briefItemKey(item: {
   client_id?: string;
-  headline: string;
+  headline?: string;
 }): string {
-  if (item.client_id && item.client_id.trim().length > 0) {
-    return item.client_id.trim();
-  }
-  return `h:${item.headline.trim().slice(0, 80)}`;
+  const id = typeof item.client_id === "string" ? item.client_id.trim() : "";
+  if (id.length > 0) return id;
+  const head =
+    typeof item.headline === "string" ? item.headline.trim().slice(0, 80) : "";
+  return head.length > 0 ? `h:${head}` : "h:unknown";
 }
 
 export function readRightNowSnooze(): RightNowSnooze | null {
