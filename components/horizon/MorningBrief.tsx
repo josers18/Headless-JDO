@@ -61,11 +61,24 @@ function normalizeBrief(raw: Brief | null): Brief | null {
   }
   if (idx !== 0 && idx !== 1 && idx !== 2) idx = 0;
   if (!raw.items[idx]) idx = 0;
-  return {
+  const ob = raw.older_backlog;
+  const olderBacklog =
+    ob &&
+    typeof ob.task_count === "number" &&
+    Number.isFinite(ob.task_count) &&
+    ob.task_count > 0 &&
+    typeof ob.summary === "string" &&
+    ob.summary.trim().length > 0
+      ? { task_count: Math.floor(ob.task_count), summary: ob.summary.trim() }
+      : undefined;
+  const next: Brief = {
     ...raw,
     right_now_index: idx as 0 | 1 | 2,
     greeting: repairGreeting(raw.greeting),
   };
+  if (olderBacklog !== undefined) next.older_backlog = olderBacklog;
+  else delete next.older_backlog;
+  return next;
 }
 
 function resolveHeroIndex(brief: Brief): number {
@@ -94,6 +107,7 @@ export function MorningBrief() {
     name?: string;
   } | null>(null);
   const [whyOpen, setWhyOpen] = useState(false);
+  const [backlogOpen, setBacklogOpen] = useState(false);
   useEffect(() => {
     let cancelled = false;
     const t = window.setTimeout(() => {
@@ -391,6 +405,43 @@ export function MorningBrief() {
       {brief?.signoff && (
         <div className="relative mt-8 max-w-prose text-[13px] italic leading-relaxed text-text-muted">
           {brief.signoff}
+        </div>
+      )}
+
+      {brief?.older_backlog && brief.older_backlog.task_count > 0 && (
+        <div className="relative mt-8 rounded-xl border border-border-soft/60 bg-surface/40">
+          <button
+            type="button"
+            onClick={() => setBacklogOpen((o) => !o)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface2/40"
+            aria-expanded={backlogOpen}
+          >
+            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-text-muted">
+              Older backlog{" "}
+              <span className="tabular-nums text-text/90">
+                ({brief.older_backlog.task_count})
+              </span>
+            </span>
+            <ChevronDown
+              size={16}
+              className={cn(
+                "shrink-0 text-text-muted/70 transition-transform duration-fast",
+                backlogOpen && "rotate-180"
+              )}
+              aria-hidden
+            />
+          </button>
+          {backlogOpen && (
+            <div className="border-t border-border-soft/50 px-4 pb-4 pt-1 animate-fade-in">
+              <p className="max-w-prose text-[13px] leading-relaxed text-text-muted">
+                {brief.older_backlog.summary}
+              </p>
+              <p className="mt-2 text-[11px] text-text-muted/60">
+                Not part of today&apos;s top three — triage when you have
+                bandwidth.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

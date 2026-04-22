@@ -29,12 +29,25 @@ export interface BriefItem {
   right_now_cta?: string;
 }
 
+/** P1-1 — housekeeping tasks (>14 days overdue); shown in collapsed UI only. */
+export interface OlderBacklogSummary {
+  /** Number of open tasks overdue more than 14 days (from CRM task query). */
+  task_count: number;
+  /** One readable line — themes only, no day-count lecturing (≤ 140 chars). */
+  summary: string;
+}
+
 export interface MorningBrief {
   greeting: string;
   items: BriefItem[];
   signoff: string;
   /** UI v2 T0-2 — index into `items` for the dominant "Right Now" hero. */
   right_now_index?: 0 | 1 | 2;
+  /**
+   * FIX_PASS P1-1 — older open tasks (>14 days overdue). Omit when zero or
+   * when task data was unavailable.
+   */
+  older_backlog?: OlderBacklogSummary | null;
 }
 
 export interface PriorityClient {

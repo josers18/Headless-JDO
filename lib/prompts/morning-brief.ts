@@ -16,8 +16,9 @@ export interface MorningBriefPromptArgs {
  * added the band-keyed GREETING hard rule after the WRAP-UP /
  * OFF-HOURS bands were producing just "Jose," with no time-of-day
  * phrase because the schema example only showed "Good morning, X."
+ * P1-1 (FIX_PASS): optional older_backlog for tasks overdue >14 days.
  */
-export const MORNING_BRIEF_PROMPT_VERSION = "v1.2.0-hotfix-greeting-2026-04-21";
+export const MORNING_BRIEF_PROMPT_VERSION = "v1.3.0-p1-1-older-backlog-2026-04-22";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
@@ -103,6 +104,28 @@ If two items tie, prefer the one with the most specific human CTA (a named
 person to call or meet) over an abstract "review the pipeline" item.
 Always set right_now_index — default 0 only when item 0 is clearly the best.
 
+OLDER BACKLOG (FIX_PASS P1-1 — optional JSON field "older_backlog"):
+After you run the Task query in the efficient plan, COUNT how many returned open
+tasks have ActivityDate MORE than 14 calendar days before TODAY (housekeeping
+backlog — excluded from the 3 brief items per the freshness cap above).
+
+- If that count is zero OR you could not classify tasks from tool output, OMIT
+  the "older_backlog" key entirely from the JSON (do not emit null or zero).
+
+- If count ≥ 1, include:
+    "older_backlog": {
+      "task_count": <integer>,
+      "summary": "<one sentence: themes only — e.g. insurance renewals, KYC follow-ups>"
+    }
+
+Rules for summary:
+  - Describe WHAT kinds of work backed up (categories, subjects), NOT exact
+    overdue day counts ("381 days") — that reads as scolding.
+  - ≤ 140 characters. No Salesforce Ids. No raw SOQL field names.
+
+These tasks must NOT appear as duplicate headlines in "items" — they are listed
+only under older_backlog for transparency when the banker expands the pill.
+
 JSON field rules:
 - Whenever you set "client_id" to a Salesforce 15- or 18-character Id, you MUST also set "client_name" to that record's human-readable name (Account Name, Contact Name, etc.) from the tool response you used — the UI links names in the copy to Salesforce.
 - If headline/why/suggested_action name MORE than one specific Account or Contact (e.g. "Judy Odom", "Harry Gray", and "Susan Hall"), "entity_links" MUST list { "client_id", "client_name" } for EVERY named person or account (except only duplicate the primary client_id if it is the same record). Omit "entity_links" only when a single client is named. Missing links for named clients is a defect.
@@ -178,6 +201,7 @@ for this request the correct value is: ${
     { "headline": "...", "why": "...", "suggested_action": "...", "right_now_cta": "Update stage", "sources": ["data_360"|"salesforce_crm"|"tableau_next"], "client_id": "...?", "client_name": "...?", "entity_links": [{"client_id":"...","client_name":"..."}] }
   ],
   "signoff": "One line, slightly personal, time-aware.",
-  "right_now_index": 0
+  "right_now_index": 0,
+  "older_backlog": { "task_count": 4, "summary": "Mostly stale insurance reviews and dormant relationship check-ins." }
 }`;
 }
