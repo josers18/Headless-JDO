@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+        env:
+          LLM_PROVIDER: heroku
+          INFERENCE_URL: https://example.invalid
+          INFERENCE_KEY: ci-placeholder
+          INFERENCE_MODEL_ID: claude-4-5-sonnet
+          SF_CLIENT_ID: ci-placeholder
+          SF_CLIENT_SECRET: ci-placeholder
+          SF_LOGIN_URL: https://login.salesforce.com
+          SF_REDIRECT_URI: http://localhost:3000/callback
+          APP_URL: http://localhost:3000

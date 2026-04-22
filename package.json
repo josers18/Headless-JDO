@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "Horizon — the headless home page for the relationship banker.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/josers18/Headless-JDO.git"
+  },
+  "license": "MIT",
   "engines": {
     "node": "22.x"
   },
