@@ -31,7 +31,7 @@ import type {
   BriefLifeEventRow,
   MorningBrief as Brief,
 } from "@/types/horizon";
-import { cn } from "@/lib/utils";
+import { cn, plainText } from "@/lib/utils";
 import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
 import { sanitizeProseLite } from "@/lib/safety/sanitize";
 
@@ -97,6 +97,28 @@ function normalizeLifeEvents(raw: unknown): BriefLifeEventRow[] | undefined {
   return out.length > 0 ? out : undefined;
 }
 
+function coerceBriefItem(it: BriefItem): BriefItem {
+  return {
+    ...it,
+    headline: plainText(it.headline as unknown),
+    why: plainText(it.why as unknown),
+    suggested_action: plainText(it.suggested_action as unknown),
+    client_id:
+      it.client_id != null && plainText(it.client_id as unknown).trim() !== ""
+        ? plainText(it.client_id as unknown).trim()
+        : undefined,
+    client_name:
+      it.client_name != null &&
+      plainText(it.client_name as unknown).trim() !== ""
+        ? plainText(it.client_name as unknown).trim()
+        : undefined,
+    right_now_cta:
+      it.right_now_cta != null
+        ? plainText(it.right_now_cta as unknown).trim() || undefined
+        : undefined,
+  };
+}
+
 function normalizeBrief(raw: Brief | null): Brief | null {
   if (!raw) return null;
 
@@ -105,7 +127,8 @@ function normalizeBrief(raw: Brief | null): Brief | null {
   if (!raw.items?.length) {
     const next: Brief = {
       ...raw,
-      greeting: repairGreeting(raw.greeting),
+      greeting: repairGreeting(plainText(raw.greeting)),
+      signoff: plainText(raw.signoff),
     };
     if (lifeRows !== undefined) next.recent_life_events = lifeRows;
     else delete next.recent_life_events;
@@ -119,19 +142,22 @@ function normalizeBrief(raw: Brief | null): Brief | null {
   if (idx !== 0 && idx !== 1 && idx !== 2) idx = 0;
   if (!raw.items[idx]) idx = 0;
   const ob = raw.older_backlog;
+  const summaryLine = ob ? plainText(ob.summary as unknown).trim() : "";
   const olderBacklog =
     ob &&
     typeof ob.task_count === "number" &&
     Number.isFinite(ob.task_count) &&
     ob.task_count > 0 &&
-    typeof ob.summary === "string" &&
-    ob.summary.trim().length > 0
-      ? { task_count: Math.floor(ob.task_count), summary: ob.summary.trim() }
+    summaryLine.length > 0
+      ? { task_count: Math.floor(ob.task_count), summary: summaryLine }
       : undefined;
+  const coercedItems = raw.items.map(coerceBriefItem);
   const next: Brief = {
     ...raw,
+    items: coercedItems,
     right_now_index: idx as 0 | 1 | 2,
-    greeting: repairGreeting(raw.greeting),
+    greeting: repairGreeting(plainText(raw.greeting)),
+    signoff: plainText(raw.signoff),
   };
   if (olderBacklog !== undefined) next.older_backlog = olderBacklog;
   else delete next.older_backlog;
@@ -223,7 +249,7 @@ export function MorningBrief() {
     setSnoozeTick((n) => n + 1);
   }, [heroItem]);
 
-  const greeting = brief?.greeting ?? "";
+  const greeting = plainText(brief?.greeting);
   const { lead, rest } = splitGreeting(greeting);
   const cta = heroItem ? resolveRightNowCta(heroItem) : null;
 
@@ -610,15 +636,16 @@ function extractNameHint(headline: string | undefined | null): string | undefine
   return m?.[1]?.trim();
 }
 
-function splitGreeting(greeting: string): { lead: string; rest: string } {
-  if (!greeting) return { lead: "", rest: "" };
-  const idx = greeting.indexOf(",");
-  if (idx === -1 || idx >= greeting.length - 1) {
-    return { lead: greeting, rest: "" };
+function splitGreeting(greeting: unknown): { lead: string; rest: string } {
+  const g = plainText(greeting);
+  if (!g) return { lead: "", rest: "" };
+  const idx = g.indexOf(",");
+  if (idx === -1 || idx >= g.length - 1) {
+    return { lead: g, rest: "" };
   }
   return {
-    lead: greeting.slice(0, idx + 1) + " ",
-    rest: greeting.slice(idx + 1).trim(),
+    lead: g.slice(0, idx + 1) + " ",
+    rest: g.slice(idx + 1).trim(),
   };
 }
 

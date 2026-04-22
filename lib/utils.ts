@@ -17,6 +17,12 @@ export function optionalEnv(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+/** Coerce streamed JSON / agent fields to a string before `.trim()` / `.slice()`. */
+export function plainText(x: unknown): string {
+  if (x == null) return "";
+  return typeof x === "string" ? x : String(x);
+}
+
 export function truncate(s: string, n: number): string {
   if (s.length <= n) return s;
   return s.slice(0, n - 1) + "…";
@@ -37,8 +43,8 @@ export function truncate(s: string, n: number): string {
  *   hard character cut — we still guarantee the ellipsis.
  * - Always appends a single "…" (U+2026).
  */
-export function truncateAtWordBoundary(s: string, max: number): string {
-  const str = s ?? "";
+export function truncateAtWordBoundary(s: unknown, max: number): string {
+  const str = plainText(s);
   if (str.length <= max) return str;
   const window = str.slice(0, max);
   const lastSpace = window.lastIndexOf(" ");

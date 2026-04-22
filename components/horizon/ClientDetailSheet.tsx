@@ -6,7 +6,7 @@ import { dispatchAction } from "@/lib/client/actions/registry";
 import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, X } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
-import { cn } from "@/lib/utils";
+import { cn, plainText } from "@/lib/utils";
 import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
 import { TextWithSalesforceIds } from "./TextWithSalesforceIds";
@@ -129,12 +129,12 @@ function draftFromRecommendation(
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? `sheet-rec-${crypto.randomUUID()}`
       : `sheet-rec-${clientId}-${index}-${Date.now()}`;
-  const title = a.title.trim() || "Recommended action";
+  const title = plainText(a.title as unknown).trim() || "Recommended action";
   return {
     id,
     kind: a.kind,
     title: title.slice(0, 500),
-    body: a.rationale.trim().slice(0, 12000),
+    body: plainText(a.rationale as unknown).trim().slice(0, 12000),
     target_object: targetObjectForDraft(clientId),
     target_id: clientId,
     confidence: 82,
@@ -353,14 +353,15 @@ export function ClientDetailSheet({
         <div className="relative px-8 pb-16 pt-8">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 pr-4">
-              {recordHref && (detail?.name ?? clientName)?.trim() ? (
+              {recordHref &&
+              plainText(detail?.name ?? clientName).trim() ? (
                 <a
                   href={recordHref}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block truncate text-[11px] font-medium uppercase tracking-[0.18em] text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
                 >
-                  {(detail?.name ?? clientName)!.trim()}
+                  {plainText(detail?.name ?? clientName).trim()}
                 </a>
               ) : (
                 <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-text-muted">

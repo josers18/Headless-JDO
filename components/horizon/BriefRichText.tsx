@@ -10,7 +10,7 @@ import { resolveSfLabels } from "@/lib/client/sfLabelsCache";
 import { extractNamesForProbing } from "@/lib/client/extractNamesForProbing";
 import { lookupEntityLabel } from "@/lib/salesforce/labelLookup";
 import { useSfInstanceUrl } from "./SfInstanceProvider";
-import { cn } from "@/lib/utils";
+import { cn, plainText } from "@/lib/utils";
 import { sanitizeProseLite } from "@/lib/safety/sanitize";
 import type { BriefEntityLink } from "@/types/horizon";
 
@@ -92,7 +92,7 @@ function buildNameAnchors(
   };
 
   const addEntity = (idRaw: string | undefined, nameRaw?: string) => {
-    const id = idRaw?.trim();
+    const id = plainText(idRaw).trim();
     if (!id) return;
     for (const hint of displayNameHints(id, labels, nameRaw)) {
       push(hint, id);
@@ -218,9 +218,9 @@ export function BriefRichText({
   const mergedEntityLinks = useMemo(() => {
     const m = new Map<string, BriefEntityLink>();
     const merge = (e: BriefEntityLink) => {
-      const id = e.client_id?.trim();
+      const id = plainText(e.client_id).trim();
       if (!id) return;
-      const nm = e.client_name?.trim() ?? "";
+      const nm = plainText(e.client_name).trim();
       const prev = m.get(id);
       if (!prev) {
         m.set(id, { ...e, client_id: id });

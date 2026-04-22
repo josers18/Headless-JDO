@@ -1,5 +1,6 @@
 import type { Signal } from "@/types/horizon";
 import type { HorizonAction } from "@/lib/client/actions/registry";
+import { plainText } from "@/lib/utils";
 
 export interface SignalRowPrimary {
   action: HorizonAction;
@@ -12,7 +13,7 @@ export interface SignalRowPrimary {
  * Heuristics use summary text because API `kind` is coarse-grained.
  */
 export function primaryActionForSignal(signal: Signal): SignalRowPrimary {
-  const s = signal.summary.toLowerCase();
+  const s = plainText(signal.summary).toLowerCase();
   const cid = signal.client_id;
   const name = signal.client_name;
 

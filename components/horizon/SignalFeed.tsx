@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { tryParseJson } from "@/lib/client/jsonStream";
 import type { Signal } from "@/types/horizon";
-import { cn, truncateAtWordBoundary } from "@/lib/utils";
+import { cn, plainText, truncateAtWordBoundary } from "@/lib/utils";
 import { BriefRichText } from "./BriefRichText";
 import { ClientDetailSheet } from "./ClientDetailSheet";
 import {
@@ -93,7 +93,9 @@ export function SignalFeed() {
         setInferenceMeta(null);
       }
       const parsed = tryParseJson<{ signals?: Signal[] }>(json?.result ?? "");
-      const incoming = Array.isArray(parsed?.signals) ? parsed!.signals! : [];
+      const incoming = Array.isArray(parsed?.signals)
+        ? parsed!.signals!.map(sanitizeSignal).filter((x): x is Signal => x != null)
+        : [];
       setSignals((prev) => mergeSignals(prev, incoming));
       setLastUpdated(new Date());
     } catch (e) {
@@ -318,7 +320,7 @@ function SignalRow({
         <p className="line-clamp-2 text-[13px] leading-snug text-text">
           <BriefRichText
             text={truncateAtWordBoundary(
-              signal.summary ?? "",
+              signal.summary,
               SIGNAL_SUMMARY_MAX_CHARS
             )}
             clientId={signal.client_id}
@@ -433,8 +435,54 @@ function SignalRow({
   );
 }
 
-function truncateEllipsis(s: string, max: number): string {
-  const t = s.trim();
+const SIGNAL_KINDS = new Set<Signal["kind"]>([
+  "transaction",
+  "engagement",
+  "life_event",
+  "kpi",
+  "risk",
+]);
+
+const SIGNAL_SEVERITIES = new Set<Signal["severity"]>(["low", "med", "high"]);
+
+const MCP_SOURCES = new Set<McpServerName>([
+  "salesforce_crm",
+  "data_360",
+  "tableau_next",
+  "heroku_toolkit",
+]);
+
+function sanitizeSignal(input: unknown): Signal | null {
+  if (!input || typeof input !== "object") return null;
+  const o = input as Record<string, unknown>;
+  const id = plainText(o.id).trim();
+  if (!id) return null;
+  const kind = SIGNAL_KINDS.has(o.kind as Signal["kind"])
+    ? (o.kind as Signal["kind"])
+    : "kpi";
+  const severity = SIGNAL_SEVERITIES.has(o.severity as Signal["severity"])
+    ? (o.severity as Signal["severity"])
+    : "low";
+  const sourceRaw = plainText(o.source);
+  const source: McpServerName = MCP_SOURCES.has(sourceRaw as McpServerName)
+    ? (sourceRaw as McpServerName)
+    : "salesforce_crm";
+  const cid = plainText(o.client_id).trim();
+  const cname = plainText(o.client_name).trim();
+  return {
+    id,
+    client_id: cid || undefined,
+    client_name: cname || undefined,
+    kind,
+    summary: plainText(o.summary),
+    severity,
+    timestamp: plainText(o.timestamp) || new Date().toISOString(),
+    source,
+  };
+}
+
+function truncateEllipsis(s: unknown, max: number): string {
+  const t = plainText(s).trim();
   if (t.length <= max) return t;
   return `${t.slice(0, Math.max(0, max - 1))}…`;
 }
