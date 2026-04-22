@@ -126,7 +126,13 @@ export function SectionInsight({
 
   const sectionHasContent = useSectionHasContent(section);
 
-  const style = useMemo(() => TONE[payload?.tone ?? "calm"], [payload]);
+  const style = useMemo(() => {
+    const tone: InsightPayload["tone"] =
+      payload?.tone === "attention" || payload?.tone === "urgent"
+        ? payload.tone
+        : "calm";
+    return TONE[tone];
+  }, [payload]);
   const Icon = style.icon;
 
   if (state === "error") return null;

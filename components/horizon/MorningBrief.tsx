@@ -123,10 +123,13 @@ function normalizeBrief(raw: Brief | null): Brief | null {
   if (!raw) return null;
 
   const lifeRows = normalizeLifeEvents(raw.recent_life_events);
+  /** Agent JSON often omits `items` or sends a non-array — never propagate undefined. */
+  const itemsArray = Array.isArray(raw.items) ? raw.items : [];
 
-  if (!raw.items?.length) {
+  if (!itemsArray.length) {
     const next: Brief = {
       ...raw,
+      items: [],
       greeting: repairGreeting(plainText(raw.greeting)),
       signoff: plainText(raw.signoff),
     };
@@ -140,7 +143,7 @@ function normalizeBrief(raw: Brief | null): Brief | null {
     idx = Number.parseInt(idx, 10);
   }
   if (idx !== 0 && idx !== 1 && idx !== 2) idx = 0;
-  if (!raw.items[idx]) idx = 0;
+  if (!itemsArray[idx]) idx = 0;
   const ob = raw.older_backlog;
   const summaryLine = ob ? plainText(ob.summary as unknown).trim() : "";
   const olderBacklog =
@@ -151,7 +154,7 @@ function normalizeBrief(raw: Brief | null): Brief | null {
     summaryLine.length > 0
       ? { task_count: Math.floor(ob.task_count), summary: summaryLine }
       : undefined;
-  const coercedItems = raw.items.map(coerceBriefItem);
+  const coercedItems = itemsArray.map(coerceBriefItem);
   const next: Brief = {
     ...raw,
     items: coercedItems,
@@ -169,9 +172,10 @@ function normalizeBrief(raw: Brief | null): Brief | null {
 function resolveHeroIndex(brief: Brief): number {
   const preferred = brief.right_now_index ?? 0;
   const snooze = readRightNowSnooze();
+  const items = brief.items ?? [];
   const order = [preferred, 0, 1, 2].filter((v, i, a) => a.indexOf(v) === i);
   for (const i of order) {
-    const item = brief.items[i];
+    const item = items[i];
     if (!item) continue;
     const key = briefItemKey(item);
     if (snooze && snooze.itemKey === key && Date.now() < snooze.until) {
@@ -230,7 +234,7 @@ export function MorningBrief() {
     return brief ? resolveHeroIndex(brief) : 0;
   }, [brief, snoozeTick]);
 
-  const heroItem = brief?.items[heroIndex];
+  const heroItem = brief?.items?.[heroIndex];
 
   const spokenText = useMemo(() => {
     const b = normalizeBrief(tryParseJson<Brief>(narrative));
