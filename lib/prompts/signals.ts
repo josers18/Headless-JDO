@@ -13,11 +13,10 @@ export function signalsPrompt(a: SignalsArgs): string {
   const days = Math.max(1, Math.round((a.windowHours ?? 24) / 24));
   return `Surface up to 6 recent high-signal events for banker user id ${a.bankerUserId}'s book. Be FAST — one pass.
 
-Plan:
+Plan (CRM-only — this endpoint must finish under ~25s for Heroku; do NOT call data_360):
 1. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, Priority, ActivityDate, CreatedDate, WhoId, Who.Name, WhatId, What.Name FROM Task WHERE OwnerId = '${a.bankerUserId}' AND CreatedDate = LAST_N_DAYS:${days} ORDER BY CreatedDate DESC LIMIT 15
 2. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, Priority, AccountId, Account.Name, CreatedDate FROM Case WHERE Account.OwnerId = '${a.bankerUserId}' AND CreatedDate = LAST_N_DAYS:${days} ORDER BY CreatedDate DESC LIMIT 10
 3. salesforce_crm.soqlQuery: SELECT Id, Name, StageName, Amount, LastModifiedDate, AccountId, Account.Name FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND LastModifiedDate = LAST_N_DAYS:${days} ORDER BY LastModifiedDate DESC LIMIT 10
-4. (Optional) data_360: getDcMetadata first, ONE postDcQuerySql if a relevant DMO exists. Skip on any error.
 
 Pick up to 6 signals across the results. Bias toward severity: overdue high-priority tasks = high, new escalated cases = high, large opp stage changes = high, routine updates = low/med.
 

@@ -10,11 +10,9 @@ import { modelIdFor } from "@/lib/llm/inferenceClients";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/signals — returns a compact JSON array of recent signals from
-// data_360 (with light salesforce_crm enrichment). The client polls this
-// endpoint every ~45s; data_360 is SQL-based and doesn't push events, so
-// "live" is really "recently observed." We cap maxIterations at 6 and set
-// the prompt to one tool-call round so we stay inside Heroku's 30s H12.
+// GET /api/signals — compact JSON of recent CRM-backed signals. The client
+// polls every ~45s ("live" = recently observed). CRM-only plan + iteration
+// cap keeps the agent under Heroku's ~30s HTTP window to avoid 503s.
 export async function GET(_req: NextRequest) {
   const cid = correlationId();
   const token = await ensureFreshToken();
@@ -37,7 +35,9 @@ export async function GET(_req: NextRequest) {
         },
       ],
       salesforceToken: token.access_token,
-      maxIterations: 6,
+      /** CRM-only prompt + tight caps — stay under Heroku's ~30s router limit. */
+      maxIterations: 5,
+      maxTokens: 2048,
       /** Primary is always Claude; Kimi (Onyx) is only used if primary fails. */
       routeHint: "signals",
     });

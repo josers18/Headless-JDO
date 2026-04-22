@@ -18,9 +18,10 @@ export interface MorningBriefPromptArgs {
  * phrase because the schema example only showed "Good morning, X."
  * P1-1 (FIX_PASS): optional older_backlog for tasks overdue >14 days.
  * v1.4.0: FinServ life events — hierarchy + recent_life_events JSON + SOQL step 0.
+ * v1.4.3: reinforce JSON string hygiene (physical newlines in quoted fields).
  */
 export const MORNING_BRIEF_PROMPT_VERSION =
-  "v1.4.2-json-parse-recovery-2026-04-22";
+  "v1.4.3-json-string-newlines-2026-04-22";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
@@ -167,7 +168,7 @@ only under older_backlog for transparency when the banker expands the pill.
 JSON field rules:
 - Whenever you set "client_id" to a Salesforce 15- or 18-character Id, you MUST also set "client_name" to that record's human-readable name (Account Name, Contact Name, etc.) from the tool response you used — the UI links names in the copy to Salesforce.
 - If headline/why/suggested_action name MORE than one specific Account or Contact (e.g. "Judy Odom", "Harry Gray", and "Susan Hall"), "entity_links" MUST list { "client_id", "client_name" } for EVERY named person or account (except only duplicate the primary client_id if it is the same record). Omit "entity_links" only when a single client is named. Missing links for named clients is a defect.
-- VALID JSON ONLY — obey RFC 8259 string escaping (control chars, embedded quotes). Never put raw newline characters inside a quoted string — the UI parser will drop the entire brief.
+- VALID JSON ONLY — obey RFC 8259 string escaping (control chars, embedded quotes). Never put raw newline or tab characters inside a quoted string — use \\n and \\t escapes only. A physical line break inside "why" or "headline" invalidates the entire payload.
 
 GREETING (field "greeting") — HARD RULES (HOTFIX 2026-04-21):
 The JSON example below shows "Good morning, ${firstName}." as a schema stub,

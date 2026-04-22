@@ -102,14 +102,84 @@ function normalizeSmartQuotes(s: string): string {
     .replace(/\u2018|\u2019|\u201A|\u2032/g, "'");
 }
 
+/** LS/PS break strict JSON parsers when they appear as token separators. */
+function normalizeUnicodeSeparators(s: string): string {
+  return s.replace(/\u2028|\u2029/g, " ");
+}
+
+/**
+ * Models often paste physical newlines (or raw tabs) inside JSON string values,
+ * which violates RFC 8259 and makes JSON.parse fail for the whole brief.
+ * Walk string literals and emit JSON escapes. Respects backslash escapes.
+ */
+function repairUnescapedStringWhitespaceForJson(input: string): string {
+  let out = "";
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i] ?? "";
+    if (escape) {
+      out += c;
+      escape = false;
+      continue;
+    }
+    if (c === "\\") {
+      out += c;
+      if (inString) escape = true;
+      continue;
+    }
+    if (c === '"') {
+      inString = !inString;
+      out += c;
+      continue;
+    }
+    if (inString) {
+      if (c === "\n") {
+        out += "\\n";
+        continue;
+      }
+      if (c === "\r") {
+        if (input[i + 1] === "\n") i++;
+        out += "\\n";
+        continue;
+      }
+      if (c === "\t") {
+        out += "\\t";
+        continue;
+      }
+      const code = c.charCodeAt(0);
+      if (code >= 0 && code < 32) {
+        out += `\\u${code.toString(16).padStart(4, "0")}`;
+        continue;
+      }
+    }
+    out += c;
+  }
+  return out;
+}
+
+function parseCandidateFragment(frag: string): unknown | null {
+  let val = parseJsonLenient(frag);
+  if (val !== null) return val;
+  val = parseJsonLenient(repairUnescapedStringWhitespaceForJson(frag));
+  if (val !== null) return val;
+  val = parseJsonLenient(normalizeSmartQuotes(frag));
+  if (val !== null) return val;
+  val = parseJsonLenient(
+    normalizeSmartQuotes(repairUnescapedStringWhitespaceForJson(frag))
+  );
+  return val;
+}
+
 export function tryParseJson<T>(text: string): T | null {
   if (!text) return null;
+  const normalizedText = normalizeUnicodeSeparators(text.replace(/\uFEFF/g, ""));
 
   const stemSeen = new Set<string>();
   const candidates: string[] = [];
   const sliceSeen = new Set<string>();
 
-  for (const stem of stemsForJsonScan(text)) {
+  for (const stem of stemsForJsonScan(normalizedText)) {
     if (!stem || stemSeen.has(stem)) continue;
     stemSeen.add(stem);
     for (const slice of enumerateJsonObjectSlicesFromStem(stem)) {
@@ -123,8 +193,7 @@ export function tryParseJson<T>(text: string): T | null {
   candidates.sort((a, b) => b.length - a.length);
 
   for (const frag of candidates) {
-    let val = parseJsonLenient(frag);
-    if (val === null) val = parseJsonLenient(normalizeSmartQuotes(frag));
+    const val = parseCandidateFragment(frag);
     if (val !== null && typeof val === "object" && !Array.isArray(val)) {
       return val as T;
     }
