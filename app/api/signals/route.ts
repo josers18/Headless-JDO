@@ -37,7 +37,7 @@ export async function GET(_req: NextRequest) {
       ],
       salesforceToken: token.access_token,
       maxIterations: 6,
-      /** When KIMI_API_KEY is set, uses Moonshot Kimi (KIMI_ROUTES) to save Heroku TPM. */
+      /** When HEROKU_INFERENCE_ONYX_* is set, uses Onyx deployment (ONYX_ROUTES) to save primary TPM. */
       routeHint: "signals",
     });
     log.info("signals.ok", {

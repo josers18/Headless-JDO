@@ -1,8 +1,9 @@
 /**
  * lib/llm/heroku.ts — OpenAI-compatible agent loop (multi-backend).
  *
- * Defaults to Heroku Managed Inference (Claude 4.5 Sonnet). Optionally
- * uses Moonshot Kimi (`inferenceBackend: "kimi"`) — see inferenceClients.ts.
+ * Defaults to Heroku Managed Inference (Claude 4.5 Sonnet). Optionally uses a
+ * second Heroku Inference deployment (`inferenceBackend: "onyx"`) — see
+ * inferenceClients.ts.
  *
  * Heroku's Managed Inference exposes an OpenAI-compatible
  * /v1/chat/completions endpoint. This file orchestrates the tool-calling
@@ -79,7 +80,7 @@ export interface AgentRunArgs {
   /**
    * Which OpenAI-compatible inference stack to call. Resolved by
    * `runAgentWithMcp` from `routeHint` + env unless set explicitly.
-   * Default heroku (Claude via Heroku Inference).
+   * Default heroku (primary INFERENCE_* endpoint).
    */
   inferenceBackend?: InferenceBackend;
 }

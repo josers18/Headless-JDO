@@ -1,11 +1,10 @@
 /**
  * lib/llm/provider.ts — LLM provider selection + unified agent runner.
  *
- * Primary path: `LLM_PROVIDER=heroku` — same process, but per-request
- * `inferenceBackend` can be `heroku` (Claude via Heroku Inference) or
- * `kimi` (Moonshot Kimi K2) when `KIMI_API_KEY` + `routeHint` match
- * `KIMI_ROUTES`. Anthropic direct (`LLM_PROVIDER=anthropic`) stays a
- * separate fallback and is not wired through `runAgentWithMcp`.
+ * Primary path: `LLM_PROVIDER=heroku` — per-request `inferenceBackend` can be
+ * `heroku` (INFERENCE_*) or `onyx` (HEROKU_INFERENCE_ONYX_*) when `routeHint`
+ * matches `HEROKU_INFERENCE_ONYX_ROUTES`. Same OpenAI-compatible chat API.
+ * Anthropic direct (`LLM_PROVIDER=anthropic`) is not wired through here.
  *
  * Callers use `runAgentWithMcp` and pass optional `routeHint`.
  */
@@ -41,8 +40,8 @@ export interface RunAgentInput {
   /** See `AgentRunArgs.forceFirstToolCall` in lib/llm/heroku.ts. */
   forceFirstToolCall?: boolean;
   /**
-   * When set, steers the agent to Heroku Inference vs Moonshot Kimi
-   * (see KIMI_API_KEY, KIMI_ROUTES in .env). Example: "signals", "pulse-strip".
+   * When set, steers primary vs Onyx Heroku Inference (see
+   * HEROKU_INFERENCE_ONYX_* in .env). Example: "signals", "pulse-strip".
    */
   routeHint?: string;
   /**
@@ -84,10 +83,10 @@ export async function runAgentWithMcp(
     inferenceBackend: input.inferenceBackend,
     routeHint: input.routeHint,
   });
-  if (inferenceBackend === "kimi") {
-    log.info("agent.inference.kimi", {
+  if (inferenceBackend === "onyx") {
+    log.info("agent.inference.onyx", {
       routeHint: input.routeHint ?? "",
-      model: modelIdFor("kimi"),
+      model: modelIdFor("onyx"),
     });
   }
 

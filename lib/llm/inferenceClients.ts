@@ -1,19 +1,19 @@
 /**
  * OpenAI SDK clients for Horizon's inference backends.
  *
- * - heroku — Heroku Managed Inference (Claude 4.5 Sonnet), default.
- * - kimi    — Moonshot Kimi API (OpenAI-compatible). Opt-in per route via
- *             KIMI_ROUTES + KIMI_API_KEY to offload high-frequency pulls from
- *             the Heroku Inference TPM quota.
+ * - heroku — Primary Heroku Managed Inference (INFERENCE_URL + INFERENCE_KEY).
+ * - onyx   — Second Heroku Inference deployment (HEROKU_INFERENCE_ONYX_*),
+ *            same OpenAI-compatible /v1/chat/completions contract. Opt-in per
+ *            route via HEROKU_INFERENCE_ONYX_ROUTES to offload TPM on hot paths.
  */
 
 import OpenAI from "openai";
 import { optionalEnv, requireEnv } from "@/lib/utils";
 
-export type InferenceBackend = "heroku" | "kimi";
+export type InferenceBackend = "heroku" | "onyx";
 
 let _herokuClient: OpenAI | null = null;
-let _kimiClient: OpenAI | null = null;
+let _onyxClient: OpenAI | null = null;
 
 export function openAiClientFor(backend: InferenceBackend): OpenAI {
   if (backend === "heroku") {
@@ -26,52 +26,58 @@ export function openAiClientFor(backend: InferenceBackend): OpenAI {
     }
     return _herokuClient;
   }
-  const key = optionalEnv("KIMI_API_KEY");
-  if (!key?.length) {
+  const key = optionalEnv("HEROKU_INFERENCE_ONYX_KEY");
+  const urlRaw = optionalEnv("HEROKU_INFERENCE_ONYX_URL");
+  if (!key?.length || !urlRaw?.length) {
     throw new Error(
-      "KIMI_API_KEY is not set — cannot use Moonshot Kimi as the inference backend."
+      "HEROKU_INFERENCE_ONYX_KEY and HEROKU_INFERENCE_ONYX_URL must be set to use the onyx inference backend."
     );
   }
-  if (!_kimiClient) {
-    const base = optionalEnv("KIMI_BASE_URL", "https://api.moonshot.ai").replace(
-      /\/$/,
-      ""
-    );
-    _kimiClient = new OpenAI({
+  if (!_onyxClient) {
+    const base = urlRaw.replace(/\/$/, "");
+    _onyxClient = new OpenAI({
       apiKey: key,
       baseURL: `${base}/v1`,
     });
   }
-  return _kimiClient;
+  return _onyxClient;
 }
 
 export function modelIdFor(backend: InferenceBackend): string {
   if (backend === "heroku") {
     return process.env.INFERENCE_MODEL_ID ?? "claude-4-5-sonnet";
   }
-  return optionalEnv("KIMI_MODEL_ID", "kimi-k2-turbo-preview");
+  return (
+    optionalEnv("HEROKU_INFERENCE_ONYX_MODEL_ID") ||
+    process.env.INFERENCE_MODEL_ID ||
+    "claude-4-5-sonnet"
+  );
 }
 
 /**
- * Pick Heroku Inference vs Moonshot Kimi for this agent run.
+ * Pick primary Heroku Inference vs secondary Onyx deployment for this agent run.
  *
  * - Explicit `inferenceBackend` wins (tests / emergency override).
- * - Otherwise, if `KIMI_API_KEY` is set and `routeHint` matches one entry in
- *   `KIMI_ROUTES` (comma-separated), use kimi.
- * - Default `KIMI_ROUTES` is `signals,pulse-strip` — high-frequency endpoints.
+ * - Otherwise, if `HEROKU_INFERENCE_ONYX_URL` and `HEROKU_INFERENCE_ONYX_KEY`
+ *   are set and `routeHint` matches `HEROKU_INFERENCE_ONYX_ROUTES`, use onyx.
+ * - Default routes: `signals,pulse-strip`.
  */
 export function resolveInferenceBackend(input: {
   inferenceBackend?: InferenceBackend;
   routeHint?: string;
 }): InferenceBackend {
   if (input.inferenceBackend) return input.inferenceBackend;
-  const key = optionalEnv("KIMI_API_KEY");
-  if (!key?.length) return "heroku";
+  const url = optionalEnv("HEROKU_INFERENCE_ONYX_URL");
+  const key = optionalEnv("HEROKU_INFERENCE_ONYX_KEY");
+  if (!url?.length || !key?.length) return "heroku";
   const hint = input.routeHint?.trim();
   if (!hint) return "heroku";
-  const routes = optionalEnv("KIMI_ROUTES", "signals,pulse-strip")
+  const routes = optionalEnv(
+    "HEROKU_INFERENCE_ONYX_ROUTES",
+    "signals,pulse-strip"
+  )
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return routes.includes(hint) ? "kimi" : "heroku";
+  return routes.includes(hint) ? "onyx" : "heroku";
 }
