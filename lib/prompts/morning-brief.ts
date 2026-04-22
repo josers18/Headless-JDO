@@ -17,8 +17,10 @@ export interface MorningBriefPromptArgs {
  * OFF-HOURS bands were producing just "Jose," with no time-of-day
  * phrase because the schema example only showed "Good morning, X."
  * P1-1 (FIX_PASS): optional older_backlog for tasks overdue >14 days.
+ * v1.4.0: FinServ life events — hierarchy + recent_life_events JSON + SOQL step 0.
  */
-export const MORNING_BRIEF_PROMPT_VERSION = "v1.3.0-p1-1-older-backlog-2026-04-22";
+export const MORNING_BRIEF_PROMPT_VERSION =
+  "v1.4.0-life-events-hierarchy-2026-04-22";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
@@ -57,7 +59,39 @@ Produce exactly 3 items that matter TODAY, ranked by importance. Each item:
 - why: one sentence of evidence
 - suggested_action: one concrete next step
 
-RANKING — additional rules (these govern WHICH items survive into the final 3):
+LIFE EVENT HIERARCHY — FinServ__LifeEvent__c (mandatory when qualifying CRM rows exist):
+Every brief MUST run efficient-plan step 0 FIRST (below). After results return,
+treat as **qualifying** any row whose FinServ__EventDate__c falls between
+**180 days before TODAY** and **365 days after TODAY** (recent past through
+meaningful planning horizon).
+
+When **one or more** qualifying rows exist:
+- **items[0]** MUST synthesize the single most decision-relevant life-event
+  story for this banker today (prefer: event date in the **next 45 days**;
+  else the **most recent past** event within 180 days; tie-break using
+  DiscussionNote specificity and household/client centrality).
+- **sources** for that item MUST include **salesforce_crm**.
+- **items[1]** and **items[2]** are filled from remaining signals (tasks,
+  pipeline, tableau_next, data_360) using the RANKING rules below — never let a
+  pure pipeline-hygiene or stale-opportunity cleanup headline occupy **items[0]**
+  while qualifying life events exist.
+
+When step 0 returns **zero** qualifying rows, OR the Life Event query fails
+(object not provisioned), skip this hierarchy and apply RANKING normally. If the
+query fails, do not fabricate life events.
+
+**recent_life_events** (JSON — required when ≥ 1 qualifying row):
+Emit an array of up to **5** objects for the UI, ordered with **soonest upcoming
+event date first**, then recent past. Each object:
+  { "client_id", "client_name", "event_type", "event_date", "summary" }
+- client_id = FinServ__Client__c (Account Id) from the tool output; client_name =
+  FinServ__Client__r.Name; event_type = FinServ__EventType__c; event_date =
+  ISO-style YYYY-MM-DD; summary = one line ≤ 120 chars from DiscussionNote + type.
+When there are **no** qualifying rows, **omit** the "recent_life_events" key
+(do not emit an empty array).
+
+RANKING — additional rules (these govern WHICH items survive into the final 3,
+after the LIFE EVENT HIERARCHY above when it applies):
 
 - Reversibility beats magnitude. An item actionable TODAY or THIS WEEK ranks
   above a larger item that can only be addressed weeks from now. A $50K deal
@@ -86,6 +120,8 @@ RANKING — additional rules (these govern WHICH items survive into the final 3)
   "Long-stale insurance review for Judy Odom" or similar, OR drop the item.
 
 Efficient plan (one pass — do not retry on errors):
+0. salesforce_crm — Life Events (run first): SELECT Id, FinServ__EventType__c, FinServ__EventDate__c, FinServ__DiscussionNote__c, FinServ__Client__c, FinServ__Client__r.Name FROM FinServ__LifeEvent__c WHERE OwnerId = '${a.bankerUserId}' ORDER BY FinServ__EventDate__c DESC LIMIT 25
+   If this SOQL errors (e.g. object not in org), skip step 0 and continue — do not invent life events.
 1. salesforce_crm (structured records): SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name, Priority FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY ORDER BY Priority DESC LIMIT 15
 2. salesforce_crm (structured records): SELECT Id, Name, LastActivityDate, AnnualRevenue, Industry FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
 3. salesforce_crm (structured records): SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name, Probability, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 15
@@ -96,9 +132,11 @@ RIGHT NOW SELECTION (UI v2 — mandatory field):
 After finalizing the 3 ranked items, set "right_now_index" to 0, 1, or 2 — the
 index inside the "items" array for the ONE item the banker should handle in
 the next ~15 minutes. Priority order:
-  - Shortest reversibility window (actionable TODAY > this week > later)
-  - Dated trigger (meeting today, maturity, deadline, scheduled touchpoint)
-  - Relationship risk (churn, competitive pressure, engagement cliff)
+  - If **items[0]** is grounded in a qualifying Life Event from step 0,
+    **right_now_index MUST be 0** — life-event moments outrank pipeline cleanup.
+  - Else: shortest reversibility window (actionable TODAY > this week > later)
+  - Else: dated trigger (meeting today, maturity, deadline, scheduled touchpoint)
+  - Else: relationship risk (churn, competitive pressure, engagement cliff)
 
 If two items tie, prefer the one with the most specific human CTA (a named
 person to call or meet) over an abstract "review the pipeline" item.
@@ -202,6 +240,9 @@ for this request the correct value is: ${
   ],
   "signoff": "One line, slightly personal, time-aware.",
   "right_now_index": 0,
+  "recent_life_events": [
+    { "client_id": "001XXXXXXXXXXXXXXX", "client_name": "Patel Household", "event_type": "College", "event_date": "2026-09-03", "summary": "Daughter begins university — align 529 and liquidity." }
+  ],
   "older_backlog": { "task_count": 4, "summary": "Mostly stale insurance reviews and dormant relationship check-ins." }
 }`;
 }

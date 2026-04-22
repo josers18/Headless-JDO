@@ -37,6 +37,17 @@ export interface OlderBacklogSummary {
   summary: string;
 }
 
+/** FinServ Life Event rows surfaced in the morning brief (CRM-backed). */
+export interface BriefLifeEventRow {
+  client_id: string;
+  client_name: string;
+  event_type: string;
+  /** ISO date (YYYY-MM-DD) or locale-neutral display from CRM. */
+  event_date: string;
+  /** One line for the UI list (≤ 120 chars). */
+  summary: string;
+}
+
 export interface MorningBrief {
   greeting: string;
   items: BriefItem[];
@@ -48,6 +59,11 @@ export interface MorningBrief {
    * when task data was unavailable.
    */
   older_backlog?: OlderBacklogSummary | null;
+  /**
+   * Recent / horizon life events from FinServ__LifeEvent__c (CRM query).
+   * Omit or empty when none qualify.
+   */
+  recent_life_events?: BriefLifeEventRow[];
 }
 
 export interface PriorityClient {

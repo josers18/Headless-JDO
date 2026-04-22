@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { HORIZON_REFRESH_BRIEF } from "@/lib/client/horizonEvents";
 import { dispatchHorizonFocusClient } from "@/lib/client/horizonEvents";
 import {
+  CalendarHeart,
   ChevronDown,
   ChevronRight,
   Play,
@@ -25,9 +26,14 @@ import {
 } from "@/lib/client/rightNowSnooze";
 import { resolveRightNowCta } from "@/lib/client/rightNowCta";
 import { rightNowGhostAskContext } from "@/lib/prompts/right-now-ghost";
-import type { BriefItem, MorningBrief as Brief } from "@/types/horizon";
+import type {
+  BriefItem,
+  BriefLifeEventRow,
+  MorningBrief as Brief,
+} from "@/types/horizon";
 import { cn } from "@/lib/utils";
 import { AGENT_STAGGER_MS } from "@/lib/client/agentStartStagger";
+import { sanitizeProseLite } from "@/lib/safety/sanitize";
 
 // HOTFIX 2026-04-21: When the agent returns a malformed greeting
 // (bare name, empty string, just ", Jose.") the hero area was
@@ -54,6 +60,43 @@ function repairGreeting(raw: string | undefined): string {
   return `${prefix}, ${stripped.endsWith(".") ? stripped : stripped + "."}`;
 }
 
+function normalizeLifeEvents(raw: unknown): BriefLifeEventRow[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: BriefLifeEventRow[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const r = row as Record<string, unknown>;
+    const client_id =
+      typeof r.client_id === "string" ? r.client_id.trim() : "";
+    const client_name =
+      typeof r.client_name === "string" ? r.client_name.trim() : "";
+    const event_type =
+      typeof r.event_type === "string" ? r.event_type.trim() : "";
+    const event_date =
+      typeof r.event_date === "string" ? r.event_date.trim() : "";
+    const summary =
+      typeof r.summary === "string" ? r.summary.trim() : "";
+    if (
+      !client_id ||
+      !client_name ||
+      !event_type ||
+      !event_date ||
+      !summary
+    ) {
+      continue;
+    }
+    out.push({
+      client_id,
+      client_name,
+      event_type,
+      event_date,
+      summary: sanitizeProseLite(summary),
+    });
+    if (out.length >= 6) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function normalizeBrief(raw: Brief | null): Brief | null {
   if (!raw || !raw.items?.length) return raw;
   let idx: number | undefined = raw.right_now_index;
@@ -72,6 +115,7 @@ function normalizeBrief(raw: Brief | null): Brief | null {
     ob.summary.trim().length > 0
       ? { task_count: Math.floor(ob.task_count), summary: ob.summary.trim() }
       : undefined;
+  const lifeRows = normalizeLifeEvents(raw.recent_life_events);
   const next: Brief = {
     ...raw,
     right_now_index: idx as 0 | 1 | 2,
@@ -79,6 +123,8 @@ function normalizeBrief(raw: Brief | null): Brief | null {
   };
   if (olderBacklog !== undefined) next.older_backlog = olderBacklog;
   else delete next.older_backlog;
+  if (lifeRows !== undefined) next.recent_life_events = lifeRows;
+  else delete next.recent_life_events;
   return next;
 }
 
@@ -400,6 +446,58 @@ export function MorningBrief() {
         </section>
       )}
 
+      {isComplete &&
+        brief?.recent_life_events &&
+        brief.recent_life_events.length > 0 && (
+          <section
+            className="relative mt-10 animate-fade-rise rounded-2xl border border-border-soft/70 bg-surface/35 px-5 py-5 md:px-6 md:py-6"
+            aria-labelledby="recent-life-events-heading"
+          >
+            <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-text-muted">
+              <CalendarHeart
+                className="size-3.5 shrink-0 text-accent/90"
+                aria-hidden
+              />
+              <h2 id="recent-life-events-heading">Recent life events</h2>
+            </div>
+            <ul className="mt-4 space-y-4">
+              {brief.recent_life_events.map((ev) => (
+                <li
+                  key={`${ev.client_id}-${ev.event_date}-${ev.event_type}`}
+                  className="border-b border-border-soft/40 pb-4 last:border-b-0 last:pb-0"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2 gap-y-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dispatchHorizonFocusClient({
+                          name: ev.client_name,
+                          clientId: ev.client_id,
+                        });
+                        setSheet({
+                          clientId: ev.client_id,
+                          name: ev.client_name,
+                        });
+                      }}
+                      className="text-left text-[15px] font-semibold tracking-tight text-text underline decoration-border-soft decoration-1 underline-offset-[5px] transition hover:decoration-accent hover:text-accent"
+                    >
+                      {ev.client_name}
+                    </button>
+                    <span className="font-mono text-[11px] tabular-nums text-text-muted">
+                      {ev.event_date}
+                      <span className="mx-1.5 text-border-soft">·</span>
+                      {ev.event_type}
+                    </span>
+                  </div>
+                  <p className="mt-2 max-w-prose text-[13px] leading-relaxed text-text-muted">
+                    {ev.summary}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
       {/* B-1 — "Also today" items are collapsed into the Priority Queue
           below. Keeping both here created vertical redundancy (same
           backing data, two renderings). The Morning Brief now stays
@@ -503,6 +601,16 @@ function briefToSpokenText(brief: Brief): string {
       .map((s) => s.trim());
     return `${lead}: ${parts.join(" ")}`;
   });
+  const lifeLines =
+    brief.recent_life_events?.map((ev) =>
+      [
+        "Life event",
+        ev.client_name,
+        ev.event_type,
+        ev.event_date,
+        ev.summary,
+      ].join(". ")
+    ) ?? [];
   const outro = brief.signoff?.trim() ?? "";
-  return [intro, ...bodyLines, outro].filter(Boolean).join(" ");
+  return [intro, ...bodyLines, ...lifeLines, outro].filter(Boolean).join(" ");
 }
