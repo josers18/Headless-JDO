@@ -98,7 +98,20 @@ function normalizeLifeEvents(raw: unknown): BriefLifeEventRow[] | undefined {
 }
 
 function normalizeBrief(raw: Brief | null): Brief | null {
-  if (!raw || !raw.items?.length) return raw;
+  if (!raw) return null;
+
+  const lifeRows = normalizeLifeEvents(raw.recent_life_events);
+
+  if (!raw.items?.length) {
+    const next: Brief = {
+      ...raw,
+      greeting: repairGreeting(raw.greeting),
+    };
+    if (lifeRows !== undefined) next.recent_life_events = lifeRows;
+    else delete next.recent_life_events;
+    return next;
+  }
+
   let idx: number | undefined = raw.right_now_index;
   if (typeof idx === "string") {
     idx = Number.parseInt(idx, 10);
@@ -115,7 +128,6 @@ function normalizeBrief(raw: Brief | null): Brief | null {
     ob.summary.trim().length > 0
       ? { task_count: Math.floor(ob.task_count), summary: ob.summary.trim() }
       : undefined;
-  const lifeRows = normalizeLifeEvents(raw.recent_life_events);
   const next: Brief = {
     ...raw,
     right_now_index: idx as 0 | 1 | 2,
@@ -184,6 +196,8 @@ export function MorningBrief() {
   );
   const isLoading = state === "streaming" && !brief;
   const isComplete = Boolean(brief) && state !== "error";
+  const briefParseFailed =
+    state === "done" && !error && !brief;
 
   const heroIndex = useMemo(() => {
     void snoozeTick;
@@ -267,6 +281,22 @@ export function MorningBrief() {
           <span className="text-[28px] text-text-muted md:text-[32px]">
             {error}
           </span>
+        ) : briefParseFailed ? (
+          <div className="flex max-w-xl flex-col gap-4">
+            <span className="text-[22px] leading-snug text-text md:text-[26px]">
+              Morning brief didn&apos;t load — the response wasn&apos;t readable
+              JSON after the agent finished.
+            </span>
+            <button
+              type="button"
+              className="w-fit rounded-xl border border-border-soft px-4 py-2.5 text-[13px] font-medium text-text transition hover:border-accent/45 hover:bg-surface2/60"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent(HORIZON_REFRESH_BRIEF));
+              }}
+            >
+              Retry brief
+            </button>
+          </div>
         ) : (
           "Ready."
         )}

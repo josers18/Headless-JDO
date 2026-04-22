@@ -20,7 +20,7 @@ export interface MorningBriefPromptArgs {
  * v1.4.0: FinServ life events — hierarchy + recent_life_events JSON + SOQL step 0.
  */
 export const MORNING_BRIEF_PROMPT_VERSION =
-  "v1.4.0-life-events-hierarchy-2026-04-22";
+  "v1.4.1-valid-json-hotfix-2026-04-22";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
@@ -167,6 +167,7 @@ only under older_backlog for transparency when the banker expands the pill.
 JSON field rules:
 - Whenever you set "client_id" to a Salesforce 15- or 18-character Id, you MUST also set "client_name" to that record's human-readable name (Account Name, Contact Name, etc.) from the tool response you used — the UI links names in the copy to Salesforce.
 - If headline/why/suggested_action name MORE than one specific Account or Contact (e.g. "Judy Odom", "Harry Gray", and "Susan Hall"), "entity_links" MUST list { "client_id", "client_name" } for EVERY named person or account (except only duplicate the primary client_id if it is the same record). Omit "entity_links" only when a single client is named. Missing links for named clients is a defect.
+- VALID JSON ONLY — obey RFC 8259 string escaping (control chars, embedded quotes). Never put raw newline characters inside a quoted string — the UI parser will drop the entire brief.
 
 GREETING (field "greeting") — HARD RULES (HOTFIX 2026-04-21):
 The JSON example below shows "Good morning, ${firstName}." as a schema stub,

@@ -13,11 +13,9 @@
  * progress text.
  */
 
-export function extractJsonObject(text: string): string | null {
-  if (!text) return null;
-  const stripped = stripFence(text);
-  const start = stripped.indexOf("{");
-  if (start === -1) return null;
+/** Balance-aware slice from `{` at `start` through its closing `}`. */
+function balancedObjectSlice(stripped: string, start: number): string | null {
+  if (stripped[start] !== "{") return null;
   let depth = 0;
   let inStr = false;
   let escape = false;
@@ -45,14 +43,59 @@ export function extractJsonObject(text: string): string | null {
   return null;
 }
 
-export function tryParseJson<T>(text: string): T | null {
-  const obj = extractJsonObject(text);
-  if (!obj) return null;
+export function extractJsonObject(text: string): string | null {
+  if (!text) return null;
+  const stripped = stripFence(text);
+  const start = stripped.indexOf("{");
+  if (start === -1) return null;
+  return balancedObjectSlice(stripped, start);
+}
+
+/** Drop trailing commas before `}` / `]` — models often emit invalid JSON. */
+function parseJsonLenient(fragment: string): unknown | null {
   try {
-    return JSON.parse(obj) as T;
+    return JSON.parse(fragment);
   } catch {
-    return null;
+    try {
+      const stripped = fragment.replace(/,\s*([\]}])/g, "$1");
+      return JSON.parse(stripped);
+    } catch {
+      return null;
+    }
   }
+}
+
+/** Collect `{…}` slices at every brace position (handles leading prose / junk). */
+function enumerateJsonObjectSlices(text: string): string[] {
+  const stripped = stripFence(text);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (let i = 0; i < stripped.length; i++) {
+    if (stripped[i] !== "{") continue;
+    const slice = balancedObjectSlice(stripped, i);
+    if (slice && !seen.has(slice)) {
+      seen.add(slice);
+      out.push(slice);
+    }
+  }
+  out.sort((a, b) => b.length - a.length);
+  return out;
+}
+
+export function tryParseJson<T>(text: string): T | null {
+  if (!text) return null;
+  const candidates = enumerateJsonObjectSlices(text);
+  if (candidates.length === 0) return null;
+
+  // Longest fragments first — usually the full agent payload vs. accidental inner `{…}`.
+  for (const frag of candidates) {
+    const val = parseJsonLenient(frag);
+    if (val !== null && typeof val === "object" && !Array.isArray(val)) {
+      return val as T;
+    }
+  }
+
+  return null;
 }
 
 function stripFence(text: string): string {

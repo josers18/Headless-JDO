@@ -55,10 +55,17 @@ export async function POST(_req: NextRequest) {
       messages: [{ role: "user", content: prompt }],
       salesforceToken: token.access_token,
       maxIterations: 16,
+      maxTokens: 6144,
       routeHint: "morning-brief",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
           send({ type: "text_delta", text: e.text });
+        } else if (
+          e.type === "error" &&
+          typeof e.message === "string" &&
+          e.message.length > 0
+        ) {
+          send({ type: "error", message: e.message });
         } else if (e.type === "tool_use" && e.server && e.tool) {
           send({
             type: "tool_use",
