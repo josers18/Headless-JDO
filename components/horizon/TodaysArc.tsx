@@ -67,9 +67,15 @@ function arcRowClientId(n: { client_id?: string; context: string; title: string 
   );
 }
 
-function titleShort(s: string): string {
-  const w = s.trim().split(/\s+/).filter(Boolean).slice(0, 3);
-  const all = s.trim().split(/\s+/).filter(Boolean);
+function asPlain(x: unknown): string {
+  if (x == null) return "";
+  return typeof x === "string" ? x : String(x);
+}
+
+function titleShort(s: unknown): string {
+  const str = asPlain(s);
+  const w = str.trim().split(/\s+/).filter(Boolean).slice(0, 3);
+  const all = str.trim().split(/\s+/).filter(Boolean);
   if (w.length === 0) return "";
   return all.length > 3 ? `${w.join(" ")}…` : w.join(" ");
 }
@@ -173,7 +179,7 @@ export function TodaysArc() {
         start: w.start,
         duration_minutes: w.duration_minutes,
         title: titleShort(w.suggestion) || "Focus window",
-        context: w.suggestion,
+        context: asPlain(w.suggestion),
       });
     }
     return sortArcNodesByStart(base).slice(0, 8);

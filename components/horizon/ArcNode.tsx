@@ -42,9 +42,15 @@ const typeStyles: Record<
   },
 };
 
-function titleShort(s: string): string {
-  const w = s.trim().split(/\s+/).filter(Boolean).slice(0, 3);
-  const all = s.trim().split(/\s+/).filter(Boolean);
+function asPlain(x: unknown): string {
+  if (x == null) return "";
+  return typeof x === "string" ? x : String(x);
+}
+
+function titleShort(s: unknown): string {
+  const str = asPlain(s);
+  const w = str.trim().split(/\s+/).filter(Boolean).slice(0, 3);
+  const all = str.trim().split(/\s+/).filter(Boolean);
   if (w.length === 0) return "";
   return all.length > 3 ? `${w.join(" ")}…` : w.join(" ");
 }
@@ -66,7 +72,7 @@ function clampLabel(s: string): string {
 }
 
 export function axisLabelFor(node: ArcNodePayload): string {
-  const fromAgent = node.label?.trim();
+  const fromAgent = asPlain(node.label).trim();
   if (fromAgent) return clampLabel(fromAgent);
   if (node.type === "blocked") return "Blocked";
   const short = titleShort(node.title);
@@ -76,8 +82,8 @@ export function axisLabelFor(node: ArcNodePayload): string {
   return "Meeting";
 }
 
-function oneLineContext(s: string, max = 140): string {
-  const t = s.replace(/\s+/g, " ").trim();
+function oneLineContext(s: unknown, max = 140): string {
+  const t = asPlain(s).replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
 }
