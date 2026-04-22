@@ -60,7 +60,7 @@ export interface MorningBrief {
    */
   older_backlog?: OlderBacklogSummary | null;
   /**
-   * Recent / horizon life events from FinServ__LifeEvent__c (CRM query).
+   * Recent / horizon life events from CRM (PersonLifeEvent and/or FinServ__LifeEvent__c).
    * Omit or empty when none qualify.
    */
   recent_life_events?: BriefLifeEventRow[];

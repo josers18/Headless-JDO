@@ -66,16 +66,11 @@ function normalizeLifeEvents(raw: unknown): BriefLifeEventRow[] | undefined {
   for (const row of raw) {
     if (!row || typeof row !== "object") continue;
     const r = row as Record<string, unknown>;
-    const client_id =
-      typeof r.client_id === "string" ? r.client_id.trim() : "";
-    const client_name =
-      typeof r.client_name === "string" ? r.client_name.trim() : "";
-    const event_type =
-      typeof r.event_type === "string" ? r.event_type.trim() : "";
-    const event_date =
-      typeof r.event_date === "string" ? r.event_date.trim() : "";
-    const summary =
-      typeof r.summary === "string" ? r.summary.trim() : "";
+    const client_id = plainText(r.client_id).trim();
+    const client_name = plainText(r.client_name).trim();
+    const event_type = plainText(r.event_type).trim();
+    const event_date = plainText(r.event_date).trim();
+    const summary = plainText(r.summary).trim();
     if (
       !client_id ||
       !client_name ||
@@ -506,20 +501,19 @@ export function MorningBrief() {
         </section>
       )}
 
-      {isComplete &&
-        brief?.recent_life_events &&
-        brief.recent_life_events.length > 0 && (
-          <section
-            className="relative mt-10 animate-fade-rise rounded-2xl border border-border-soft/70 bg-surface/35 px-5 py-5 md:px-6 md:py-6"
-            aria-labelledby="recent-life-events-heading"
-          >
-            <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-text-muted">
-              <CalendarHeart
-                className="size-3.5 shrink-0 text-accent/90"
-                aria-hidden
-              />
-              <h2 id="recent-life-events-heading">Recent life events</h2>
-            </div>
+      {isComplete && brief && (
+        <section
+          className="relative mt-10 animate-fade-rise rounded-2xl border border-border-soft/70 bg-surface/35 px-5 py-5 md:px-6 md:py-6"
+          aria-labelledby="recent-life-events-heading"
+        >
+          <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-text-muted">
+            <CalendarHeart
+              className="size-3.5 shrink-0 text-accent/90"
+              aria-hidden
+            />
+            <h2 id="recent-life-events-heading">Recent life events</h2>
+          </div>
+          {brief.recent_life_events && brief.recent_life_events.length > 0 ? (
             <ul className="mt-4 space-y-4">
               {brief.recent_life_events.map((ev) => (
                 <li
@@ -555,8 +549,25 @@ export function MorningBrief() {
                 </li>
               ))}
             </ul>
-          </section>
-        )}
+          ) : (
+            <p className="mt-4 max-w-prose text-[13px] leading-relaxed text-text-muted">
+              No life events were returned for your book in this horizon window,
+              or the agent omitted the list. CRM queries run in the reasoning trail
+              (PersonLifeEvent and FinServ life events). Use{" "}
+              <button
+                type="button"
+                className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent(HORIZON_REFRESH_BRIEF));
+                }}
+              >
+                Retry brief
+              </button>{" "}
+              after data changes.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* B-1 — "Also today" items are collapsed into the Priority Queue
           below. Keeping both here created vertical redundancy (same

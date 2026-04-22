@@ -19,9 +19,10 @@ export interface MorningBriefPromptArgs {
  * P1-1 (FIX_PASS): optional older_backlog for tasks overdue >14 days.
  * v1.4.0: FinServ life events — hierarchy + recent_life_events JSON + SOQL step 0.
  * v1.4.3: reinforce JSON string hygiene (physical newlines in quoted fields).
+ * v1.4.4: PersonLifeEvent SOQL (this org's standard) + client-book filter; FinServ secondary.
  */
 export const MORNING_BRIEF_PROMPT_VERSION =
-  "v1.4.3-json-string-newlines-2026-04-22";
+  "v1.4.4-person-life-event-query-2026-04-22";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
@@ -60,34 +61,43 @@ Produce exactly 3 items that matter TODAY, ranked by importance. Each item:
 - why: one sentence of evidence
 - suggested_action: one concrete next step
 
-LIFE EVENT HIERARCHY — FinServ__LifeEvent__c (mandatory when qualifying CRM rows exist):
-Every brief MUST run efficient-plan step 0 FIRST (below). After results return,
-treat as **qualifying** any row whose FinServ__EventDate__c falls between
+LIFE EVENT HIERARCHY — CRM life events (mandatory when qualifying rows exist):
+This Financial Services Cloud org stores person life events primarily on **PersonLifeEvent**
+(Name, EventType, EventDate, EventDescription, PrimaryPerson → Contact → Account).
+Packaged **FinServ__LifeEvent__c** may also exist — use BOTH step 0a and 0b below,
+merge results, then apply the date window.
+
+Every brief MUST run efficient-plan steps **0a and 0b** FIRST (below). After results return,
+treat as **qualifying** any merged row whose **event date** falls between
 **180 days before TODAY** and **365 days after TODAY** (recent past through
-meaningful planning horizon).
+meaningful planning horizon). For PersonLifeEvent use **EventDate**; for FinServ rows use **FinServ__EventDate__c**.
 
 When **one or more** qualifying rows exist:
 - **items[0]** MUST synthesize the single most decision-relevant life-event
   story for this banker today (prefer: event date in the **next 45 days**;
   else the **most recent past** event within 180 days; tie-break using
-  DiscussionNote specificity and household/client centrality).
+  description / DiscussionNote specificity and household/client centrality).
 - **sources** for that item MUST include **salesforce_crm**.
 - **items[1]** and **items[2]** are filled from remaining signals (tasks,
   pipeline, tableau_next, data_360) using the RANKING rules below — never let a
   pure pipeline-hygiene or stale-opportunity cleanup headline occupy **items[0]**
   while qualifying life events exist.
 
-When step 0 returns **zero** qualifying rows, OR the Life Event query fails
-(object not provisioned), skip this hierarchy and apply RANKING normally. If the
-query fails, do not fabricate life events.
+When **both** 0a and 0b return **zero** qualifying rows (after date filter), OR both SOQL calls fail,
+skip this hierarchy and apply RANKING normally. If a query errors (object not provisioned),
+continue with the other — do not fabricate life events.
 
-**recent_life_events** (JSON — required when ≥ 1 qualifying row):
+**recent_life_events** (JSON — required when ≥ 1 qualifying row after merge):
 Emit an array of up to **5** objects for the UI, ordered with **soonest upcoming
 event date first**, then recent past. Each object:
   { "client_id", "client_name", "event_type", "event_date", "summary" }
-- client_id = FinServ__Client__c (Account Id) from the tool output; client_name =
-  FinServ__Client__r.Name; event_type = FinServ__EventType__c; event_date =
-  ISO-style YYYY-MM-DD; summary = one line ≤ 120 chars from DiscussionNote + type.
+Mapping:
+- **From PersonLifeEvent:** client_id = **PrimaryPerson.AccountId** (household/business Account); client_name =
+  **PrimaryPerson.Account.Name**; event_type = **EventType**; event_date = **EventDate** as YYYY-MM-DD;
+  summary = one line ≤ 120 chars from **EventDescription** or **Name** + EventType.
+- **From FinServ__LifeEvent__c:** client_id = **FinServ__Client__c**; client_name =
+  **FinServ__Client__r.Name**; event_type = **FinServ__EventType__c**; event_date =
+  **FinServ__EventDate__c** as YYYY-MM-DD; summary from **FinServ__DiscussionNote__c** + type.
 When there are **no** qualifying rows, **omit** the "recent_life_events" key
 (do not emit an empty array).
 
@@ -121,8 +131,26 @@ after the LIFE EVENT HIERARCHY above when it applies):
   "Long-stale insurance review for Judy Odom" or similar, OR drop the item.
 
 Efficient plan (one pass — do not retry on errors):
-0. salesforce_crm — Life Events (run first): SELECT Id, FinServ__EventType__c, FinServ__EventDate__c, FinServ__DiscussionNote__c, FinServ__Client__c, FinServ__Client__r.Name FROM FinServ__LifeEvent__c WHERE OwnerId = '${a.bankerUserId}' ORDER BY FinServ__EventDate__c DESC LIMIT 25
-   If this SOQL errors (e.g. object not in org), skip step 0 and continue — do not invent life events.
+0a. salesforce_crm — **PersonLifeEvent** (primary — run first). Scope to the banker’s **book**
+    (life events tied to Accounts they own OR rows they own):
+SELECT Id, Name, EventType, EventDate, EventDescription,
+       PrimaryPerson.AccountId, PrimaryPerson.Account.Name
+FROM PersonLifeEvent
+WHERE OwnerId = '${a.bankerUserId}'
+   OR PrimaryPerson.Account.OwnerId = '${a.bankerUserId}'
+ORDER BY EventDate DESC NULLS LAST
+LIMIT 25
+   If this SOQL errors (object not in org), skip 0a only — do not invent rows.
+
+0b. salesforce_crm — **FinServ__LifeEvent__c** (secondary — same book scope):
+SELECT Id, FinServ__EventType__c, FinServ__EventDate__c, FinServ__DiscussionNote__c,
+       FinServ__Client__c, FinServ__Client__r.Name
+FROM FinServ__LifeEvent__c
+WHERE OwnerId = '${a.bankerUserId}'
+   OR FinServ__Client__r.OwnerId = '${a.bankerUserId}'
+ORDER BY FinServ__EventDate__c DESC NULLS LAST
+LIMIT 25
+   If this SOQL errors, skip 0b only. Merge non-error results for hierarchy + recent_life_events.
 1. salesforce_crm (structured records): SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name, Priority FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY ORDER BY Priority DESC LIMIT 15
 2. salesforce_crm (structured records): SELECT Id, Name, LastActivityDate, AnnualRevenue, Industry FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
 3. salesforce_crm (structured records): SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name, Probability, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 15
