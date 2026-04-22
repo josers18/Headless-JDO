@@ -42,7 +42,7 @@ type DraftsContextValue = {
 const DraftsContext = createContext<DraftsContextValue | null>(null);
 
 export function DraftsProvider({ children }: { children: ReactNode }) {
-  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
     useAgentStream();
   const [draftsKickoffPending, setDraftsKickoffPending] = useState(true);
   const [priorityIds, setPriorityIds] = useState<Set<string>>(new Set());
@@ -66,8 +66,9 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
       window.clearTimeout(t);
+      cancel();
     };
-  }, [runFetch]);
+  }, [cancel, runFetch]);
 
   useEffect(() => {
     const onRefresh = () => {

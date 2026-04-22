@@ -63,7 +63,8 @@ const InsightsBatchContext = createContext<InsightsBatchContextValue | null>(
 );
 
 export function InsightsBatchProvider({ children }: { children: ReactNode }) {
-  const { narrative, state, error, inferenceMeta, start } = useAgentStream();
+  const { narrative, state, error, inferenceMeta, start, cancel } =
+    useAgentStream();
 
   useEffect(() => {
     let cancelled = false;
@@ -76,8 +77,9 @@ export function InsightsBatchProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
       window.clearTimeout(t);
+      cancel();
     };
-  }, [start]);
+  }, [cancel, start]);
 
   const payloads = useMemo(
     () => parseBatch(narrative),

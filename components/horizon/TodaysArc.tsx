@@ -75,7 +75,7 @@ function titleShort(s: string): string {
 }
 
 export function TodaysArc() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
     useAgentStream();
   const [awaitingKickoff, setAwaitingKickoff] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -94,8 +94,9 @@ export function TodaysArc() {
     return () => {
       cancelled = true;
       window.clearTimeout(t);
+      cancel();
     };
-  }, [start]);
+  }, [cancel, start]);
 
   useEffect(() => {
     const fn = () => {

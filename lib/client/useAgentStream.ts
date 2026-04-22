@@ -44,6 +44,9 @@ const RETRYABLE_STATUS = new Set([502, 503]);
 /** Inference occasionally returns 503 during bursts — extra attempts + backoff. */
 const FETCH_MAX_ATTEMPTS = 5;
 
+/** Hard cap for one SSE read (agent loop can run minutes; Heroku router may stall). */
+const STREAM_READ_DEADLINE_MS = 240_000;
+
 function backoffMs(attemptIndex: number): number {
   return 550 * (attemptIndex + 1) + Math.floor(Math.random() * 450);
 }
@@ -177,6 +180,9 @@ export function useAgentStream(): AgentStreamState {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
+      let sseReportedError = false;
+      let streamTimedOut = false;
+      const streamDeadline = Date.now() + STREAM_READ_DEADLINE_MS;
 
       const applyEvent = (msg: IncomingEvent) => {
         if (msg.type === "text_delta") {
@@ -221,6 +227,7 @@ export function useAgentStream(): AgentStreamState {
             ];
           });
         } else if (msg.type === "error") {
+          sseReportedError = true;
           setError(msg.message);
           setState("error");
         } else if (msg.type === "thread_snapshot" && Array.isArray(msg.messages)) {
@@ -232,6 +239,12 @@ export function useAgentStream(): AgentStreamState {
 
       try {
         while (true) {
+          if (Date.now() > streamDeadline) {
+            streamTimedOut = true;
+            await reader.cancel().catch(() => {});
+            ctrl.abort();
+            break;
+          }
           const { done, value } = await reader.read();
           if (done) break;
           buf += decoder.decode(value, { stream: true });
@@ -251,7 +264,16 @@ export function useAgentStream(): AgentStreamState {
             applyEvent(msg);
           }
         }
-        setState("done");
+        if (streamTimedOut) {
+          setError(
+            "Response timed out — the agent is taking too long. Try Refresh."
+          );
+          setState("error");
+        } else if (ctrl.signal.aborted) {
+          return;
+        } else if (!sseReportedError) {
+          setState("done");
+        }
       } catch (e) {
         if (!ctrl.signal.aborted) {
           setError(e instanceof Error ? e.message : String(e));

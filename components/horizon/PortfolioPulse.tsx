@@ -31,7 +31,7 @@ interface Pulse {
 // playback piggybacks on the same hook Morning Brief uses — two of our
 // "protect at all costs" features share the same surface for narration.
 export function PortfolioPulse() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
     useAgentStream();
   const { supported: voiceSupported, speaking, play, stop } =
     useSpokenNarration();
@@ -47,8 +47,9 @@ export function PortfolioPulse() {
     return () => {
       cancelled = true;
       window.clearTimeout(t);
+      cancel();
     };
-  }, [start]);
+  }, [cancel, start]);
 
   useEffect(() => {
     const fn = () => {

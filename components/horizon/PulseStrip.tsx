@@ -94,7 +94,7 @@ function temperatureStyles(t: PulseStripTemperature): {
  * UI v2 T0-1 — single-row flight-deck read; sticky wrapper lives in page.tsx.
  */
 export function PulseStrip() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
     useAgentStream();
   const [mobileOpen, setMobileOpen] = useState(false);
   const lastRefetchRef = useRef(0);
@@ -112,8 +112,9 @@ export function PulseStrip() {
     return () => {
       cancelled = true;
       window.clearTimeout(t);
+      cancel();
     };
-  }, [runFetch]);
+  }, [cancel, runFetch]);
 
   const refetchSoft = useCallback(() => {
     const now = Date.now();

@@ -66,7 +66,7 @@ function writeGroupOpen(next: Record<string, boolean>) {
 }
 
 export function PriorityQueue() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
     useAgentStream();
   /** True until the staggered first fetch is handed to `start` (skeleton vs idle). */
   const [awaitingKickoff, setAwaitingKickoff] = useState(true);
@@ -97,8 +97,9 @@ export function PriorityQueue() {
     return () => {
       cancelled = true;
       window.clearTimeout(t);
+      cancel();
     };
-  }, [start]);
+  }, [cancel, start]);
 
   useEffect(() => {
     const fn = () => {

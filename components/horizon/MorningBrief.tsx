@@ -99,7 +99,7 @@ function resolveHeroIndex(brief: Brief): number {
 }
 
 export function MorningBrief() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset } =
+  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
     useAgentStream();
   const { supported: voiceSupported, speaking, play, stop } =
     useSpokenNarration();
@@ -119,8 +119,9 @@ export function MorningBrief() {
     return () => {
       cancelled = true;
       window.clearTimeout(t);
+      cancel();
     };
-  }, [start]);
+  }, [cancel, start]);
 
   useEffect(() => {
     const fn = () => {
