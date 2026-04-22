@@ -59,11 +59,31 @@ function isMoneyTile(k: PulseKpi): boolean {
   return /^\s*\$/.test(k.value);
 }
 
+/** Model JSON often sends numbers for values — coerce before any `.trim()`. */
+function strField(x: unknown): string {
+  if (x == null) return "";
+  return typeof x === "string" ? x : String(x);
+}
+
 /**
  * Returns a shallow-cloned KPI with suppressed deltas / neutralized
  * directions when the FIX_PASS rules say the tile would erode trust.
  */
-export function applyPulseMetricHygiene(k: PulseKpi): PulseKpi {
+export function applyPulseMetricHygiene(raw: PulseKpi): PulseKpi {
+  const k: PulseKpi = {
+    label: strField(raw.label),
+    value: strField(raw.value),
+    delta: strField(raw.delta),
+    direction:
+      raw.direction === "up" ||
+      raw.direction === "down" ||
+      raw.direction === "flat"
+        ? raw.direction
+        : "flat",
+    explanation:
+      typeof raw.explanation === "string" ? raw.explanation : undefined,
+  };
+
   const label = k.label;
   const valueMoney = isMoneyTile(k) ? parseUsd(k.value) : null;
   const valueCount = valueMoney === null ? parsePlainNumber(k.value) : null;
@@ -149,5 +169,8 @@ export function applyPulseMetricHygiene(k: PulseKpi): PulseKpi {
 }
 
 export function applyPulseHygieneToKpis(kpis: PulseKpi[]): PulseKpi[] {
-  return kpis.map(applyPulseMetricHygiene);
+  if (!Array.isArray(kpis)) return [];
+  return kpis
+    .filter((x): x is PulseKpi => x != null && typeof x === "object")
+    .map((raw) => applyPulseMetricHygiene(raw));
 }
