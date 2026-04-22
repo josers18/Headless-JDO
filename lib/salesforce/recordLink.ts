@@ -39,16 +39,22 @@ export type TextSegment =
   | { kind: "id"; value: string };
 
 /** Split plain text into alternating text and Salesforce Id tokens. */
-export function segmentTextWithSalesforceIds(text: string): TextSegment[] {
+export function segmentTextWithSalesforceIds(text: unknown): TextSegment[] {
+  const s =
+    typeof text === "string"
+      ? text
+      : text == null
+        ? ""
+        : String(text);
   const re = /\b([0-9a-zA-Z]{15}|[0-9a-zA-Z]{18})\b/g;
   const out: TextSegment[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
+  while ((m = re.exec(s)) !== null) {
     const id = m[1];
     if (!id) continue;
     if (m.index > last) {
-      out.push({ kind: "text", value: text.slice(last, m.index) });
+      out.push({ kind: "text", value: s.slice(last, m.index) });
     }
     if (inferSalesforceObjectFromId(id)) {
       out.push({ kind: "id", value: id });
@@ -57,15 +63,15 @@ export function segmentTextWithSalesforceIds(text: string): TextSegment[] {
     }
     last = m.index + id.length;
   }
-  if (last < text.length) {
-    out.push({ kind: "text", value: text.slice(last) });
+  if (last < s.length) {
+    out.push({ kind: "text", value: s.slice(last) });
   }
-  if (out.length === 0) out.push({ kind: "text", value: text });
+  if (out.length === 0) out.push({ kind: "text", value: s });
   return out;
 }
 
 /** First Salesforce Id token in prose (for inferring `client_id` on arc rows). */
-export function extractFirstSalesforceId(text: string): string | undefined {
+export function extractFirstSalesforceId(text: unknown): string | undefined {
   for (const seg of segmentTextWithSalesforceIds(text)) {
     if (seg.kind === "id") return seg.value;
   }

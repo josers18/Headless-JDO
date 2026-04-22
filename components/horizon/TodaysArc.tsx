@@ -167,17 +167,23 @@ export function TodaysArc() {
     for (let i = 0; i < wins.length; i++) {
       const w = wins[i];
       if (!w) continue;
-      const t = Date.parse(w.start);
+      const startStr = typeof w.start === "string" ? w.start : String(w.start ?? "");
+      const t = Date.parse(startStr);
       if (Number.isNaN(t)) continue;
       const dup = base.some(
         (n) => Math.abs(Date.parse(n.start) - t) < 120_000
       );
       if (dup) continue;
+      const dmRaw = w.duration_minutes;
+      const duration_minutes =
+        typeof dmRaw === "number" && Number.isFinite(dmRaw)
+          ? Math.max(5, Math.min(480, Math.round(dmRaw)))
+          : 25;
       base.push({
-        id: `rw-${i}-${w.start}`,
+        id: `rw-${i}-${startStr}`,
         type: "recommended",
-        start: w.start,
-        duration_minutes: w.duration_minutes,
+        start: startStr,
+        duration_minutes,
         title: titleShort(w.suggestion) || "Focus window",
         context: asPlain(w.suggestion),
       });
