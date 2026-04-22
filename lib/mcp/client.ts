@@ -312,7 +312,16 @@ export async function connectMcpClients(
       // MCP content is an array of TextContent | ImageContent | etc.
       const content = res.content as unknown;
       const textPreview = extractTextPreview(content, 2_000);
-      const modelText = extractTextPreview(content, modelBudgetFor(server, name));
+      // Two-stage compaction for modelText:
+      //   1. Per-tool compact projection — drops fields the model does
+      //      not need (displayName, primaryKeys, category, field types)
+      //      while keeping everything required for schema-grounded SQL.
+      //      Cuts getDcMetadata payload ~70% so one turn no longer
+      //      blows through Heroku Inference's 800K tokens-per-minute
+      //      quota. No-op for other tools.
+      //   2. Budget slice + truncation marker — same as before.
+      const projected = projectForModel(server, name, content);
+      const modelText = extractTextPreview(projected, modelBudgetFor(server, name));
       const isError = res.isError === true;
       return { server, tool: name, isError, content, textPreview, modelText };
     } catch (e) {
@@ -368,21 +377,26 @@ function flattenTextContent(content: unknown): string {
 
 // Per-tool model-text budget. Schema-introspection responses (getDcMetadata,
 // describeSObject, list-DMOs, etc.) contain dense, non-redundant structure
-// the model must read in full to avoid hallucinating tables and columns.
-// All other tools keep a small cap to protect the context window.
+// the model must read to avoid hallucinating tables and columns.
 //
-// Sizing: Claude 4.5 Sonnet on Heroku Inference supports a 200K-token context
-// window. ~4 chars/token for JSON-dense metadata responses gives ~800K chars
-// of raw budget. We reserve 80% for everything else (system prompt,
-// per-turn user message, prior-turn tool results, model output) and let a
-// single schema-introspection response consume up to the remainder.
-// 160K chars ≈ 40K tokens — enough for an org with thousands of DMOs and
-// every field on each. If a single response exceeds that, it will be
-// truncated with a trailing marker so the model knows to narrow its next
-// metadata call by category/dataspace. Non-schema tools stay at 2KB so
-// no query ever exhausts the context by surprise.
-const METADATA_BUDGET_CHARS = 160_000;
-const SCHEMA_BUDGET_CHARS = 64_000;
+// Sizing is constrained by TWO things, not just context window:
+//   - 200K-token context window (~800K chars of JSON)
+//   - 800K tokens-per-minute Heroku Inference quota, shared across ALL
+//     tool calls in the turn plus system prompt, prior-turn history,
+//     and the model's output. A single Pulse turn can easily stack
+//     3–5 tool calls plus prior context plus output — at 40K tokens
+//     per schema response we trip the TPM quota within two-to-three
+//     regenerations per minute.
+//
+// Mitigation: projectForModel() compacts getDcMetadata to
+// { name, fields: [name] } shape (dropping displayName, primaryKeys,
+// category, field types) so each DMO entry shrinks from ~400 bytes to
+// ~80 bytes — about a 5x reduction. After that projection, 64KB of
+// text holds ~800 DMOs with ~50 fields each, which covers every real
+// org we expect. Larger responses still get a truncation marker and
+// the model is instructed to narrow the next call.
+const METADATA_BUDGET_CHARS = 64_000;
+const SCHEMA_BUDGET_CHARS = 32_000;
 const DEFAULT_BUDGET_CHARS = 2_000;
 
 function modelBudgetFor(server: McpServerName, tool: string): number {
@@ -394,6 +408,82 @@ function modelBudgetFor(server: McpServerName, tool: string): number {
   )
     return SCHEMA_BUDGET_CHARS;
   return DEFAULT_BUDGET_CHARS;
+}
+
+/**
+ * Project a tool response into the minimum shape the model needs
+ * before it is sliced to budget. For most tools this is the identity
+ * — the caller's prompt has told the model to read the raw payload,
+ * and we must not lie about what the MCP returned.
+ *
+ * For getDcMetadata specifically, the response has a dense, fixed
+ * shape and the model only needs names to write SQL and to refer to
+ * tables/columns in prose. displayName, primaryKeys, category, and
+ * field types are noise the preflight re-derives from the SQL itself
+ * and that the narrative never quotes. We strip them to reclaim
+ * tokens against the TPM quota. The projection is lossless for SQL
+ * correctness — every table name and every field name survives.
+ */
+function projectForModel(
+  server: McpServerName,
+  tool: string,
+  content: unknown
+): unknown {
+  if (!(server === "data_360" && /^getDcMetadata/i.test(tool))) return content;
+  if (!Array.isArray(content)) return content;
+  const out: unknown[] = [];
+  for (const part of content) {
+    const p = part as { type?: string; text?: string };
+    if (p?.type !== "text" || typeof p.text !== "string") {
+      out.push(part);
+      continue;
+    }
+    out.push({ type: "text", text: compactDcMetadataText(p.text) });
+  }
+  return out;
+}
+
+/**
+ * Rewrite a getDcMetadata JSON string down to just
+ *   { metadata: [ { name, fields: [ { name } ] } ] }
+ * preserving array order so the dataCloudSchema snapshot ingest still
+ * works and so the model sees the org's tables in the same sequence
+ * as the raw response. Parse failures fall back to the original text
+ * — we never want compression to silently hide schema from the model.
+ */
+function compactDcMetadataText(rawText: string): string {
+  try {
+    const parsed = JSON.parse(rawText) as unknown;
+    const rows = pickDcMetadataArray(parsed);
+    if (!rows) return rawText;
+    const compact = rows.map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const r = row as Record<string, unknown>;
+      const name = typeof r.name === "string" ? r.name : undefined;
+      const fieldsRaw = Array.isArray(r.fields) ? r.fields : [];
+      const fields: Array<{ name: string }> = [];
+      for (const f of fieldsRaw) {
+        if (f && typeof f === "object") {
+          const fn = (f as Record<string, unknown>).name;
+          if (typeof fn === "string") fields.push({ name: fn });
+        }
+      }
+      return { name, fields };
+    });
+    return JSON.stringify({ metadata: compact });
+  } catch {
+    return rawText;
+  }
+}
+
+function pickDcMetadataArray(parsed: unknown): unknown[] | null {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+  if (Array.isArray(obj.metadata)) return obj.metadata;
+  if (Array.isArray(obj.objects)) return obj.objects;
+  if (Array.isArray(obj.items)) return obj.items;
+  return null;
 }
 
 export const MCP_TOOL_SEP = TOOL_SEP;
