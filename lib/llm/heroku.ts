@@ -1,5 +1,8 @@
 /**
- * lib/llm/heroku.ts — Heroku Inference agent loop (Claude 4.5 Sonnet).
+ * lib/llm/heroku.ts — OpenAI-compatible agent loop (multi-backend).
+ *
+ * Defaults to Heroku Managed Inference (Claude 4.5 Sonnet). Optionally
+ * uses Moonshot Kimi (`inferenceBackend: "kimi"`) — see inferenceClients.ts.
  *
  * Heroku's Managed Inference exposes an OpenAI-compatible
  * /v1/chat/completions endpoint. This file orchestrates the tool-calling
@@ -14,12 +17,10 @@
  * API routes can re-emit each step as an SSE frame.
  */
 
-import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import type { McpRegistry } from "@/lib/mcp/client";
 import { toOpenAiTools, parseToolName } from "@/lib/mcp/tools";
 import type { McpServerName } from "@/types/horizon";
-import { requireEnv } from "@/lib/utils";
 import {
   emptyDcSnapshot,
   ingestDcMetadata,
@@ -30,6 +31,11 @@ import {
   type DcSnapshot,
 } from "@/lib/llm/dataCloudSchema";
 import { extractSqlRefs } from "@/lib/llm/sqlRefs";
+import {
+  type InferenceBackend,
+  modelIdFor,
+  openAiClientFor,
+} from "@/lib/llm/inferenceClients";
 
 export interface AgentEvent {
   type:
@@ -70,6 +76,12 @@ export interface AgentRunArgs {
    * from prior tool output with no new calls.
    */
   forceFirstToolCall?: boolean;
+  /**
+   * Which OpenAI-compatible inference stack to call. Resolved by
+   * `runAgentWithMcp` from `routeHint` + env unless set explicitly.
+   * Default heroku (Claude via Heroku Inference).
+   */
+  inferenceBackend?: InferenceBackend;
 }
 
 export interface AgentRunResult {
@@ -86,19 +98,9 @@ export interface AgentRunResult {
   transcript: ChatCompletionMessageParam[];
 }
 
-let _openai: OpenAI | null = null;
-function openai(): OpenAI {
-  if (_openai) return _openai;
-  const base = requireEnv("INFERENCE_URL").replace(/\/$/, "");
-  _openai = new OpenAI({
-    apiKey: requireEnv("INFERENCE_KEY"),
-    baseURL: `${base}/v1`,
-  });
-  return _openai;
-}
-
+/** @deprecated use modelIdFor("heroku") — kept for scripts that grep this name */
 export function herokuModel(): string {
-  return process.env.INFERENCE_MODEL_ID ?? "claude-4-5-sonnet";
+  return modelIdFor("heroku");
 }
 
 // Trip-worthy error signatures. We trip a circuit breaker on these because
@@ -419,7 +421,11 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     maxTokens = 4096,
     onEvent = () => {},
     forceFirstToolCall = false,
+    inferenceBackend = "heroku",
   } = args;
+
+  const client = openAiClientFor(inferenceBackend);
+  const model = modelIdFor(inferenceBackend);
 
   const toolDefs = await registry.listAllTools();
   const tools = toOpenAiTools(toolDefs);
@@ -436,7 +442,6 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   // prose the model produced in its LAST assistant turn instead of throwing
   // that away. We keep a running copy here.
   let lastAssistantText = "";
-  const model = herokuModel();
 
   // Per-run circuit breaker state. Keyed by `${server}.${tool}` so we can
   // block one data_360 tool without blocking the whole server.
@@ -477,7 +482,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           : ("auto" as const)
         : undefined;
 
-    const stream = await openai().chat.completions.create({
+    const stream = await client.chat.completions.create({
       model,
       messages,
       tools: tools.length > 0 ? tools : undefined,
@@ -785,7 +790,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         type: "error",
         message: `iteration cap (${maxIterations}) reached with no prose — forcing finalize pass`,
       });
-      const finalize = await openai().chat.completions.create({
+      const finalize = await client.chat.completions.create({
         model,
         messages: [
           ...messages,

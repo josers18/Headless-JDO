@@ -1,21 +1,29 @@
 /**
  * lib/llm/provider.ts — LLM provider selection + unified agent runner.
  *
- * Horizon currently ships with two providers, selected by env:
- *   - `heroku`  (default): Heroku Inference (Claude 4.5 Sonnet), OpenAI-
- *                          compatible. We drive the MCP tool loop ourselves.
- *   - `anthropic`          : Anthropic direct, native `mcp_servers`. Kept as
- *                            a fallback for when Anthropic billing resolves.
+ * Primary path: `LLM_PROVIDER=heroku` — same process, but per-request
+ * `inferenceBackend` can be `heroku` (Claude via Heroku Inference) or
+ * `kimi` (Moonshot Kimi K2) when `KIMI_API_KEY` + `routeHint` match
+ * `KIMI_ROUTES`. Anthropic direct (`LLM_PROVIDER=anthropic`) stays a
+ * separate fallback and is not wired through `runAgentWithMcp`.
  *
- * Callers use `runAgentWithMcp` and never touch provider internals.
+ * Callers use `runAgentWithMcp` and pass optional `routeHint`.
  */
 
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { connectMcpClients } from "@/lib/mcp/client";
 import { runAgent, type AgentEvent } from "./heroku";
 import type { McpServerName } from "@/types/horizon";
+import {
+  modelIdFor,
+  resolveInferenceBackend,
+  type InferenceBackend,
+} from "./inferenceClients";
+import { log } from "@/lib/log";
 
 export type LlmProvider = "heroku" | "anthropic";
+
+export type { InferenceBackend } from "./inferenceClients";
 
 export function currentProvider(): LlmProvider {
   const p = (process.env.LLM_PROVIDER ?? "heroku").toLowerCase();
@@ -32,6 +40,15 @@ export interface RunAgentInput {
   maxTokens?: number;
   /** See `AgentRunArgs.forceFirstToolCall` in lib/llm/heroku.ts. */
   forceFirstToolCall?: boolean;
+  /**
+   * When set, steers the agent to Heroku Inference vs Moonshot Kimi
+   * (see KIMI_API_KEY, KIMI_ROUTES in .env). Example: "signals", "pulse-strip".
+   */
+  routeHint?: string;
+  /**
+   * Force a specific backend; normally leave unset and use `routeHint` + env.
+   */
+  inferenceBackend?: InferenceBackend;
 }
 
 export interface RunAgentOutput {
@@ -63,6 +80,17 @@ export async function runAgentWithMcp(
     );
   }
 
+  const inferenceBackend = resolveInferenceBackend({
+    inferenceBackend: input.inferenceBackend,
+    routeHint: input.routeHint,
+  });
+  if (inferenceBackend === "kimi") {
+    log.info("agent.inference.kimi", {
+      routeHint: input.routeHint ?? "",
+      model: modelIdFor("kimi"),
+    });
+  }
+
   const registry = await connectMcpClients({
     salesforceToken: input.salesforceToken,
   });
@@ -76,6 +104,7 @@ export async function runAgentWithMcp(
       temperature: input.temperature,
       maxTokens: input.maxTokens,
       forceFirstToolCall: input.forceFirstToolCall,
+      inferenceBackend,
     });
     return result;
   } finally {
