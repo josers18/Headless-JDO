@@ -21,6 +21,14 @@
  *     callers skip preflight rather than blocking valid queries.
  */
 
+/** Narrow field kind for WHERE-clause sanity checks (from MCP type strings). */
+export type DcFieldKind =
+  | "boolean"
+  | "text"
+  | "number"
+  | "date"
+  | "unknown";
+
 export interface DcTableSchema {
   /** Verbatim API name from metadata (e.g. "UnifiedIndividual__dlm"). */
   name: string;
@@ -30,6 +38,8 @@ export interface DcTableSchema {
   fieldsLc: Set<string>;
   /** Original-case field names, kept for rejection messages. */
   fieldsOriginal: string[];
+  /** Lower-cased field API name → coarse type for SQL preflight. */
+  fieldKindByLc: Map<string, DcFieldKind>;
   /** Category tag from metadata (Profile / Engagement / Related / etc.). */
   category?: string;
 }
@@ -45,6 +55,51 @@ export interface DcSnapshot {
 
 export function emptyDcSnapshot(): DcSnapshot {
   return { tables: new Map(), truncated: false, hasData: false };
+}
+
+/** Map Salesforce / Data Cloud field metadata strings → coarse kinds. */
+export function classifyDcFieldKind(raw: unknown): DcFieldKind {
+  const s = String(raw ?? "")
+    .toLowerCase()
+    .trim();
+  if (!s) return "unknown";
+  if (/\b(bool|checkbox|boolean)\b/i.test(s)) return "boolean";
+  if (/int|double|currency|percent|number|decimal|long/i.test(s))
+    return "number";
+  if (/date|time/i.test(s)) return "date";
+  if (
+    /string|text|email|phone|url|picklist|multipicklist|textarea|encryptedstring/i.test(
+      s
+    )
+  )
+    return "text";
+  return "unknown";
+}
+
+/** Compact single-letter ty from MCP projection (see client.ts compactDcMetadataText). */
+export function dcFieldKindFromCompactTy(ty: unknown): DcFieldKind | null {
+  if (typeof ty !== "string" || ty.length !== 1) return null;
+  switch (ty.toUpperCase()) {
+    case "B":
+      return "boolean";
+    case "T":
+      return "text";
+    case "N":
+      return "number";
+    case "D":
+      return "date";
+    default:
+      return null;
+  }
+}
+
+/** Single-character ty for compact metadata JSON (token-efficient). */
+export function dcFieldKindToCompactTy(k: DcFieldKind): string | undefined {
+  if (k === "boolean") return "B";
+  if (k === "text") return "T";
+  if (k === "number") return "N";
+  if (k === "date") return "D";
+  return undefined;
 }
 
 /**
@@ -101,13 +156,19 @@ export function ingestDcMetadata(snapshot: DcSnapshot, modelText: string): void 
     const fieldsRaw = Array.isArray(obj.fields) ? obj.fields : [];
     const fieldsOriginal: string[] = [];
     const fieldsLc = new Set<string>();
+    const fieldKindByLc = new Map<string, DcFieldKind>();
     for (const f of fieldsRaw) {
       if (!f || typeof f !== "object") continue;
-      const fn = (f as Record<string, unknown>).name;
-      if (typeof fn === "string" && fn.length > 0) {
-        fieldsOriginal.push(fn);
-        fieldsLc.add(fn.toLowerCase());
-      }
+      const fr = f as Record<string, unknown>;
+      const fn = fr.name;
+      if (typeof fn !== "string" || fn.length === 0) continue;
+      const fromTy = dcFieldKindFromCompactTy(fr.ty);
+      const kind: DcFieldKind =
+        fromTy ?? classifyDcFieldKind(fr.type ?? fr.dataType ?? fr.data_type);
+      const fnLc = fn.toLowerCase();
+      fieldsOriginal.push(fn);
+      fieldsLc.add(fnLc);
+      fieldKindByLc.set(fnLc, kind);
     }
 
     const nameLc = name.toLowerCase();
@@ -118,9 +179,14 @@ export function ingestDcMetadata(snapshot: DcSnapshot, modelText: string): void 
       for (let i = 0; i < fieldsOriginal.length; i++) {
         const fo = fieldsOriginal[i];
         if (typeof fo !== "string") continue;
-        if (!existing.fieldsLc.has(fo.toLowerCase())) {
+        const foLc = fo.toLowerCase();
+        const kn = fieldKindByLc.get(foLc);
+        if (!existing.fieldsLc.has(foLc)) {
           existing.fieldsOriginal.push(fo);
-          existing.fieldsLc.add(fo.toLowerCase());
+          existing.fieldsLc.add(foLc);
+          if (kn !== undefined) existing.fieldKindByLc.set(foLc, kn);
+        } else if (kn !== undefined && kn !== "unknown") {
+          existing.fieldKindByLc.set(foLc, kn);
         }
       }
       if (!existing.category && category) existing.category = category;
@@ -131,6 +197,7 @@ export function ingestDcMetadata(snapshot: DcSnapshot, modelText: string): void 
         displayName,
         fieldsLc,
         fieldsOriginal,
+        fieldKindByLc,
         category,
       });
     }

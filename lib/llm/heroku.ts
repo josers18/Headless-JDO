@@ -28,7 +28,9 @@ import {
   getTable as dcGetTable,
   suggestTables as dcSuggestTables,
   suggestColumns as dcSuggestColumns,
+  type DcFieldKind,
   type DcSnapshot,
+  type DcTableSchema,
 } from "@/lib/llm/dataCloudSchema";
 import { extractSqlRefs } from "@/lib/llm/sqlRefs";
 import {
@@ -143,6 +145,52 @@ const TRIP_ERROR_PATTERNS = [
 function isTrippedError(preview: string | undefined | null): boolean {
   if (!preview) return false;
   return TRIP_ERROR_PATTERNS.some((re) => re.test(preview));
+}
+
+function dcColumnKindAmongTables(
+  tables: DcTableSchema[],
+  colLc: string
+): DcFieldKind {
+  for (const t of tables) {
+    if (!t.fieldsLc.has(colLc)) continue;
+    const k = t.fieldKindByLc.get(colLc) ?? "unknown";
+    if (k !== "unknown") return k;
+  }
+  return "unknown";
+}
+
+function preflightSalesforceSoql(
+  server: string,
+  tool: string,
+  args: Record<string, unknown>
+): string | null {
+  if (server !== "salesforce_crm") return null;
+  if (!/^soqlQuery/i.test(tool)) return null;
+  const raw =
+    typeof args.q === "string"
+      ? args.q
+      : typeof args.query === "string"
+        ? args.query
+        : "";
+  if (!raw.trim()) return null;
+  if (!/\bFROM\s+Task\b/i.test(raw)) return null;
+  const selMatch = raw.match(/\bSELECT\b([\s\S]+?)\bFROM\s+Task\b/i);
+  const selPart = selMatch?.[1];
+  if (!selPart) return null;
+  let cleaned = selPart.replace(/\b[\w]+\.Name\b/gi, "");
+  cleaned = cleaned.replace(/\(\s*SELECT[\s\S]*?\)/gi, " ");
+  if (/\bName\b/.test(cleaned)) {
+    return JSON.stringify({
+      rejected: true,
+      server,
+      tool,
+      reason:
+        "Standard Salesforce Task has Subject, not Name — using Name causes INVALID_FIELD.",
+      instruction:
+        "Rewrite the Task query: use Subject for the task title line, or Who.Name / What.Name for related names. Remove bare Name from the Task SELECT list, then retry.",
+    });
+  }
+  return null;
 }
 
 // Pre-flight guardrail for Data Cloud SQL. The hygiene prompt forbids
@@ -312,6 +360,27 @@ function preflightDataCloudSql(
     }
   }
 
+  // D3 — comparing boolean literals to text columns (INVALID_ARGUMENT).
+  if (tablesInQuery.length > 0) {
+    const boolCmp =
+      /\b([\w]+)\s*(?:=|<>|!=)\s*(true|false)\b/gi;
+    for (const bm of sql.matchAll(boolCmp)) {
+      const colLc = bm[1]?.toLowerCase();
+      if (!colLc) continue;
+      const kind = dcColumnKindAmongTables(tablesInQuery, colLc);
+      if (kind === "text") {
+        return JSON.stringify({
+          rejected: true,
+          server,
+          tool,
+          reason: `Boolean literal compared to text column "${colLc}" (metadata ty=T).`,
+          instruction:
+            "Use quoted string literals for text fields, or compare against a boolean column (ty=B in metadata). Never compare text fields to bare true/false.",
+        });
+      }
+    }
+  }
+
   return null;
 }
 
@@ -381,8 +450,11 @@ function preflightRejection(
   args: Record<string, unknown>,
   ctx: { snapshot: DcSnapshot }
 ): string | null {
-  return preflightDataCloudSql(server, tool, args, ctx) ??
-    preflightTableauAnalyze(server, tool, args);
+  return (
+    preflightSalesforceSoql(server, tool, args) ??
+    preflightDataCloudSql(server, tool, args, ctx) ??
+    preflightTableauAnalyze(server, tool, args)
+  );
 }
 
 // Threshold for the breaker. We trip on the very FIRST error matching a
@@ -680,9 +752,6 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
             preview: rejection,
             is_error: true,
           });
-          // Also trip the breaker so a retry with a different-but-still-bad
-          // query doesn't slip through.
-          blockedTools.add(key);
           return {
             c,
             server,

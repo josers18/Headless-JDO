@@ -21,6 +21,10 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { McpServerName } from "@/types/horizon";
 import { MCP_URLS } from "@/lib/anthropic/mcp-servers";
+import {
+  classifyDcFieldKind,
+  dcFieldKindToCompactTy,
+} from "@/lib/llm/dataCloudSchema";
 import { log } from "@/lib/log";
 
 const TOOL_SEP = "__";
@@ -444,8 +448,8 @@ function projectForModel(
 }
 
 /**
- * Rewrite a getDcMetadata JSON string down to just
- *   { metadata: [ { name, fields: [ { name } ] } ] }
+ * Rewrite a getDcMetadata JSON string down to roughly
+ *   { metadata: [ { name, fields: [ { name, ty? } ] } ] }
  * preserving array order so the dataCloudSchema snapshot ingest still
  * works and so the model sees the org's tables in the same sequence
  * as the raw response. Parse failures fall back to the original text
@@ -461,11 +465,18 @@ function compactDcMetadataText(rawText: string): string {
       const r = row as Record<string, unknown>;
       const name = typeof r.name === "string" ? r.name : undefined;
       const fieldsRaw = Array.isArray(r.fields) ? r.fields : [];
-      const fields: Array<{ name: string }> = [];
+      const fields: Array<{ name: string; ty?: string }> = [];
       for (const f of fieldsRaw) {
         if (f && typeof f === "object") {
-          const fn = (f as Record<string, unknown>).name;
-          if (typeof fn === "string") fields.push({ name: fn });
+          const fr = f as Record<string, unknown>;
+          const fn = fr.name;
+          if (typeof fn !== "string") continue;
+          const k = classifyDcFieldKind(
+            fr.type ?? fr.dataType ?? fr.data_type
+          );
+          const ty = dcFieldKindToCompactTy(k);
+          if (ty) fields.push({ name: fn, ty });
+          else fields.push({ name: fn });
         }
       }
       return { name, fields };
