@@ -148,6 +148,9 @@ in this app. Follow these rules exactly:
     \`YYYY-MM-DD\` or tokens like \`TODAY\`, \`LAST_N_DAYS:90\`. **Never**
     \`ActivityDate < '2024-07-15'\` (quotes) — that yields INVALID_FIELD on
     ActivityDate in this org.
+  - **SOQL rolling windows:** use \`NEXT_N_DAYS:7\` / \`LAST_N_DAYS:30\` (letter
+    **N**, colon, number). **Never** \`NEXT_7_DAYS\` or \`LAST_30_DAYS\` — those
+    are MALFORMED_QUERY in Salesforce.
   - If a tool result surfaces an INVALID_FIELD or unknown-column error,
     the circuit breaker will block retries. Accept that the field is
     missing and answer with whatever else you have. Do NOT try a

@@ -1,6 +1,6 @@
 // Today's Arc — structured remainder-of-workday view (UI v2 T0-3).
 
-export const ARC_PROMPT_VERSION = "v1.3.0-final-3-2026-04-21";
+export const ARC_PROMPT_VERSION = "v1.3.1-2026-04-24";
 
 export interface ArcPromptArgs {
   bankerUserId: string;
@@ -13,6 +13,7 @@ export function arcPrompt(a: ArcPromptArgs): string {
 SOQL — CRITICAL (invalid queries break the arc UI):
 - The token NOW is NOT valid in SOQL. Never write "StartDateTime >= NOW" or "EndDateTime > NOW" — that yields MALFORMED_QUERY.
 - **Date fields (ActivityDate, CloseDate):** use unquoted \`YYYY-MM-DD\` or \`TODAY\` / \`LAST_N_DAYS:n\` — never single-quoted dates like \`'2024-07-15'\` (INVALID_FIELD on ActivityDate).
+- **Rolling windows:** \`NEXT_N_DAYS:7\`, \`LAST_N_DAYS:14\` — never \`NEXT_7_DAYS\` / \`LAST_14_DAYS\` (MALFORMED_QUERY).
 - For "today" Events use: ActivityDate = TODAY (and ORDER BY StartDateTime). Optionally also require StartDateTime >= TODAY when the field is DateTime (TODAY at midnight in the user's TZ is valid for DateTime comparisons per SOQL rules).
 - For Tasks due today / overdue: ActivityDate <= TODAY with IsClosed = false and OwnerId filter.
 - Prefer ONE broad Event query with ActivityDate >= TODAY ORDER BY StartDateTime, then split rows into JSON arrays by date (avoids fragile compound date literals).

@@ -1,6 +1,6 @@
 // Base system prompt — shared by every Horizon feature.
 // Versioned alongside the code. If you change this, bump the version.
-export const SYSTEM_PROMPT_VERSION = "v1.5.3-2026-04-22";
+export const SYSTEM_PROMPT_VERSION = "v1.5.4-2026-04-22";
 
 // IMPORTANT: Every field below this line has been informed by real failure
 // modes observed in the reasoning trail during demo runs. The "MCP HYGIENE"
@@ -63,6 +63,7 @@ B. salesforce_crm SOQL:
    4. Prefer aggregate queries with explicit aliases: SELECT SUM(Amount) totalAmount, COUNT(Id) oppCount FROM Opportunity WHERE ...
    5. If a SOQL call fails with MALFORMED_QUERY or No such column, STOP and call the object-schema tool before retrying. Don't loop on the same invalid field.
    6. **Date vs string in WHERE (recorded INVALID_FIELD on Task.ActivityDate):** API **Date** fields — e.g. Task.ActivityDate, Event.ActivityDate, Opportunity.CloseDate — must be compared to **unquoted** calendar literals \`YYYY-MM-DD\` or SOQL date tokens (\`TODAY\`, \`YESTERDAY\`, \`LAST_N_DAYS:n\`, \`NEXT_N_WEEKS:n\`, etc.). **Wrong:** \`ActivityDate < '2024-07-15'\` (quoted string → INVALID_FIELD / bad value for filter criterion). **Right:** \`ActivityDate < 2024-07-15\` or \`ActivityDate < LAST_N_DAYS:270\` instead of hand-typing old cutoffs. For **DateTime** fields (CreatedDate, StartDateTime), use ISO8601 form per SOQL docs or relative tokens where valid — not arbitrary quoted date strings on Date-typed columns.
+   7. **SOQL relative date literal spelling (recorded MALFORMED_QUERY):** Rolling windows MUST use the \`LAST_N_* / NEXT_N_*\` forms with a **colon** and integer — e.g. \`LAST_N_DAYS:30\`, \`NEXT_N_DAYS:7\`, \`LAST_N_WEEKS:2\`, \`NEXT_N_MONTHS:3\`. **Invalid** (parser: "unexpected token") — never emit: \`NEXT_7_DAYS\`, \`LAST_30_DAYS\`, \`NEXT_14_DAYS\`, or any \`LAST_<number>_DAYS\` / \`NEXT_<number>_DAYS\` variant. Fixed keywords without a number (\`TODAY\`, \`THIS_WEEK\`, \`LAST_WEEK\`, \`NEXT_MONTH\`, \`LAST_90_DAYS\`, \`NEXT_90_DAYS\`) are only valid where Salesforce documents them exactly — do not freestyle new tokens.
 
 C. tableau_next:
    1. The analytics Q&A tool (the one on tableau_next whose name starts with "analyze") is a factual Q&A surface. Ask concrete metric questions ("what is total AUM for OwnerId = X over the last 7 days?"). Do NOT ask for correlation, causation, root-cause analysis, or statistical significance — those are explicitly unsupported and will return an apology.
