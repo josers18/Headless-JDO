@@ -12,6 +12,7 @@ export function arcPrompt(a: ArcPromptArgs): string {
 
 SOQL — CRITICAL (invalid queries break the arc UI):
 - The token NOW is NOT valid in SOQL. Never write "StartDateTime >= NOW" or "EndDateTime > NOW" — that yields MALFORMED_QUERY.
+- **Date fields (ActivityDate, CloseDate):** use unquoted \`YYYY-MM-DD\` or \`TODAY\` / \`LAST_N_DAYS:n\` — never single-quoted dates like \`'2024-07-15'\` (INVALID_FIELD on ActivityDate).
 - For "today" Events use: ActivityDate = TODAY (and ORDER BY StartDateTime). Optionally also require StartDateTime >= TODAY when the field is DateTime (TODAY at midnight in the user's TZ is valid for DateTime comparisons per SOQL rules).
 - For Tasks due today / overdue: ActivityDate <= TODAY with IsClosed = false and OwnerId filter.
 - Prefer ONE broad Event query with ActivityDate >= TODAY ORDER BY StartDateTime, then split rows into JSON arrays by date (avoids fragile compound date literals).

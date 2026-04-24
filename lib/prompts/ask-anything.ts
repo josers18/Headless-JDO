@@ -143,6 +143,11 @@ in this app. Follow these rules exactly:
     entity with that exact developerName, do not call postDcQuerySql against
     it — use salesforce_crm for PersonLifeEvent / Account / Task instead and
     note that unified lakehouse life-event rows were unavailable.
+  - **SOQL Date fields:** \`Task.ActivityDate\`, \`Event.ActivityDate\`,
+    \`Opportunity.CloseDate\` are **Date** types — filter with **unquoted**
+    \`YYYY-MM-DD\` or tokens like \`TODAY\`, \`LAST_N_DAYS:90\`. **Never**
+    \`ActivityDate < '2024-07-15'\` (quotes) — that yields INVALID_FIELD on
+    ActivityDate in this org.
   - If a tool result surfaces an INVALID_FIELD or unknown-column error,
     the circuit breaker will block retries. Accept that the field is
     missing and answer with whatever else you have. Do NOT try a
