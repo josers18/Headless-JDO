@@ -20,19 +20,21 @@
 | [**docs/ARCHITECTURE.md**](docs/ARCHITECTURE.md) | Diagrams (Mermaid), MCP flow, key paths |
 | [**docs/OPERATIONS.md**](docs/OPERATIONS.md) | Deploy, env, incidents, secrets rotation |
 | [**docs/ARTIFACTS.md**](docs/ARTIFACTS.md) | UI ↔ API map, npm scripts |
+| [**docs/LLM_PROMPT_GUIDE.md**](docs/LLM_PROMPT_GUIDE.md) | Prompt files, version bumps, reasoning-trail learnings |
 | [**docs/CURSOR_MCP_SETUP.md**](docs/CURSOR_MCP_SETUP.md) | Optional Cursor MCP wiring |
-| [**docs/SEED_DATA_SPEC.md**](docs/SEED_DATA_SPEC.md) | CRM / Data Cloud seed notes |
+| [**docs/SEED_DATA_SPEC.md**](docs/SEED_DATA_SPEC.md) | CRM / FSC seed notes |
 | [**CONTRIBUTING.md**](CONTRIBUTING.md) | Quality gates and contribution norms |
 
-Some teams keep a **private** full build spec and UI iteration notes **gitignored** in the clone root (e.g. `CLAUDE.md`, `FIX_PASS.md`). This **public** repo carries architecture and operations in **`docs/`** instead.
+**UI / film polish checklists** (iteration history in repo root): [`UI_V3_FINAL.md`](./UI_V3_FINAL.md), [`UI_V3_POLISH.md`](./UI_V3_POLISH.md), [`FIX_PASS.md`](./FIX_PASS.md) — see status banner in `FIX_PASS.md`; authoritative product constraints may also live in a **local** `CLAUDE.md` (listed in `.gitignore` in this clone). **Published** engineering docs live under **`docs/`**.
 
 ---
 
 ## What it does
 
-- **Morning brief** (incl. life-event hierarchy + “Recent life events” block), **priority queue**, **today’s arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **Ask** bar — all on `/`.
-- The LLM orchestrates three **Salesforce-hosted MCP** servers (CRM SObject, Data 360 SQL, Tableau Next). The UI streams tokens and a collapsible **reasoning trail** of tool calls.
+- **Morning brief** (life-event hierarchy + “Recent life events”), **priority queue**, **today’s arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **section insight** banners, **Ask** bar (typed + voice + drafted actions), **Prep me** (per-client briefing via `/api/prep`) — all on `/`.
+- The LLM orchestrates three **Salesforce-hosted MCP** servers (CRM SObject, Data 360 SQL, Tableau Next) plus optional **Heroku toolkit** MCP. The UI streams tokens and a collapsible **reasoning trail** of tool calls (success + handled errors).
 - **Default LLM path:** Heroku Managed Inference (Claude 4.5 Sonnet, OpenAI-compatible API) with an MCP tool loop in `lib/llm/heroku.ts`. **Optional fallback:** `LLM_PROVIDER=anthropic` (native `mcp_servers` on Anthropic).
+- **Prompt hygiene:** shared rules and version stamps live in `lib/prompts/system.ts` (`SYSTEM_PROMPT_VERSION`). See [**docs/LLM_PROMPT_GUIDE.md**](docs/LLM_PROMPT_GUIDE.md) before changing agent behavior.
 
 ---
 
@@ -56,7 +58,7 @@ Some teams keep a **private** full build spec and UI iteration notes **gitignore
 | `app/api/*` | SSE / JSON routes: `ask`, `brief`, `priority`, `pulse`, `drafts`, `signals`, OAuth, etc. |
 | `lib/llm/heroku.ts` | Agent loop: model → tool calls → parallel MCP → repeat |
 | `lib/mcp/client.ts` | MCP SDK sessions to Salesforce + optional Heroku toolkit |
-| `lib/prompts/*` | Versioned prompts |
+| `lib/prompts/*` | Versioned prompts (`SYSTEM_PROMPT_VERSION` + per-feature `*_PROMPT_VERSION`) |
 | `components/horizon/*` | UI sections |
 | `scripts/verify-mcp.ts` | Smoke test all three Salesforce MCPs |
 | `.github/workflows/ci.yml` | Lint, typecheck, build on `main` / PRs |

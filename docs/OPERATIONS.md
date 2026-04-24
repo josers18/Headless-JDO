@@ -52,3 +52,15 @@ If any key was exposed (chat, screenshot, old commit): rotate **Salesforce ECA s
 2. Confirm OAuth callback URL matches the live origin.
 3. Open **Reasoning trail** in the UI for failed sections (tool errors surface there by design).
 4. Re-run `verify:mcp` locally with a fresh `npm run sf:login` if MCP calls fail consistently.
+
+## Reasoning trail: triage cheatsheet
+
+When the UI shows yellow “schema mismatch / handled” or red failures:
+
+| Pattern in trail | Likely fix |
+|------------------|------------|
+| `unknown column` on `data_360.postDcQuerySql` | Model guessed a column not in `getDcMetadata` for that DMO (e.g. `AccountId__c`). Tighten prompts or accept Data Cloud skip for that turn. |
+| `MALFORMED_QUERY` / `unexpected token` on `salesforce_crm.soqlQuery` | Bad SOQL date literal (e.g. `NEXT_7_DAYS` instead of `NEXT_N_DAYS:7`, or quoted `ActivityDate`). See [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md). |
+| `blocked by schema-mismatch breaker` | Expected after a bad Data Cloud or SOQL shape — prevents tool-slot burn; narrative should degrade gracefully. |
+
+After fixing prompt text, **bump** the relevant `*_PROMPT_VERSION` in `lib/prompts/` and redeploy.

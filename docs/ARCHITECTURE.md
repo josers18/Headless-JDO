@@ -31,12 +31,34 @@ flowchart LR
   MCP --> TN
 ```
 
+## SSE to the browser (reasoning trail + text)
+
+```mermaid
+sequenceDiagram
+  participant UI as React (AskBar, Brief, …)
+  participant API as Next /api/* route
+  participant Agent as lib/llm/heroku.ts
+  participant MCP as MCP client
+  UI->>API: POST (e.g. ask, brief) + Accept text/event-stream
+  API->>Agent: stream loop
+  loop Until model done
+    Agent->>MCP: tool_calls (parallel per turn)
+    MCP-->>Agent: tool results
+    Agent-->>API: tokens + trail steps
+    API-->>UI: SSE events (narrative + tool_use / tool_result)
+  end
+```
+
+The **reasoning trail** is a first-class product surface: bankers see which tools ran, including handled schema or SOQL errors, without raw tokens dumping stack traces into prose.
+
 ## MCP tool loop (conceptual)
 
 1. The model receives flattened tool definitions (`salesforce_crm__*`, `data_360__*`, `tableau_next__*`, optional `heroku_toolkit__*`).
 2. The model emits `tool_calls`; the server dispatches them in parallel to the right MCP transport (Streamable HTTP for Salesforce-hosted servers).
 3. Tool results are returned as `role: tool` messages; the loop repeats until the model finishes or iteration limits are hit.
 4. The API forwards **text deltas** and **reasoning-trail steps** to the client as SSE events.
+
+Runtime **constraints** on tool use (metadata-before-SQL, SOQL date literal spelling, Tableau model binding, etc.) are enforced in prompts (`lib/prompts/system.ts`) and, for some paths, in dispatch preflight. See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for a contributor-oriented catalog of known failure modes.
 
 ## Key source locations
 
@@ -52,4 +74,4 @@ flowchart LR
 
 OAuth 2.1 + PKCE obtains a token with the `mcp_api` scope. That bearer token is passed into MCP sessions. Session cookies gate which API routes run with a live token (see `lib/salesforce/token.ts` and `/api/auth/*` patterns).
 
-For deeper product constraints (no navigation rails, reasoning trail as a feature), refer to any internal **Horizon build spec** your team maintains separately from this public repo.
+For deeper product constraints (no navigation rails, reasoning trail as a feature), refer to your team’s **Horizon build spec** if you maintain one locally (this repo’s `.gitignore` may exclude it). **Prompt and MCP hygiene** for engineering are summarized in [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md).

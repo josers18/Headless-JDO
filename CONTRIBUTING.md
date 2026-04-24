@@ -23,7 +23,12 @@ Never commit `.env`, API keys, OAuth secrets, or inference keys. Use placeholder
 
 ## Prompts & behavior
 
-Prompts live in `lib/prompts/` — treat edits like code review: bump **version constants** when changing schema or hard rules so caches and reviewers can diff intent.
+Prompts live in `lib/prompts/` — treat edits like code review.
+
+1. Read [**docs/LLM_PROMPT_GUIDE.md**](docs/LLM_PROMPT_GUIDE.md) first.
+2. Prefer extending **`lib/prompts/system.ts`** for rules that must apply to *every* agent route (SOQL hygiene, Data Cloud metadata gate, Tableau binding).
+3. Bump the **version export** in every file you change (`SYSTEM_PROMPT_VERSION`, `MORNING_BRIEF_PROMPT_VERSION`, `PREP_PROMPT_VERSION`, etc.).
+4. Run `npm run build` before opening a PR.
 
 ## Style
 

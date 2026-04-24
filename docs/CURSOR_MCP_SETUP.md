@@ -29,7 +29,7 @@
 3. **Verify** — open any Cursor chat and ask:
    > List all Data 360 tools available.
 
-   You should see tool names like `data_360__getDcMetadata`, `data_360__runDataCloudSQL`, etc. surfaced in the agent's tool list.
+   You should see tool names like `data_360__getDcMetadata…`, `data_360__postDcQuerySql…` (exact suffixes vary by workspace binding), `salesforce_crm__soqlQuery`, etc., in the agent’s tool list.
 
 ---
 

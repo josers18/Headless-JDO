@@ -1,6 +1,16 @@
 # Repository artifacts
 
-What ships in this codebase (high level). Prompt versions change over time — see `MORNING_BRIEF_PROMPT_VERSION` and siblings in `lib/prompts/`.
+What ships in this codebase (high level). Prompt versions change over time — bump the constant in the file you edit.
+
+| Constant (export) | File |
+|-------------------|------|
+| `SYSTEM_PROMPT_VERSION` | `lib/prompts/system.ts` |
+| `MORNING_BRIEF_PROMPT_VERSION` | `lib/prompts/morning-brief.ts` |
+| `PREP_PROMPT_VERSION` | `lib/prompts/prep.ts` |
+| `ARC_PROMPT_VERSION` | `lib/prompts/arc.ts` |
+| … | Other `lib/prompts/*.ts` |
+
+See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a failure-mode catalog.
 
 ## User-visible surfaces
 
@@ -12,8 +22,8 @@ What ships in this codebase (high level). Prompt versions change over time — s
 | Portfolio pulse | `components/horizon/PortfolioPulse.tsx` | `GET /api/pulse` (SSE) |
 | Pulse strip (header) | `components/horizon/PulseStrip.tsx` | `GET /api/pulse-strip` (SSE) |
 | Pre-drafted actions | `components/horizon/PreDraftedActions.tsx` | `GET /api/drafts` (SSE); execute `POST /api/actions` |
-| Live signals | `components/horizon/SignalFeed.tsx` | `GET /api/signals` (JSON result from agent) |
-| Ask bar | `components/horizon/AskBar.tsx` | `POST /api/ask` (SSE) |
+| Live signals | `components/horizon/SignalFeed.tsx` | `GET /api/signals` (JSON; client polls ~45s) |
+| Ask bar | `components/horizon/AskBar.tsx` | `POST /api/ask` (SSE); **Prep me** uses `POST /api/prep` (SSE) from embedded prep flow |
 | Client 360 sheet | `components/horizon/ClientDetailSheet.tsx` | `GET /api/client/[id]` (SSE) |
 | Section insights | `components/horizon/SectionInsight.tsx` + `InsightsBatchProvider` | `POST /api/insights` (SSE) |
 
@@ -34,3 +44,4 @@ What ships in this codebase (high level). Prompt versions change over time — s
 | [SEED_DATA_SPEC.md](./SEED_DATA_SPEC.md) | Data / seed notes for CRM vs Data Cloud |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Diagrams and flow |
 | [OPERATIONS.md](./OPERATIONS.md) | Deploy and runbooks |
+| [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md) | Prompts and agent hygiene |

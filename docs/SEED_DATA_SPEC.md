@@ -1,5 +1,7 @@
 # Horizon — Seed Data Spec (P0-3)
 
+> **Note:** The **runtime app** still calls **Data 360** and **Tableau Next** when prompts require multi-source answers; lakehouse columns must come from live `getDcMetadata`. This spec emphasizes **CRM / FSC** seed shapes because they are stable for SOQL demos.
+
 > **Purpose:** Populate the JDO Salesforce org with the 6 synthetic clients and supporting FSC records that the Horizon demo depends on. The Ask Bar's Act 2 moment ("Show me clients who look like David Chen did three months before he left") only works when these rows exist and are joinable via native SOQL.
 >
 > **Audience:** An external seeding platform / agent with write access to the target Salesforce org.
