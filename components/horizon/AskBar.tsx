@@ -364,7 +364,7 @@ export function AskBar() {
     <div className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
       <div className="pointer-events-auto flex w-full max-w-[760px] flex-col gap-3">
         {showPanel && (
-          <div className="animate-fade-rise overflow-hidden rounded-2xl border border-border-soft bg-surface/95 shadow-[0_28px_60px_-30px_rgba(0,0,0,0.7)] backdrop-blur-md">
+          <div className="animate-fade-rise overflow-visible rounded-2xl border border-border-soft bg-surface/95 shadow-[0_28px_60px_-30px_rgba(0,0,0,0.7)] backdrop-blur-md">
             <div className="flex items-start justify-between gap-3 border-b border-border-soft/80 bg-black/20 px-5 py-3">
               <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-text-muted">
                 <span
@@ -425,7 +425,7 @@ export function AskBar() {
               {!showPrepStructured &&
                 prose &&
                 !(prepSession && !prepPayload && state === "streaming") && (
-                  <div className="mt-3">
+                  <div className="mt-3 max-w-full overflow-x-auto">
                     <MarkdownView source={prose} />
                     {state === "streaming" && (
                       <span className="ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] animate-pulse bg-accent" />
@@ -664,7 +664,7 @@ function InlineActions({
             <li
               key={a.id}
               className={cn(
-                "group relative flex items-start gap-3 rounded-lg border border-border-soft bg-surface2/60 px-3 py-2.5 transition",
+                "group relative flex items-start gap-3 overflow-visible rounded-lg border border-border-soft bg-surface2/60 px-3 py-2.5 transition",
                 st.kind === "done" &&
                   "border-emerald-400/40 bg-emerald-400/5",
                 st.kind === "error" &&

@@ -137,6 +137,12 @@ in this app. Follow these rules exactly:
     enumerate tables and columns, and only query columns that came back.
     Do NOT guess \`ssot__OwnerId__c\`, \`ssot__Industry__c\`, or other
     DMO columns — prefix shapes vary by org.
+  - Do NOT invent Data Cloud DMO developerNames because a similarly named
+    Salesforce object exists (e.g. guessing \`PersonLifeEvent_*__dll\` from
+    CRM \`PersonLifeEvent\`). If getDcMetadata in THIS turn does not list an
+    entity with that exact developerName, do not call postDcQuerySql against
+    it — use salesforce_crm for PersonLifeEvent / Account / Task instead and
+    note that unified lakehouse life-event rows were unavailable.
   - If a tool result surfaces an INVALID_FIELD or unknown-column error,
     the circuit breaker will block retries. Accept that the field is
     missing and answer with whatever else you have. Do NOT try a
