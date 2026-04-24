@@ -137,6 +137,10 @@ in this app. Follow these rules exactly:
     enumerate tables and columns, and only query columns that came back.
     Do NOT guess \`ssot__OwnerId__c\`, \`ssot__Industry__c\`, or other
     DMO columns — prefix shapes vary by org.
+  - **Never** use CRM-shaped names like \`AccountId__c\`, \`OwnerId__c\`, or
+    \`ContactId__c\` on Data Cloud SQL just because SOQL uses \`AccountId\` /
+    \`OwnerId\` — those literals cause \`unknown column\` unless the exact
+    token appears in **this turn's** getDcMetadata fields list for that table.
   - Do NOT invent Data Cloud DMO developerNames because a similarly named
     Salesforce object exists (e.g. guessing \`PersonLifeEvent_*__dll\` from
     CRM \`PersonLifeEvent\`). If getDcMetadata in THIS turn does not list an

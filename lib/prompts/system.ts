@@ -1,12 +1,12 @@
 // Base system prompt — shared by every Horizon feature.
 // Versioned alongside the code. If you change this, bump the version.
-export const SYSTEM_PROMPT_VERSION = "v1.5.4-2026-04-22";
+export const SYSTEM_PROMPT_VERSION = "v1.5.5-2026-04-22";
 
 // IMPORTANT: Every field below this line has been informed by real failure
 // modes observed in the reasoning trail during demo runs. The "MCP HYGIENE"
 // block exists specifically to kill the top hallucination patterns we've
 // seen from Claude 4.5 Sonnet over these three MCP servers:
-//   - data_360 SQL: fabricated DLO names, fabricated columns, information_schema
+//   - data_360 SQL: fabricated DLO names, fabricated columns, CRM-mimic AccountId__c on DMOs, information_schema
 //   - salesforce_crm SOQL: semi-join + OR, Task in semi-joins, reserved aliases,
 //     guessed custom fields ending in __c
 //   - tableau_next.analyzeSemanticData: asking for correlation/causation/root-cause
@@ -46,7 +46,7 @@ A. data_360 SQL (this is where the model fails most often — follow this exactl
    3. Common hallucinations to AVOID unless the metadata explicitly returns them — these are guessed variants the model reaches for when the real column name in the fields array feels awkward:
         - Bare/unqualified guesses: "name", "Name", "id", "Id", "ownerId", "OwnerId", "amount", "Amount", "date", "email"
         - ssot_ variants: "ssot__Name__c", "ssot__FullName__c", "ssot__OwnerId__c", "ssot__Industry__c", "ssot__EmailAddress__c"
-        - CRM-mimic guesses on DMOs: "TransactionDate__c", "AccountID__c", "Amount__c", "Health_Score__c", "LastActivityDate"
+        - CRM-mimic guesses on DMOs (recorded INVALID_ARGUMENT unknown column): "TransactionDate__c", "AccountID__c", "AccountId__c", "ContactId__c", "OwnerId__c", "OpportunityId__c", "Amount__c", "Health_Score__c", "LastActivityDate". SOQL uses \`AccountId\` / \`OwnerId\` without a trailing \`__c\`; Data Cloud is NOT SOQL — you cannot "custom-field-ify" a CRM Id name and expect it on a DMO. If the fields array does not list that exact string, do not SELECT or WHERE on it.
       If any of these look right for your query but DON'T appear in the metadata response, they do not exist in this org. Use what's there or skip.
    4. DO NOT query information_schema, pg_catalog, or any Postgres-style introspection. Those do not exist in Data Cloud SQL. To enumerate objects, call the metadata tool instead.
    5. If a SQL call returns INVALID_ARGUMENT about a missing table or unknown column, do NOT immediately retry with another guess on the same DMO, and do NOT swap to a different DMO and make the same guess there. The runtime circuit breaker will block further data_360 calls for this turn — accept that Data Cloud didn't yield anything and say so in your final answer.
