@@ -22,7 +22,7 @@ export interface MorningBriefPromptArgs {
  * v1.4.4: PersonLifeEvent SOQL (this org's standard) + client-book filter; FinServ secondary.
  */
 export const MORNING_BRIEF_PROMPT_VERSION =
-  "v1.4.4-person-life-event-query-2026-04-22";
+  "v1.5.2-life-events-first-2026-04-30";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
@@ -38,54 +38,59 @@ export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   return `Generate today's morning brief for ${a.bankerName}. It is ${a.localTime} on ${a.dayOfWeek}, ${a.date}.
 Banker's local hour (24h clock): ${h}. Signoff time band: ${band}.
 
-TOOL SELECTION — STRICT RULES
-For ANY morning brief, you MUST call at least TWO different MCP servers.
-A brief that only uses salesforce_crm is incomplete and will be rejected.
+TOOL SELECTION
+Call only the tools you need to ground 3 good items. ONE server is acceptable
+when its data supports all three. Reach for a second server only when the first's
+output is thin — never as a diversity quota. Do NOT retry a tool after it errors;
+the runtime will block retries anyway and each failure wastes the tool budget.
 
-Category mapping (use this to decide which server fits which item):
-  - "Who is this client / what tasks are due / what opportunities exist"
-      → salesforce_crm (structured CRM records)
-  - "Transactional anomalies / held-away shifts / digital-engagement drops / life events"
-      → data_360 (unified data via SQL)
+Category mapping:
+  - "Who is this client / what tasks are due / what opportunities exist /
+     what meetings today / pipeline stage / open cases"
+      → salesforce_crm (structured first-party CRM records)
+  - External or behavioral signals CRM cannot see:
+     held-away assets / outside brokerage movements / wire or ACH anomalies /
+     digital-engagement drops (login, app, statement opens) / third-party
+     enrichment / behavioral life-event inference / cross-source reconciliation
+      → data_360 (unified + external data via SQL)
   - "Pipeline metrics / win rate / AUM trends / portfolio performance / KPI breaches"
       → tableau_next (governed semantic models via analyze_data)
 
-Before producing the final JSON, verify that your 3 items collectively exercise at
-least two of the three servers. If only one was useful, EXPAND your queries to
-the others before giving up. Prefer concrete Tableau Next questions tied to this
-user's book of business (e.g. "What was ${a.bankerName}'s total pipeline change
-over the last 7 days?") over vague analytical asks.
+HARD BUDGET: Maximum 5 tool calls total. Once you have enough for 3 items, STOP
+calling tools and emit the final JSON — do not chase diversity at that point.
 
 Produce exactly 3 items that matter TODAY, ranked by importance. Each item:
 - headline: one sentence ≤ 18 words
 - why: one sentence of evidence
 - suggested_action: one concrete next step
 
-LIFE EVENT HIERARCHY — CRM life events (mandatory when qualifying rows exist):
-This Financial Services Cloud org stores person life events primarily on **PersonLifeEvent**
-(Name, EventType, EventDate, EventDescription, PrimaryPerson → Contact → Account).
-Packaged **FinServ__LifeEvent__c** may also exist — use BOTH step 0a and 0b below,
-merge results, then apply the date window.
+LIFE EVENTS — FIRST PRIORITY (always run, always leads the brief when rows qualify):
 
-Every brief MUST run efficient-plan steps **0a and 0b** FIRST (below). After results return,
-treat as **qualifying** any merged row whose **event date** falls between
-**180 days before TODAY** and **365 days after TODAY** (recent past through
-meaningful planning horizon). For PersonLifeEvent use **EventDate**; for FinServ rows use **FinServ__EventDate__c**.
+Life events are the single most action-forcing signal a banker can act on: they
+are time-bound, human-scale, and often reveal liquidity / planning moves the
+client has NOT yet discussed. Every brief starts with life-event discovery
+BEFORE touching tasks, pipeline, or metrics.
 
-When **one or more** qualifying rows exist:
-- **items[0]** MUST synthesize the single most decision-relevant life-event
-  story for this banker today (prefer: event date in the **next 45 days**;
-  else the **most recent past** event within 180 days; tie-break using
-  description / DiscussionNote specificity and household/client centrality).
-- **sources** for that item MUST include **salesforce_crm**.
-- **items[1]** and **items[2]** are filled from remaining signals (tasks,
-  pipeline, tableau_next, data_360) using the RANKING rules below — never let a
-  pure pipeline-hygiene or stale-opportunity cleanup headline occupy **items[0]**
-  while qualifying life events exist.
+**Step 0a is mandatory and always runs first.** Step 0b is a cheap fallback that
+runs ONLY when 0a returned zero rows OR 0a errored (object not in org). Never
+run both when 0a already returned qualifying rows — that wastes budget.
 
-When **both** 0a and 0b return **zero** qualifying rows (after date filter), OR both SOQL calls fail,
-skip this hierarchy and apply RANKING normally. If a query errors (object not provisioned),
-continue with the other — do not fabricate life events.
+**Qualifying** = event date falls between **180 days before TODAY** and
+**365 days after TODAY** (recent past through meaningful planning horizon).
+Use **EventDate** for PersonLifeEvent; **FinServ__EventDate__c** for FinServ rows.
+
+When **one or more** qualifying rows exist (from 0a, or 0b if 0a was empty):
+- **items[0] MUST** synthesize the single most decision-relevant life-event
+  story (prefer: event date in the **next 45 days**; else the **most recent
+  past** event within 180 days; tie-break using description / DiscussionNote
+  specificity and household/client centrality).
+- **sources** for items[0] MUST include **salesforce_crm**.
+- **items[1]** and **items[2]** are filled from remaining signals using the
+  RANKING rules below — pipeline-hygiene or stale-account cleanup NEVER
+  outranks a qualifying life event.
+
+When 0a (and 0b, if 0a was empty) both return zero qualifying rows or error,
+skip the hierarchy and apply RANKING normally. Never fabricate life events.
 
 **recent_life_events** (JSON — required when ≥ 1 qualifying row after merge):
 Emit an array of up to **5** objects for the UI, ordered with **soonest upcoming
@@ -130,9 +135,10 @@ after the LIFE EVENT HIERARCHY above when it applies):
   overdue, the banker knows. Saying it is scolding, not helpful. Reframe as
   "Long-stale insurance review for Judy Odom" or similar, OR drop the item.
 
-Efficient plan (one pass — do not retry on errors):
-0a. salesforce_crm — **PersonLifeEvent** (primary — run first). Scope to the banker’s **book**
-    (life events tied to Accounts they own OR rows they own):
+Efficient plan (one pass — do not retry on errors — life events ALWAYS first):
+
+0a. salesforce_crm — **PersonLifeEvent** (MANDATORY first call, always runs before any other step).
+    Scope to the banker's book (rows they own OR on Accounts they own):
 SELECT Id, Name, EventType, EventDate, EventDescription,
        PrimaryPerson.AccountId, PrimaryPerson.Account.Name
 FROM PersonLifeEvent
@@ -140,9 +146,9 @@ WHERE OwnerId = '${a.bankerUserId}'
    OR PrimaryPerson.Account.OwnerId = '${a.bankerUserId}'
 ORDER BY EventDate DESC NULLS LAST
 LIMIT 25
-   If this SOQL errors (object not in org), skip 0a only — do not invent rows.
+    If this SOQL errors (object not in org), continue to 0b. If it returns qualifying rows, SKIP 0b — don't waste a call.
 
-0b. salesforce_crm — **FinServ__LifeEvent__c** (secondary — same book scope):
+0b. salesforce_crm — **FinServ__LifeEvent__c** (fallback — runs ONLY when 0a returned zero qualifying rows OR errored):
 SELECT Id, FinServ__EventType__c, FinServ__EventDate__c, FinServ__DiscussionNote__c,
        FinServ__Client__c, FinServ__Client__r.Name
 FROM FinServ__LifeEvent__c
@@ -150,12 +156,28 @@ WHERE OwnerId = '${a.bankerUserId}'
    OR FinServ__Client__r.OwnerId = '${a.bankerUserId}'
 ORDER BY FinServ__EventDate__c DESC NULLS LAST
 LIMIT 25
-   If this SOQL errors, skip 0b only. Merge non-error results for hierarchy + recent_life_events.
+    If this SOQL errors, skip and move on — do not retry, do not fabricate life events.
 1. salesforce_crm (structured records): SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name, Priority FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY ORDER BY Priority DESC LIMIT 15
 2. salesforce_crm (structured records): SELECT Id, Name, LastActivityDate, AnnualRevenue, Industry FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
 3. salesforce_crm (structured records): SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name, Probability, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 15
-4. tableau_next (REQUIRED — must attempt): getSemanticModels (optional Sales/Service category filter ONLY to narrow the list). Then call the analytics tool (name contains "analyzeSemantic" or starts with "analyze") ONCE using a semantic model id copied verbatim from one row in that list — never pass "Sales"/"Service" as the model id. Ask one concrete metric question tied to this banker (e.g. pipeline change for OwnerId = ${a.bankerUserId} over the last 7 days). Use the result for ONE KPI-driven item, or skip Tableau for this item if the list is empty or analyze errors.
-5. data_360 (REQUIRED — must attempt): call the Data Cloud metadata tool (name starts with "getDcMetadata") with NO entityName / entityDeveloperName / DMO filter unless the tool's prior response in THIS turn listed that exact entity and you are drilling down. Never invent or memorize entity names from training data (e.g. ssot__IndividualIdentityLink__dlm) — those often do not exist in this org and cause "DMO not found". Prefer an unfiltered or dataspace-only discovery first; pick a DMO that appears verbatim in the response. If getDcMetadata returns an error or empty usable DMOs, skip SQL for this brief (do not retry with another guessed entity name). THEN — before writing any SQL — pick ONE obviously-relevant DMO from THAT response (transactions, engagement, profile, life events) and locate it in the metadata response's fields array. Confirm the 2–3 columns you intend to SELECT appear CHARACTER-FOR-CHARACTER in that array (case-sensitive, full prefix). Only then emit ONE narrow SQL call (SELECT specific columns, LIMIT 20, qualified by OwnerId where applicable). If the fields array doesn't contain the columns you want verbatim — do NOT submit bare variants like "name" or "id" when the real column is "ssot__Name__c" etc. — skip the SQL for this run and note "no usable Data Cloud columns" in the relevant brief item instead. The circuit breaker will block any second data_360 call after a schema miss, so the SQL must be right on the first try or not happen.
+4. tableau_next (OPTIONAL — skip unless steps 1–3 produced fewer than 3 usable items OR the brief genuinely needs a governed KPI). If you do call: getSemanticModels ONCE, pick a real model id from the response, call the analytics tool (name contains "analyzeSemantic" or starts with "analyze") ONCE. Never pass category labels like "Sales"/"Service" as the model id. If either step errors or returns empty, do not retry — move on without a tableau item.
+5. data_360 (PRESCRIPTIVE — call when ANY of the criteria below are met). This is the server that surfaces external, behavioral, and unified data that CRM alone cannot see — skipping it when a criterion applies is a defect, not a budget saving.
+
+   CALL data_360 IF ANY OF:
+   - The banker's book has HNW or affluent accounts (AnnualRevenue present in step 2 results) — look for held-away asset shifts or large external transactions in the last 7 days.
+   - Step 3 surfaced stalled opportunities (no recent LastActivityDate) — check digital-engagement signals (login, app, statement opens) to see if the client has disengaged.
+   - Life events (step 0a) returned zero qualifying rows — check behavioral life-event inference (new address, employer change, dependent added) in Data Cloud.
+   - Step 2 surfaced stale accounts (>30 days no activity) — check external transaction / wire / ACH anomalies for those accounts to find a concrete outreach hook.
+   - It is a Monday OR the start of a month — weekly/monthly behavioral trend DMOs are most useful at these inflection points.
+
+   SKIP data_360 ONLY IF: getDcMetadata errors, OR the metadata response lists no DMOs that map to the criterion above, OR you have already produced 3 strong items and would exceed the 5-call budget.
+
+   EXECUTION (one pass, no retries):
+   a) getDcMetadata ONCE unfiltered — read the full fields[] array for every returned DMO.
+   b) Pick ONE DMO whose name/fields match the criterion that triggered this step (transactions, engagement, profile, life events).
+   c) Verify every column you plan to SELECT appears CHARACTER-FOR-CHARACTER in that DMO's fields array (case-sensitive, full prefix like "ssot__" or "__c").
+   d) Emit ONE narrow SQL call (SELECT specific columns, LIMIT 20, filter by OwnerId when the DMO exposes it). Never "SELECT *", never bare lowercase "name"/"id".
+   e) If the fields array doesn't contain the columns you need verbatim, skip SQL and note "no usable Data Cloud columns for this DMO" — do not guess. The circuit breaker blocks retries anyway.
 
 RIGHT NOW SELECTION (UI v2 — mandatory field):
 After finalizing the 3 ranked items, set "right_now_index" to 0, 1, or 2 — the

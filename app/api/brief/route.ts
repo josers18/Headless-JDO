@@ -54,8 +54,8 @@ export async function POST(_req: NextRequest) {
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }],
       salesforceToken: token.access_token,
-      maxIterations: 16,
-      maxTokens: 8192,
+      maxIterations: 6,
+      maxTokens: 2048,
       routeHint: "morning-brief",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
