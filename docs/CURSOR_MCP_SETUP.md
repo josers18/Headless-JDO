@@ -37,7 +37,7 @@
 
 | File | Purpose |
 |---|---|
-| `.cursor/mcp.json` | Registers the 4 MCP servers with Cursor. URLs and header shapes mirror `lib/anthropic/mcp-servers.ts` and `lib/mcp/client.ts` exactly. Uses `${env:NAME}` interpolation so **no secrets live in the file** — safe to commit. |
+| `.cursor/mcp.json` | Registers the 4 MCP servers with Cursor. URLs and header shapes mirror `lib/mcp/urls.ts` and `lib/mcp/client.ts` exactly. Uses `${env:NAME}` interpolation so **no secrets live in the file** — safe to commit. |
 | `scripts/export-mcp-env.sh` | One-shot shell helper that reads `.env` and exports the 4 vars Cursor needs (`SF_ACCESS_TOKEN`, `SF_INSTANCE_URL`, `INFERENCE_URL`, `INFERENCE_KEY`). Source it before launching Cursor from a terminal, or use the `~/.zshrc` trick in the TL;DR. |
 | `package.json` → `mcp:refresh` script | Wraps `sf:login` and prints the next two manual steps so you don't have to remember them. |
 

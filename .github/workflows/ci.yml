@@ -36,7 +36,6 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          LLM_PROVIDER: heroku
           INFERENCE_URL: https://example.invalid
           INFERENCE_KEY: ci-placeholder
           INFERENCE_MODEL_ID: claude-4-5-sonnet

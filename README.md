@@ -1,10 +1,10 @@
 # Horizon
 
-[CI](https://github.com/josers18/Headless-JDO/actions/workflows/ci.yml)
-[Next.js](https://nextjs.org/)
-[Node](https://nodejs.org/)
-[TypeScript](https://www.typescriptlang.org/)
-[License: MIT](./LICENSE)
+[![CI](https://github.com/josers18/Headless-JDO/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/josers18/Headless-JDO/actions/workflows/ci.yml)
+[![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Node](https://img.shields.io/badge/node-22.x-43853d?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 **Headless home page for the relationship banker** — one scrollable surface, no nav rails, MCP-backed agent. Built for the Salesforce / DAX *So You Think You Can AI?* Innovation Contest track (2026).
 
@@ -27,7 +27,7 @@
 | **[CONTRIBUTING.md](CONTRIBUTING.md)**                   | Quality gates and contribution norms                   |
 
 
-**UI / film polish checklists** (iteration history in repo root): `[UI_V3_FINAL.md](./UI_V3_FINAL.md)`, `[UI_V3_POLISH.md](./UI_V3_POLISH.md)`, `[FIX_PASS.md](./FIX_PASS.md)` — see status banner in `FIX_PASS.md`; authoritative product constraints may also live in a **local** `CLAUDE.md` (listed in `.gitignore` in this clone). **Published** engineering docs live under `**docs/`**.
+**UI / film polish checklists** (iteration history in repo root): [UI_V3_FINAL.md](./UI_V3_FINAL.md), [UI_V3_POLISH.md](./UI_V3_POLISH.md), [FIX_PASS.md](./FIX_PASS.md) — see status banner in `FIX_PASS.md`; authoritative product constraints may also live in a **local** `CLAUDE.md` (listed in `.gitignore` in this clone). **Published** engineering docs live under `docs/`.
 
 ---
 
@@ -45,7 +45,7 @@
 
 | Layer  | Choice                                                                               |
 | ------ | ------------------------------------------------------------------------------------ |
-| App    | Next.js 14 (App Router), React 18, TypeScript strict, Tailwind, shadcn-style UI      |
+| App    | Next.js 15 (App Router), React 18, TypeScript strict, Tailwind, shadcn-style UI      |
 | Deploy | Single Heroku `web` dyno (`Procfile`: `npm start`)                                   |
 | Data   | Heroku Postgres (sessions / history), Redis (streaming / TTS cache where configured) |
 | Auth   | Salesforce OAuth 2.1 + PKCE (ECA, `mcp_api` scope)                                   |

@@ -44,7 +44,7 @@ npm run smoke:api
 
 ## Secrets rotation
 
-If any key was exposed (chat, screenshot, old commit): rotate **Salesforce ECA secret**, **Heroku config vars** (`INFERENCE_KEY`, etc.), and **Anthropic** if the fallback provider is used. Never commit real tokens; use placeholders in documentation.
+If any key was exposed (chat, screenshot, old commit): rotate **Salesforce ECA secret** (`SF_CLIENT_SECRET`) and **Heroku Inference keys** (`INFERENCE_KEY`; `HEROKU_INFERENCE_ONYX_KEY` if the Kimi fallback is configured). Never commit real tokens; use placeholders in documentation.
 
 ## Incident checklist
 
