@@ -16,7 +16,7 @@ export async function GET() {
   const state = crypto.randomBytes(16).toString("hex");
   const { verifier, challenge } = generatePkce();
 
-  const jar = cookies();
+  const jar = await cookies();
   const cookieOpts = {
     httpOnly: true,
     sameSite: "lax" as const,

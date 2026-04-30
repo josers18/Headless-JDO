@@ -23,12 +23,12 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const sf = getTokenCookie();
+  const sf = await getTokenCookie();
   return (
     <html lang="en" suppressHydrationWarning className="dark">
       <body className="bg-bg text-text min-h-dvh pb-[env(safe-area-inset-bottom,0px)]">

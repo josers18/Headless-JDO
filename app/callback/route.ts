@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/?auth=missing_code", origin));
   }
 
-  const jar = cookies();
+  const jar = await cookies();
   const expectedState = jar.get("hz_oauth_state")?.value;
   const verifier = jar.get("hz_oauth_verifier")?.value;
 

@@ -16,13 +16,14 @@ export const dynamic = "force-dynamic";
 // is not an issue and the UI shows MCP activity live.
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const cid = correlationId();
   const token = await ensureFreshToken();
   if (!token) return new Response("unauthenticated", { status: 401 });
 
-  const clientId = decodeURIComponent(params.id);
+  const { id } = await params;
+  const clientId = decodeURIComponent(id);
   const clientName = req.nextUrl.searchParams.get("name") ?? undefined;
 
   log.info("client.start", { cid, clientId });

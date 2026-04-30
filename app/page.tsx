@@ -25,9 +25,9 @@ import { SectionContentPresenceProvider } from "@/components/horizon/SectionCont
 // section's SSE stream into a cascade of 401s.
 export const dynamic = "force-dynamic";
 
-export default function HorizonHome() {
-  const signedIn = Boolean(cookies().get("hz_sf")?.value);
-  const bankerMenu = signedIn ? getBankerMenuProfile() : null;
+export default async function HorizonHome() {
+  const signedIn = Boolean((await cookies()).get("hz_sf")?.value);
+  const bankerMenu = signedIn ? await getBankerMenuProfile() : null;
 
   return (
     <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56 xl:max-w-[1400px]">

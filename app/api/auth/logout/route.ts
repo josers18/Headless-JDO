@@ -26,8 +26,8 @@ function publicOrigin(req: NextRequest): string {
  */
 export async function GET(req: NextRequest) {
   const origin = publicOrigin(req);
-  clearTokenCookie();
-  const jar = cookies();
+  await clearTokenCookie();
+  const jar = await cookies();
   jar.delete("hz_oauth_state");
   jar.delete("hz_oauth_verifier");
   return NextResponse.redirect(new URL("/", origin));

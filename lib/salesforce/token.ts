@@ -63,7 +63,7 @@ export async function persistTokenFromOAuthResponse(
   token: SfTokenResponse,
   previous?: StoredToken | null
 ): Promise<void> {
-  const jar = cookies();
+  const jar = await cookies();
   const identity = await fetchSalesforceIdentity(
     token.access_token,
     token.id
@@ -88,8 +88,8 @@ export async function persistTokenFromOAuthResponse(
   });
 }
 
-export function getTokenCookie(): StoredToken | null {
-  const raw = cookies().get(COOKIE_NAME)?.value;
+export async function getTokenCookie(): Promise<StoredToken | null> {
+  const raw = (await cookies()).get(COOKIE_NAME)?.value;
   if (!raw) return null;
   try {
     return JSON.parse(raw) as StoredToken;
@@ -98,8 +98,8 @@ export function getTokenCookie(): StoredToken | null {
   }
 }
 
-export function clearTokenCookie() {
-  cookies().delete(COOKIE_NAME);
+export async function clearTokenCookie(): Promise<void> {
+  (await cookies()).delete(COOKIE_NAME);
 }
 
 /**
@@ -117,8 +117,8 @@ export function resolveBankerDisplayName(token: StoredToken | null): string {
 }
 
 /** Server-only: banker row for the signed-in header user menu. */
-export function getBankerMenuProfile(): { name: string; email: string } {
-  const t = getTokenCookie();
+export async function getBankerMenuProfile(): Promise<{ name: string; email: string }> {
+  const t = await getTokenCookie();
   const envEmail = optionalEnv("DEMO_BANKER_EMAIL", "").trim();
   const raw = resolveBankerDisplayName(t);
   const name = raw === "there" ? "Banker" : raw;
@@ -128,7 +128,7 @@ export function getBankerMenuProfile(): { name: string; email: string } {
 }
 
 export async function ensureFreshToken(): Promise<StoredToken | null> {
-  const current = getTokenCookie();
+  const current = await getTokenCookie();
   if (!current) return null;
   const ageMs = Date.now() - current.issued_at;
   // Refresh proactively when the token is older than 45 minutes.
@@ -137,7 +137,7 @@ export async function ensureFreshToken(): Promise<StoredToken | null> {
   try {
     const refreshed = await refreshAccessToken(current.refresh_token);
     await persistTokenFromOAuthResponse(refreshed, current);
-    return getTokenCookie() ?? current;
+    return (await getTokenCookie()) ?? current;
   } catch {
     return current;
   }
