@@ -10,7 +10,7 @@ export type InferenceMeta = { backend: InferenceBackend; model: string };
 
 /**
  * Shared client hook for streaming `/api/ask`, `/api/brief`, and
- * `/api/priority`. Parses our SSE protocol (see lib/anthropic/stream.ts) and
+ * `/api/priority`. Parses our SSE protocol (see lib/sse/stream.ts) and
  * surfaces what the UI cares about:
  *   - `narrative`: accumulating text deltas (raw model output)
  *   - `steps`: reasoning trail with live per-step status

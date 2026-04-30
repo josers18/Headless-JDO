@@ -1,10 +1,9 @@
 /**
- * lib/llm/provider.ts — LLM provider selection + unified agent runner.
+ * lib/llm/provider.ts — unified agent runner.
  *
  * Primary: Claude via Heroku Managed Inference (`INFERENCE_*`).
  * Fallback: optional second deployment (`HEROKU_INFERENCE_ONYX_*`, e.g. Kimi)
  * only if the primary run throws — see `agent.inference.heroku.fallback_kimi`.
- * Anthropic direct (`LLM_PROVIDER=anthropic`) is not wired through here.
  */
 
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -19,14 +18,7 @@ import {
 } from "./inferenceClients";
 import { log } from "@/lib/log";
 
-export type LlmProvider = "heroku" | "anthropic";
-
 export type { InferenceBackend } from "./inferenceClients";
-
-export function currentProvider(): LlmProvider {
-  const p = (process.env.LLM_PROVIDER ?? "heroku").toLowerCase();
-  return p === "anthropic" ? "anthropic" : "heroku";
-}
 
 export interface RunAgentInput {
   system: string;
@@ -74,14 +66,6 @@ function withInferenceBackend(
 export async function runAgentWithMcp(
   input: RunAgentInput
 ): Promise<RunAgentOutput> {
-  const provider = currentProvider();
-  if (provider === "anthropic") {
-    throw new Error(
-      "LLM_PROVIDER=anthropic path not implemented via runAgentWithMcp. " +
-        "Use lib/anthropic/client.ts#askStream directly, or switch to 'heroku'."
-    );
-  }
-
   const requested = resolveInferenceBackend({
     inferenceBackend: input.inferenceBackend,
     routeHint: input.routeHint,

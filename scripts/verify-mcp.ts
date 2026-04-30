@@ -17,7 +17,7 @@ export {};
 
 import { connectMcpClients, type McpRegistry } from "../lib/mcp/client";
 import { runAgent } from "../lib/llm/heroku";
-import { MCP_URLS } from "../lib/anthropic/mcp-servers";
+import { MCP_URLS } from "../lib/mcp/urls";
 import type { McpServerName } from "../types/horizon";
 
 const CHECK = "\u2713";

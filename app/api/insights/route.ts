@@ -7,7 +7,7 @@ import {
   sectionInsightPrompt,
   type SectionKind,
 } from "@/lib/prompts/section-insight";
-import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/sse/stream";
 import { log, correlationId } from "@/lib/log";
 
 export const runtime = "nodejs";

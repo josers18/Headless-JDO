@@ -3,7 +3,7 @@ import { ensureFreshToken, resolveBankerDisplayName } from "@/lib/salesforce/tok
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { prepPrompt } from "@/lib/prompts/prep";
-import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/sse/stream";
 import { log, correlationId } from "@/lib/log";
 
 export const runtime = "nodejs";

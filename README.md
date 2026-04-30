@@ -35,7 +35,7 @@
 
 - **Morning brief** (life-event hierarchy + “Recent life events”), **priority queue**, **today’s arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **section insight** banners, **Ask** bar (typed + voice + drafted actions), **Prep me** (per-client briefing via `/api/prep`) — all on `/`.
 - The LLM orchestrates three **Salesforce-hosted MCP** servers (CRM SObject, Data 360 SQL, Tableau Next) plus optional **Heroku toolkit** MCP. The UI streams tokens and a collapsible **reasoning trail** of tool calls (success + handled errors).
-- **Default LLM path:** Heroku Managed Inference (Claude 4.5 Sonnet, OpenAI-compatible API) with an MCP tool loop in `lib/llm/heroku.ts`. **Optional fallback:** `LLM_PROVIDER=anthropic` (native `mcp_servers` on Anthropic).
+- **LLM path:** Heroku Managed Inference (Claude 4.5 Sonnet, OpenAI-compatible API) with an MCP tool loop in `lib/llm/heroku.ts`. Optional Kimi-on-Onyx fallback when `HEROKU_INFERENCE_ONYX_*` is configured.
 - **Prompt hygiene:** shared rules and version stamps live in `lib/prompts/system.ts` (`SYSTEM_PROMPT_VERSION`). See **[docs/LLM_PROMPT_GUIDE.md](docs/LLM_PROMPT_GUIDE.md)** before changing agent behavior.
 
 ---
@@ -112,8 +112,8 @@ Copy `[.env.example](./.env.example)` to `.env`. **Do not** paste real keys into
 
 | Area             | Variables (names only)                                                  |
 | ---------------- | ----------------------------------------------------------------------- |
-| LLM (Heroku)     | `LLM_PROVIDER`, `INFERENCE_URL`, `INFERENCE_KEY`, `INFERENCE_MODEL_ID`  |
-| LLM (fallback)   | `ANTHROPIC_API_KEY` when `LLM_PROVIDER=anthropic`                       |
+| LLM (Heroku)     | `INFERENCE_URL`, `INFERENCE_KEY`, `INFERENCE_MODEL_ID`                  |
+| LLM (Kimi fallback, optional) | `HEROKU_INFERENCE_ONYX_URL`, `HEROKU_INFERENCE_ONYX_KEY`, `HEROKU_INFERENCE_ONYX_MODEL_ID` |
 | Salesforce OAuth | `SF_CLIENT_ID`, `SF_CLIENT_SECRET`, `SF_LOGIN_URL`, `SF_REDIRECT_URI`   |
 | App URLs         | `APP_URL` — must match the public origin (critical on Heroku for OAuth) |
 | Demo / brief     | `DEMO_BANKER_USER_ID`, `DEMO_BANKER_NAME`, optional `DEMO_BANKER_TZ`    |

@@ -32,7 +32,6 @@
     ".next/cache"
   ],
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.30.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "clsx": "^2.1.1",
     "ioredis": "^5.4.1",

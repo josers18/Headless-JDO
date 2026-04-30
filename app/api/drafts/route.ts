@@ -3,7 +3,7 @@ import { ensureFreshToken } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { draftQueuePrompt } from "@/lib/prompts/draft-queue";
-import { makeSseStream, sendInferenceMeta } from "@/lib/anthropic/stream";
+import { makeSseStream, sendInferenceMeta } from "@/lib/sse/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 

@@ -20,7 +20,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { McpServerName } from "@/types/horizon";
-import { MCP_URLS } from "@/lib/anthropic/mcp-servers";
+import { MCP_URLS } from "@/lib/mcp/urls";
 import {
   classifyDcFieldKind,
   dcFieldKindToCompactTy,
