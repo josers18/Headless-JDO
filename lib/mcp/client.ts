@@ -312,7 +312,20 @@ export async function connectMcpClients(
     const c = clients.get(server);
     if (!c) throw new Error(`mcp: server ${server} not connected`);
     try {
-      const res = await c.callTool({ name, arguments: args });
+      // Per-tool timeout. The MCP SDK (v1.29) does not expose an AbortSignal
+      // on callTool, so we can't actually cancel the underlying HTTP request
+      // — but we can race it against a timer, return control to the agent
+      // loop, and let the circuit breaker trip. The orphaned request will
+      // resolve upstream and be discarded. The synthetic error includes
+      // "504" so `isTrippedError` in lib/llm/heroku.ts recognizes it the
+      // same way as a real gateway timeout and blocks further retries
+      // for the rest of the turn.
+      const res = await withToolTimeout(
+        c.callTool({ name, arguments: args }),
+        timeoutMsFor(server, name),
+        server,
+        name
+      );
       // MCP content is an array of TextContent | ImageContent | etc.
       const content = res.content as unknown;
       const textPreview = extractTextPreview(content, 2_000);
@@ -377,6 +390,61 @@ function flattenTextContent(content: unknown): string {
   }
   if (texts.length === 0) return JSON.stringify(content);
   return texts.join("\n");
+}
+
+// Per-tool call timeout. When an MCP server (most often data_360 during
+// getDcMetadata on a large org) hangs upstream, the callTool promise sits
+// forever — there's no AbortSignal plumbed through the SDK in v1.29, so
+// we can't cancel the actual HTTP request. Instead we race against a
+// timer, return a synthetic 504 error to the agent loop, and let the
+// existing circuit breaker block further retries. Sizing guidance:
+//   - Schema reads are the biggest real payloads (getDcMetadata, describe)
+//     and the slowest legitimate calls — give them the most headroom.
+//   - SQL and analyze round-trips are bounded by the query engine
+//     — a 10s budget is generous and still leaves room for the H12
+//     30s dyno clock to accommodate multiple tool calls plus inference.
+//   - SOQL is normally sub-second; 8s is a forgiving ceiling.
+const TIMEOUT_METADATA_MS = 15_000;
+const TIMEOUT_DC_SQL_MS = 10_000;
+const TIMEOUT_TABLEAU_ANALYZE_MS = 12_000;
+const TIMEOUT_SOQL_MS = 8_000;
+const TIMEOUT_DEFAULT_MS = 10_000;
+
+function timeoutMsFor(server: McpServerName, tool: string): number {
+  if (server === "data_360" && /^getDcMetadata/i.test(tool))
+    return TIMEOUT_METADATA_MS;
+  if (server === "data_360" && /^postDcQuerySql/i.test(tool))
+    return TIMEOUT_DC_SQL_MS;
+  if (server === "tableau_next" && /analyzeSemantic/i.test(tool))
+    return TIMEOUT_TABLEAU_ANALYZE_MS;
+  if (server === "salesforce_crm" && /^soqlQuery/i.test(tool))
+    return TIMEOUT_SOQL_MS;
+  return TIMEOUT_DEFAULT_MS;
+}
+
+async function withToolTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  server: McpServerName,
+  tool: string
+): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      // "504" + "timeout" so lib/llm/heroku.ts#isTrippedError matches
+      // this as a trip-worthy gateway timeout.
+      reject(
+        new Error(
+          `504 Gateway Timeout — ${server}.${tool} exceeded ${ms}ms`
+        )
+      );
+    }, ms);
+  });
+  try {
+    return (await Promise.race([promise, timeout])) as T;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // Per-tool model-text budget. Schema-introspection responses (getDcMetadata,
