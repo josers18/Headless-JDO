@@ -446,16 +446,42 @@ function preflightTableauAnalyze(
   return null;
 }
 
+// Preflight: don't call tableau_next list-models tools if no analyze*
+// sibling exists in the registry. Listing models only makes sense as
+// step-1 of a 2-step flow — if step 2 isn't even dispatchable, the list
+// call burns budget for nothing (observed: /api/pulse firing listModels
+// twice with no analyze follow-up because the analyze tool isn't
+// exposed in this session).
+function preflightTableauListModels(
+  server: string,
+  tool: string,
+  ctx: { availableTableauAnalyze: boolean }
+): string | null {
+  if (server !== "tableau_next") return null;
+  if (!/^(getSemanticModels|listModels)/i.test(tool)) return null;
+  if (ctx.availableTableauAnalyze) return null;
+  return JSON.stringify({
+    rejected: true,
+    server,
+    tool,
+    reason:
+      "Skipped: no analyze tool is registered for tableau_next in this session, so listing semantic models would produce data we cannot act on.",
+    instruction:
+      "Do NOT retry list/get semantic models this turn. If the question needed a governed KPI, note 'governed metrics unavailable this session' and move on using CRM + DC tools only.",
+  });
+}
+
 function preflightRejection(
   server: string,
   tool: string,
   args: Record<string, unknown>,
-  ctx: { snapshot: DcSnapshot }
+  ctx: { snapshot: DcSnapshot; availableTableauAnalyze: boolean }
 ): string | null {
   return (
     preflightSalesforceSoql(server, tool, args) ??
     preflightDataCloudSql(server, tool, args, ctx) ??
-    preflightTableauAnalyze(server, tool, args)
+    preflightTableauAnalyze(server, tool, args) ??
+    preflightTableauListModels(server, tool, ctx)
   );
 }
 
@@ -504,6 +530,13 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   const toolDefs = await registry.listAllTools();
   const tools = toOpenAiTools(toolDefs);
 
+  // Once-per-turn capability probe: does the registry expose any tableau_next
+  // analyze tool? If not, the preflight blocks getSemanticModels/listModels
+  // entirely — no point listing models we cannot analyze.
+  const availableTableauAnalyze = toolDefs.some(
+    (d) => d.server === "tableau_next" && /analyze/i.test(d.name)
+  );
+
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: system },
     ...seed,
@@ -536,6 +569,24 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   // dataspace and we should never reject on stale data from a prior
   // request. See lib/llm/dataCloudSchema.ts.
   const dcSnapshot = emptyDcSnapshot();
+
+  // Per-turn tool-call result cache. Keyed by `${server}.${tool}:${argsJson}`.
+  // When the model re-emits the exact same tool_call in a later iteration
+  // (observed: two identical rounds of 3 SOQL queries after a DC hang), we
+  // return the previous successful result without re-dispatching. Iteration
+  // budget is preserved but network + Heroku Flex credits are not. Failures
+  // are NOT cached — the circuit breaker already blocks repeat-of-failure.
+  const toolResultCache = new Map<
+    string,
+    {
+      server: McpServerName;
+      tool: string;
+      isError: boolean;
+      content: unknown;
+      textPreview: string;
+      modelText: string;
+    }
+  >();
 
   for (iteration = 1; iteration <= maxIterations; iteration++) {
     onEvent({ type: "iteration_start", iteration });
@@ -744,6 +795,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         // preflight uses it to verify table and column references.
         const rejection = preflightRejection(server, tool, argObj, {
           snapshot: dcSnapshot,
+          availableTableauAnalyze,
         });
         if (rejection) {
           onEvent({ type: "tool_use", server, tool, input: argObj });
@@ -776,6 +828,24 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           tool,
           input: argObj,
         });
+
+        // Cache hit — model re-emitted an identical tool_call this turn.
+        // Return the prior successful result without re-dispatching; still
+        // emit tool_result so the trail row renders and the breaker state
+        // stays consistent.
+        const cacheKey = `${key}:${c.argsJson}`;
+        const cached = toolResultCache.get(cacheKey);
+        if (cached) {
+          onEvent({
+            type: "tool_result",
+            server: cached.server,
+            tool: cached.tool,
+            preview: `${cached.textPreview}\n\n[cached — identical tool call earlier in this turn]`,
+            is_error: cached.isError,
+          });
+          return { c, server, tool, argObj, result: cached };
+        }
+
         const result = await registry.callTool(c.name, argObj);
         onEvent({
           type: "tool_result",
@@ -784,6 +854,12 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           preview: result.textPreview,
           is_error: result.isError,
         });
+
+        // Cache successful results for the rest of this turn (failures are
+        // already blocked by the circuit breaker on a second attempt).
+        if (!result.isError) {
+          toolResultCache.set(cacheKey, result);
+        }
 
         // Trip the breaker on any recognized error signature.
         if (result.isError && isTrippedError(result.textPreview)) {

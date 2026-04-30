@@ -155,7 +155,15 @@ async function openOne(
 
 function isTransportMismatch(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return /\b40[45]\b|Method not allowed|Method Not Allowed/i.test(msg);
+  // True transport mismatch = Streamable HTTP POST rejected as Method Not
+  // Allowed. A 404 with "Server definition not found" is NOT a transport
+  // problem — the gateway is telling us the server isn't registered for
+  // this token, so falling back to SSE just produces another failure at
+  // a different URL and doubles the error noise. Match the verbose phrase
+  // explicitly (SDK includes "Method not allowed" in the error text for
+  // genuine transport-wrong cases).
+  if (/Server definition not found/i.test(msg)) return false;
+  return /\b405\b|Method not allowed|Method Not Allowed/i.test(msg);
 }
 
 function deriveSseUrl(streamableUrl: string): string {
@@ -192,10 +200,30 @@ export async function connectMcpClients(
   }
 
   // Connect in parallel; surface partial failures as warnings, not fatals.
+  // Per-server connect cap so a stuck handshake can't eat the whole
+  // request's H12 budget — 8s leaves plenty of room for the fastest SF
+  // MCPs to connect (<500ms typical) and still lets a slow server fail
+  // before other sections' routes fire their own connects.
+  const CONNECT_TIMEOUT_MS = 8_000;
   const settled = await Promise.allSettled(
-    plan.map(({ server, token }) =>
-      openOne(server, token, signal).then((c) => ({ server, client: c }))
-    )
+    plan.map(({ server, token }) => {
+      const connect = openOne(server, token, signal).then((c) => ({
+        server,
+        client: c,
+      }));
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `mcp.connect.timeout — ${server} exceeded ${CONNECT_TIMEOUT_MS}ms`
+              )
+            ),
+          CONNECT_TIMEOUT_MS
+        )
+      );
+      return Promise.race([connect, timeout]);
+    })
   );
   const clients = new Map<McpServerName, Client>();
   const failedSf: Array<{ server: McpServerName; error: string }> = [];

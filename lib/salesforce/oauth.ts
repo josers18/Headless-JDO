@@ -14,12 +14,31 @@ export interface SfTokenResponse {
 
 // Scopes required for the Salesforce MCP gateway at api.salesforce.com.
 //
-// `mcp_api` ("Access Salesforce hosted MCP servers") is the scope the gateway
-// checks; tokens without it return `{"errors":[{"message":"Invalid token"}]}`.
-// The External Client App used here must have this scope in its Selected
-// OAuth Scopes list. Verified 2026-04-18 against the user's ECA that already
-// works with Claude Code.
-export const SF_OAUTH_SCOPES = "mcp_api refresh_token offline_access";
+// Base scopes:
+//   mcp_api          - "Access Salesforce hosted MCP servers" (gateway auth
+//                      check; without it every MCP call returns Invalid token)
+//   refresh_token +
+//   offline_access   - enables `sf:login` to mint refreshable tokens
+//
+// Data Cloud / agent-platform scopes:
+//   sfap_api         - "Access Salesforce API Platform" — some custom MCP
+//                      servers (including Data Cloud / Data360MCP) require
+//                      this to show up in the gateway's per-user server
+//                      visibility filter. Without it, Data360MCP returns
+//                      "Server definition not found" (a misleading 404 —
+//                      the server exists, but is filtered out for this
+//                      token).
+//   cdp_api          - Data Cloud / CDP access
+//   cdp_query_api    - Data Cloud SQL query access (powers postDcQuerySql)
+//   cdp_profile_api  - Data Cloud unified-profile reads
+//   api              - base REST access (needed by some custom MCP servers
+//                      that proxy through the v58+ data API)
+//
+// Requesting a superset of ECA-configured scopes is safe — the IdP silently
+// drops ones not enabled on the ECA rather than erroring. So we ask for all
+// plausibly-needed scopes and let Salesforce intersect.
+export const SF_OAUTH_SCOPES =
+  "mcp_api sfap_api cdp_api cdp_query_api cdp_profile_api cdp_segment_api api refresh_token offline_access";
 
 // PKCE helpers — RFC 7636. The MCP spec + Salesforce ECA flow both require
 // Authorization Code + PKCE (S256). Plain Authorization Code (no PKCE) is
