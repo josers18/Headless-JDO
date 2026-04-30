@@ -31,7 +31,8 @@ export async function GET(_req: NextRequest) {
         },
       ],
       salesforceToken: token.access_token,
-      maxIterations: 12,
+      maxIterations: 6,
+      maxTokens: 2048,
       forceFirstToolCall: true,
       routeHint: "arc",
       onEvent: (e) => {

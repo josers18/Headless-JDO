@@ -32,7 +32,8 @@ export async function GET(_req: NextRequest) {
         },
       ],
       salesforceToken: token.access_token,
-      maxIterations: 10,
+      maxIterations: 5,
+      maxTokens: 1024,
       forceFirstToolCall: true,
       routeHint: "pulse-strip",
       onEvent: (e) => {

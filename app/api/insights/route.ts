@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: prompt }],
         salesforceToken: token.access_token,
-        maxIterations: 12,
+        maxIterations: 6,
+        maxTokens: 2048,
         routeHint: "insights",
         onEvent: (e) => {
           if (e.type === "text_delta" && e.text) {
@@ -111,7 +112,8 @@ export async function POST(req: NextRequest) {
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }],
       salesforceToken: token.access_token,
-      maxIterations: 10,
+      maxIterations: 4,
+      maxTokens: 1024,
       routeHint: "insights",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {

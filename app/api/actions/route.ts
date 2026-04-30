@@ -49,6 +49,7 @@ ${JSON.stringify(action, null, 2)}`;
       messages: [{ role: "user", content: instruction }],
       salesforceToken: token.access_token,
       maxIterations: 4,
+      maxTokens: 1024,
     });
 
     const text = res.text.trim();

@@ -39,7 +39,8 @@ export async function GET(_req: NextRequest) {
         },
       ],
       salesforceToken: token.access_token,
-      maxIterations: 14,
+      maxIterations: 7,
+      maxTokens: 2048,
       routeHint: "priority",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {
