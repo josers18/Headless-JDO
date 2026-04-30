@@ -15,7 +15,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "typecheck": "tsc --noEmit",
     "verify:mcp": "tsx --env-file=.env scripts/verify-mcp.ts",
     "seed:dc": "tsx --env-file=.env scripts/seed-data-cloud.ts",
