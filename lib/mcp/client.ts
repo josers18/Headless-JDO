@@ -459,7 +459,10 @@ function timeoutMsFor(server: McpServerName, tool: string): number {
     /^(postDcQuerySql|post_dc_query_sql)/i.test(tool)
   )
     return TIMEOUT_DC_SQL_MS;
-  if (server === "tableau_next" && /analyzeSemantic/i.test(tool))
+  if (
+    server === "tableau_next" &&
+    /(analyzeSemantic|^analyze_data$|^analyze$)/i.test(tool)
+  )
     return TIMEOUT_TABLEAU_ANALYZE_MS;
   if (server === "salesforce_crm" && /^soqlQuery/i.test(tool))
     return TIMEOUT_SOQL_MS;

@@ -422,7 +422,7 @@ function preflightTableauAnalyze(
   args: Record<string, unknown>
 ): string | null {
   if (server !== "tableau_next") return null;
-  if (!/analyzeSemantic/i.test(tool)) return null;
+  if (!/(analyzeSemantic|^analyze_data$|^analyze$)/i.test(tool)) return null;
   const keys = [
     "targetEntityIdOrApiName",
     "targetEntityId",
@@ -458,7 +458,10 @@ function preflightTableauListModels(
   ctx: { availableTableauAnalyze: boolean }
 ): string | null {
   if (server !== "tableau_next") return null;
-  if (!/^(getSemanticModels|listModels)/i.test(tool)) return null;
+  if (
+    !/^(getSemanticModels|listModels|list_semantic_models)/i.test(tool)
+  )
+    return null;
   if (ctx.availableTableauAnalyze) return null;
   return JSON.stringify({
     rejected: true,
