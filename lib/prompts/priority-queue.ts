@@ -28,7 +28,14 @@ Efficient plan (follow this order):
    d) One narrow postDcQuerySql (LIMIT 20, filter by account ids from steps 1–3 where possible).
    e) If columns don't match, skip SQL and rank from CRM only — the breaker blocks retries anyway.
 
-5. tableau_next (OPTIONAL — skip unless a governed KPI would change the ranking). If you call: getSemanticModels first, then ONE analyzeSemanticData with a model id copied verbatim from a returned row. NEVER use "Sales"/"Service" as the model id.
+5. tableau_next (REQUIRED — always attempt). Governed KPIs can change the ranking: a client with flat CRM activity but a sharp Tableau-reported portfolio-performance drop outranks one with active CRM but stable metrics. Skipping Tableau means ranking without the richest signal source.
+
+   EXECUTION (one pass, no retries):
+   a) getSemanticModels ONCE (category filter "Sales" is OK ONLY to narrow the list).
+   b) Pick ONE real model identifier from a returned row — copy verbatim; NEVER use "Sales"/"Service" as the model id.
+   c) One analyze call asking a concrete ranking-relevant question (e.g. clients with the largest AUM decline or win-rate drop in the banker's book).
+   d) Use the answer to adjust the top-${n} ranking — a Tableau-flagged risk should promote a client upward, not introduce new ones.
+   e) If getSemanticModels errors or analyze errors: do NOT retry. Rank from CRM + DC only.
 
 Composite score (0-100): urgency (open tasks overdue, stale opps) × opportunity value (Amount) × signal strength. Pick the top ${n}.
 

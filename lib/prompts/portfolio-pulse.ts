@@ -5,12 +5,12 @@ export interface PortfolioPulseArgs {
 export function portfolioPulsePrompt(a: PortfolioPulseArgs): string {
   return `Produce a portfolio pulse for banker user id ${a.bankerUserId}.
 
-TOOL SELECTION — prescriptive, not quota-based.
-Each server contributes a distinct flavor of KPI:
+TOOL SELECTION — three first-class sources, each required for a full pulse:
   - salesforce_crm  → pipeline counts, win counts, activity counts (first-party)
-  - tableau_next    → governed ratios and period-over-period (narrative KPIs)
+  - tableau_next    → governed ratios and period-over-period (narrative KPIs) — REQUIRED for at least one tile
   - data_360        → unified AUM / held-aways / cross-source engagement (external flows CRM cannot compute)
-A strong pulse uses whichever servers have concrete signal. If only CRM produces usable numbers this session, ship a CRM-only pulse and say so honestly — do not fabricate governed context to hit a diversity quota.
+
+A strong pulse exercises Tableau Next for at least one tile and reaches for Data 360 when its criteria fire. A CRM-only pulse is allowed ONLY when Tableau Next genuinely errors or returns no bindable model — in that case say so honestly in the narrative ("governed comparisons unavailable this session"), do not fabricate.
 
 HARD BUDGET: Maximum 5 tool calls total. Stop calling tools once you have 2–3 honest KPIs.
 
@@ -19,16 +19,14 @@ Efficient plan — one pass, no retries on errors, do not guess custom fields:
 2. salesforce_crm (structured records): SELECT SUM(Amount) wonLast30 FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsWon = true AND CloseDate = LAST_N_DAYS:30
 3. salesforce_crm (structured records): SELECT COUNT(Id) recentActivity FROM Task WHERE OwnerId = '${a.bankerUserId}' AND CreatedDate = LAST_N_DAYS:7
 
-4. tableau_next (PRESCRIPTIVE — call when ANY criterion below is met). This is where period-over-period ratios and governed win-rate come from — CRM counts alone can't compute them without tableau_next.
+4. tableau_next (REQUIRED — always attempt). Tableau-sourced KPIs are the core differentiator of the pulse: CRM counts alone cannot compute period-over-period ratios or governed win-rate. At LEAST ONE KPI tile must come from tableau_next in a normal (non-degraded) pulse.
 
-   CALL tableau_next IF ANY OF:
-   - Step 1 returned >0 open pipeline — get pipeline-change-over-last-7-days as a KPI tile.
-   - Step 2 returned >0 wins last 30d — get win-rate period-over-period for governed comparison.
-   - The banker's book has no wins this period (wonLast30 = 0) — get forward-looking pipeline velocity to pivot the narrative from "zero wins" to "expected close this month".
-
-   SKIP tableau_next ONLY IF: getSemanticModels errors, no model id binds, or the CRM signal is strong enough to stand alone.
-
-   EXECUTION: getSemanticModels ONCE (category filter "Sales" is OK ONLY to narrow the list). Copy a real model id from a returned row, then ONE analyze call asking ONE concrete metric question tied to this banker's book. NEVER pass "Sales"/"Service" as the model id — that's a category label, not an identifier. If analyze errors, do not retry.
+   EXECUTION (one pass, no retries):
+   a) getSemanticModels ONCE (category filter "Sales" is OK ONLY to narrow the list).
+   b) Pick ONE real model identifier from a returned row — copy verbatim; NEVER pass "Sales"/"Service" as the model id.
+   c) One analyze call asking ONE concrete metric question tied to this banker's book (pipeline change last 7d, win rate, AUM trend, etc.).
+   d) Tag the resulting tile with a tableau_next source.
+   e) If getSemanticModels errors, returns no rows, or analyze errors: do NOT retry. Ship the pulse as CRM + DC with a narrative line like "Governed comparisons unavailable this session."
 
 5. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). This surfaces unified AUM, held-aways, and cross-source engagement that neither CRM nor Tableau can compute. Skipping when a criterion applies means the pulse misses the banker's most-asked-about number: "how much wealth do my clients hold outside our platform?"
 

@@ -135,6 +135,8 @@ const TRIP_ERROR_PATTERNS = [
   /\b502\b/,
   /\b503\b/,
   /\b504\b/,
+  /\bRequestTimeout\b/i,
+  /-32001/,
   /forbidden/i,
   /unauthorized/i,
   /rate.?limit/i,

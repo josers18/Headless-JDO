@@ -311,20 +311,23 @@ export async function connectMcpClients(
   ): Promise<McpCallResult> {
     const c = clients.get(server);
     if (!c) throw new Error(`mcp: server ${server} not connected`);
+    const timeoutMs = timeoutMsFor(server, name);
+    // AbortController so we can actually cancel the hung HTTP request on
+    // our side in addition to relying on the SDK's internal timeout. Both
+    // the signal and the timeout are forwarded through RequestOptions —
+    // whichever fires first, the SDK's protocol layer rejects the request
+    // promise with a concrete error (McpError RequestTimeout or AbortError)
+    // that our catch block below shapes into { isError: true }.
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      // Per-tool timeout. The MCP SDK (v1.29) does not expose an AbortSignal
-      // on callTool, so we can't actually cancel the underlying HTTP request
-      // — but we can race it against a timer, return control to the agent
-      // loop, and let the circuit breaker trip. The orphaned request will
-      // resolve upstream and be discarded. The synthetic error includes
-      // "504" so `isTrippedError` in lib/llm/heroku.ts recognizes it the
-      // same way as a real gateway timeout and blocks further retries
-      // for the rest of the turn.
-      const res = await withToolTimeout(
-        c.callTool({ name, arguments: args }),
-        timeoutMsFor(server, name),
-        server,
-        name
+      const res = await c.callTool(
+        { name, arguments: args },
+        undefined,
+        {
+          timeout: timeoutMs,
+          signal: controller.signal,
+        }
       );
       // MCP content is an array of TextContent | ImageContent | etc.
       const content = res.content as unknown;
@@ -342,7 +345,18 @@ export async function connectMcpClients(
       const isError = res.isError === true;
       return { server, tool: name, isError, content, textPreview, modelText };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      // Normalize the error message so the breaker recognizes timeouts.
+      // The SDK throws McpError with code -32001 (RequestTimeout) when
+      // its internal timer fires, or an AbortError when our controller
+      // fires first; both are tripped by the existing 504/timeout/
+      // mcp-error regexes in isTrippedError.
+      const raw = e instanceof Error ? e.message : String(e);
+      const isTimeout =
+        controller.signal.aborted ||
+        /\bRequestTimeout\b|\btimed?[\s_]?out\b|-32001/i.test(raw);
+      const msg = isTimeout
+        ? `504 Gateway Timeout — ${server}.${name} exceeded ${timeoutMs}ms`
+        : raw;
       return {
         server,
         tool: name,
@@ -351,6 +365,8 @@ export async function connectMcpClients(
         textPreview: msg,
         modelText: msg,
       };
+    } finally {
+      clearTimeout(abortTimer);
     }
   }
 
@@ -392,17 +408,14 @@ function flattenTextContent(content: unknown): string {
   return texts.join("\n");
 }
 
-// Per-tool call timeout. When an MCP server (most often data_360 during
-// getDcMetadata on a large org) hangs upstream, the callTool promise sits
-// forever — there's no AbortSignal plumbed through the SDK in v1.29, so
-// we can't cancel the actual HTTP request. Instead we race against a
-// timer, return a synthetic 504 error to the agent loop, and let the
-// existing circuit breaker block further retries. Sizing guidance:
-//   - Schema reads are the biggest real payloads (getDcMetadata, describe)
-//     and the slowest legitimate calls — give them the most headroom.
-//   - SQL and analyze round-trips are bounded by the query engine
-//     — a 10s budget is generous and still leaves room for the H12
-//     30s dyno clock to accommodate multiple tool calls plus inference.
+// Per-tool call timeout. Forwarded via the MCP SDK's native RequestOptions
+// (timeout + AbortSignal) so a hung upstream HTTP request is actually
+// cancelled, not just abandoned. The SDK's DEFAULT_REQUEST_TIMEOUT_MSEC
+// is 60s — longer than Heroku's 30s H12 dyno clock — so we MUST override.
+// Sizing:
+//   - Schema reads (getDcMetadata, describe) are the slowest legitimate
+//     calls — give them the most headroom.
+//   - SQL / analyze round-trips bounded by the query engine — 10–12s.
 //   - SOQL is normally sub-second; 8s is a forgiving ceiling.
 const TIMEOUT_METADATA_MS = 15_000;
 const TIMEOUT_DC_SQL_MS = 10_000;
@@ -420,31 +433,6 @@ function timeoutMsFor(server: McpServerName, tool: string): number {
   if (server === "salesforce_crm" && /^soqlQuery/i.test(tool))
     return TIMEOUT_SOQL_MS;
   return TIMEOUT_DEFAULT_MS;
-}
-
-async function withToolTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  server: McpServerName,
-  tool: string
-): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      // "504" + "timeout" so lib/llm/heroku.ts#isTrippedError matches
-      // this as a trip-worthy gateway timeout.
-      reject(
-        new Error(
-          `504 Gateway Timeout — ${server}.${tool} exceeded ${ms}ms`
-        )
-      );
-    }, ms);
-  });
-  try {
-    return (await Promise.race([promise, timeout])) as T;
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }
 
 // Per-tool model-text budget. Schema-introspection responses (getDcMetadata,

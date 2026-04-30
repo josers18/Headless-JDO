@@ -1,6 +1,6 @@
 // Today's Arc — structured remainder-of-workday view (UI v2 T0-3).
 
-export const ARC_PROMPT_VERSION = "v1.4.0-dc-prescriptive-2026-04-30";
+export const ARC_PROMPT_VERSION = "v1.4.1-tableau-required-2026-04-30";
 
 export interface ArcPromptArgs {
   bankerUserId: string;
@@ -42,7 +42,14 @@ TOOL PLAN — parallel where helpful:
    d) One narrow postDcQuerySql (LIMIT 10, filter by account ids from steps 1–3 when possible).
    e) If columns don't match, skip SQL — the breaker blocks retries anyway.
 
-5. tableau_next (OPTIONAL — skip unless a KPI is genuinely needed for a recommended_window). If you call: bind a real semantic model id from getSemanticModels (never use category labels like "Sales" as an id).
+5. tableau_next (REQUIRED — always attempt). Governed KPIs reveal period-over-period trends that a same-day arc can surface as context in a recommended_window ("book win-rate dropped 8% this week — block 30m for pipeline triage").
+
+   EXECUTION (one pass, no retries):
+   a) getSemanticModels ONCE (category filter "Sales" is OK ONLY to narrow the list).
+   b) Pick ONE real model identifier from a returned row — copy verbatim; NEVER use "Sales"/"Service" as the model id.
+   c) One analyze call asking a concrete same-day-relevant question (this-week pipeline change, AUM delta, win-rate trend).
+   d) Use the answer ONLY to ground a recommended_window's suggestion — do NOT invent an event or deadline from Tableau output.
+   e) If getSemanticModels errors or analyze errors: do NOT retry. Build the arc from CRM + DC only.
 
 NODE TYPES (map each item to one):
 - event — calendar meeting from Event

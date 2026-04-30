@@ -22,7 +22,7 @@ export interface MorningBriefPromptArgs {
  * v1.4.4: PersonLifeEvent SOQL (this org's standard) + client-book filter; FinServ secondary.
  */
 export const MORNING_BRIEF_PROMPT_VERSION =
-  "v1.5.2-life-events-first-2026-04-30";
+  "v1.5.3-tableau-required-2026-04-30";
 
 export function morningBriefPrompt(a: MorningBriefPromptArgs): string {
   const firstName = a.bankerName.split(" ")[0] ?? a.bankerName;
@@ -160,7 +160,14 @@ LIMIT 25
 1. salesforce_crm (structured records): SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name, Priority FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY ORDER BY Priority DESC LIMIT 15
 2. salesforce_crm (structured records): SELECT Id, Name, LastActivityDate, AnnualRevenue, Industry FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
 3. salesforce_crm (structured records): SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name, Probability, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 15
-4. tableau_next (OPTIONAL — skip unless steps 1–3 produced fewer than 3 usable items OR the brief genuinely needs a governed KPI). If you do call: getSemanticModels ONCE, pick a real model id from the response, call the analytics tool (name contains "analyzeSemantic" or starts with "analyze") ONCE. Never pass category labels like "Sales"/"Service" as the model id. If either step errors or returns empty, do not retry — move on without a tableau item.
+4. tableau_next (REQUIRED — always attempt, governed KPIs are a core differentiator). This is the only server that can produce period-over-period ratios, win-rate, and governed metric narratives — CRM counts alone cannot compute these and DC cannot bind them to the semantic layer.
+
+   EXECUTION (one pass, no retries):
+   a) getSemanticModels ONCE (category filter "Sales" is OK ONLY to narrow the list; never pass "Sales"/"Service" as the model id itself).
+   b) Pick ONE real model identifier from a returned row — copy verbatim.
+   c) Call the analytics tool (name contains "analyzeSemantic" or starts with "analyze") ONCE with a concrete question tied to this banker (pipeline change over 7 days, win rate, AUM delta, etc.).
+   d) Use the answer to ground ONE brief item with a tableau_next source.
+   e) If getSemanticModels errors, returns no rows, or analyze errors: do NOT retry — move on and note "governed metrics unavailable this turn" in the narrative of whichever item would have used it.
 5. data_360 (PRESCRIPTIVE — call when ANY of the criteria below are met). This is the server that surfaces external, behavioral, and unified data that CRM alone cannot see — skipping it when a criterion applies is a defect, not a budget saving.
 
    CALL data_360 IF ANY OF:
