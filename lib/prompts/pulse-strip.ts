@@ -3,7 +3,7 @@
 // F-5 rules: temperature label FIRST in ALL CAPS · positives over negatives ·
 // ≤ 4 segments · 2–4 words per segment · max 12 words total.
 
-export const PULSE_STRIP_PROMPT_VERSION = "v1.3.0-dc-prescriptive-2026-04-30";
+export const PULSE_STRIP_PROMPT_VERSION = "v1.3.1-neutral-tool-names-2026-04-30";
 
 export interface PulseStripPromptArgs {
   bankerUserId: string;
@@ -29,15 +29,15 @@ TOOL PLAN — call MCP tools in parallel when the question spans sources:
    - A high-Priority Task from step 1 is due today AND the client's account is HNW — check for held-away asset movements (same-day risk signal).
    - It is ≤ 11 AM in the banker's local tz (MORNING band) — check for overnight external transaction anomalies across the banker's book (the "what happened overnight" flight-deck instinct).
 
-   SKIP data_360 ONLY IF: getDcMetadata errors, no DMOs match any criterion, or the temperature is already clearly QUIET from step 1 (no time-sensitive work in the next few hours).
+   SKIP data_360 ONLY IF: the data_360 metadata tool errors, no DMOs match any criterion, or the temperature is already clearly QUIET from step 1 (no time-sensitive work in the next few hours).
 
    EXECUTION — ultra-tight (strip must finish fast):
-   a) getDcMetadata ONCE unfiltered.
+   a) the data_360 metadata tool ONCE (unfiltered).
    b) Pick ONE DMO matching the triggered criterion (transactions, held-aways).
    c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
-   d) One narrow postDcQuerySql (LIMIT 10, filter by account ids from step 1).
+   d) One narrow call on the data_360 SQL tool (LIMIT 10, filter by account ids from step 1).
    e) If columns don't match, skip SQL — the breaker blocks retries anyway.
-3. tableau_next: Optional. getSemanticModels to narrow, then bind analyzeSemanticData to a real model id from a row — never use "Sales" or "Service" as the model id. One metric only if it signals intraday or before-EOD risk; otherwise skip.
+3. tableau_next: Optional. the tableau_next models-list tool to narrow, then bind the tableau_next analyze tool to a real model id from a row — never use "Sales" or "Service" as the model id. One metric only if it signals intraday or before-EOD risk; otherwise skip.
 
 TEMPERATURE — pick exactly one:
 - QUIET — no time-sensitive work in the next few hours; nothing URGENT below.

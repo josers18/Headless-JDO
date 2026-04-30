@@ -28,13 +28,13 @@ Efficient plan — one pass, read-only tools only, do NOT write:
    - Step 2 returned no overdue tasks (no obvious hook from CRM) — check recent behavioral life-event inference (address change, employer change, dependent added) to seed a warm-touch outreach draft.
    - Step 3 returned stale accounts (>30d no activity) — check for external wire/ACH anomalies on those accounts; a wire-triggered draft outranks a generic "we haven't talked lately" note.
 
-   SKIP data_360 ONLY IF: getDcMetadata errors, no DMOs match any criterion, or steps 1–3 already gave you enough concrete hooks for ${n} strong drafts.
+   SKIP data_360 ONLY IF: the data_360 metadata tool errors, no DMOs match any criterion, or steps 1–3 already gave you enough concrete hooks for ${n} strong drafts.
 
    EXECUTION (one pass, no retries):
-   a) getDcMetadata ONCE unfiltered.
+   a) the data_360 metadata tool ONCE (unfiltered).
    b) Pick ONE DMO matching the triggered criterion.
    c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
-   d) One narrow postDcQuerySql (LIMIT 20, filter by account ids from steps 1–3 where possible).
+   d) One narrow call on the data_360 SQL tool (LIMIT 20, filter by account ids from steps 1–3 where possible).
    e) If columns don't match, skip SQL and draft from CRM-only hooks — the breaker blocks retries anyway.
 
 Hard rules for the drafts:

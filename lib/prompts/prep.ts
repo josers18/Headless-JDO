@@ -40,7 +40,7 @@ HARD RULES:
 - Output JSON only. No markdown fence, no prose before/after.
 - Never include raw Salesforce record Ids in prose — always use names.
 - Keep it skimmable in <10 seconds. The banker is about to dial.
-- data_360: call getDcMetadata before any SQL; use only column names that appear verbatim in that response for the DMO you query. Never invent CRM-shaped DMO columns like AccountId__c or OwnerId__c — they are not valid just because SOQL uses AccountId / OwnerId.
+- data_360: call the data_360 metadata tool before any SQL; use only column names that appear verbatim in that response for the DMO you query. Never invent CRM-shaped DMO columns like AccountId__c or OwnerId__c — they are not valid just because SOQL uses AccountId / OwnerId.
 
 OUTPUT:
 {

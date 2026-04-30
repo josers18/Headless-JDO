@@ -19,23 +19,23 @@ Efficient plan (follow this order):
    - Step 2 returned high-Priority overdue tasks on HNW accounts — check for held-away asset shifts (external movement the CRM activity log won't show).
    - The banker's book has 10+ active accounts (from step 1 coverage) — run unified engagement scoring to surface the top at-risk clients CRM alone would rank lower.
 
-   SKIP data_360 ONLY IF: getDcMetadata errors, no DMOs match any criterion, or you already have strong evidence for the top N from steps 1–3.
+   SKIP data_360 ONLY IF: the data_360 metadata tool errors, no DMOs match any criterion, or you already have strong evidence for the top N from steps 1–3.
 
    EXECUTION (one pass, no retries):
-   a) getDcMetadata ONCE unfiltered.
+   a) the data_360 metadata tool ONCE (unfiltered).
    b) Pick ONE DMO matching the triggered criterion (engagement, transactions, unified score).
    c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
-   d) One narrow postDcQuerySql (LIMIT 20, filter by account ids from steps 1–3 where possible).
+   d) One narrow call on the data_360 SQL tool (LIMIT 20, filter by account ids from steps 1–3 where possible).
    e) If columns don't match, skip SQL and rank from CRM only — the breaker blocks retries anyway.
 
 5. tableau_next (REQUIRED — always attempt). Governed KPIs can change the ranking: a client with flat CRM activity but a sharp Tableau-reported portfolio-performance drop outranks one with active CRM but stable metrics. Skipping Tableau means ranking without the richest signal source.
 
    EXECUTION (one pass, no retries):
-   a) getSemanticModels ONCE (category filter "Sales" is OK ONLY to narrow the list).
+   a) the tableau_next models-list tool ONCE (category filter "Sales" is OK ONLY to narrow the list).
    b) Pick ONE real model identifier from a returned row — copy verbatim; NEVER use "Sales"/"Service" as the model id.
    c) One analyze call asking a concrete ranking-relevant question (e.g. clients with the largest AUM decline or win-rate drop in the banker's book).
    d) Use the answer to adjust the top-${n} ranking — a Tableau-flagged risk should promote a client upward, not introduce new ones.
-   e) If getSemanticModels errors or analyze errors: do NOT retry. Rank from CRM + DC only.
+   e) If the tableau_next models-list tool errors or analyze errors: do NOT retry. Rank from CRM + DC only.
 
 Composite score (0-100): urgency (open tasks overdue, stale opps) × opportunity value (Amount) × signal strength. Pick the top ${n}.
 

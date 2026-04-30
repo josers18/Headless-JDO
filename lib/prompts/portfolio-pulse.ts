@@ -22,11 +22,11 @@ Efficient plan — one pass, no retries on errors, do not guess custom fields:
 4. tableau_next (REQUIRED — always attempt). Tableau-sourced KPIs are the core differentiator of the pulse: CRM counts alone cannot compute period-over-period ratios or governed win-rate. At LEAST ONE KPI tile must come from tableau_next in a normal (non-degraded) pulse.
 
    EXECUTION (one pass, no retries):
-   a) getSemanticModels ONCE (category filter "Sales" is OK ONLY to narrow the list).
+   a) Call the tableau_next models-list tool ONCE — it's the one whose name matches /^(getSemanticModels|list_semantic_models|listModels)/i. Category filter "Sales" is OK ONLY to narrow the list.
    b) Pick ONE real model identifier from a returned row — copy verbatim; NEVER pass "Sales"/"Service" as the model id.
    c) One analyze call asking ONE concrete metric question tied to this banker's book (pipeline change last 7d, win rate, AUM trend, etc.).
    d) Tag the resulting tile with a tableau_next source.
-   e) If getSemanticModels errors, returns no rows, or analyze errors: do NOT retry. Ship the pulse as CRM + DC with a narrative line like "Governed comparisons unavailable this session."
+   e) If the models-list tool errors, returns no rows, or analyze errors: do NOT retry. Ship the pulse as CRM + DC with a narrative line like "Governed comparisons unavailable this session."
 
 5. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). This surfaces unified AUM, held-aways, and cross-source engagement that neither CRM nor Tableau can compute. Skipping when a criterion applies means the pulse misses the banker's most-asked-about number: "how much wealth do my clients hold outside our platform?"
 
