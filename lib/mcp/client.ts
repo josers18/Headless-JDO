@@ -447,7 +447,12 @@ function flattenTextContent(content: unknown): string {
 //   - SOQL is normally sub-second; 8s is a forgiving ceiling.
 const TIMEOUT_METADATA_MS = 15_000;
 const TIMEOUT_DC_SQL_MS = 10_000;
-const TIMEOUT_TABLEAU_ANALYZE_MS = 12_000;
+// tableau_next analyze is a natural-language Q&A against a semantic model
+// and runs an LLM round-trip server-side. 12s was too tight — observed
+// clean reasoning trails with 8 successful prior calls timing out on the
+// final analyze. 20s gives the Q&A engine room while still leaving ~10s
+// of slack inside Heroku's 30s H12 budget when 4–5 other tools preceded.
+const TIMEOUT_TABLEAU_ANALYZE_MS = 20_000;
 const TIMEOUT_SOQL_MS = 8_000;
 const TIMEOUT_DEFAULT_MS = 10_000;
 
