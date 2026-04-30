@@ -31,14 +31,17 @@ export interface SfTokenResponse {
 //   cdp_api          - Data Cloud / CDP access
 //   cdp_query_api    - Data Cloud SQL query access (powers postDcQuerySql)
 //   cdp_profile_api  - Data Cloud unified-profile reads
-//   api              - base REST access (needed by some custom MCP servers
-//                      that proxy through the v58+ data API)
+// The authorize request scope string MUST be:
+//   a) a SUBSET of what the ECA has Selected (asking for a scope the ECA
+//      doesn't allow returns OAUTH_APPROVAL_ERROR_GENERIC), AND
+//   b) short enough — Salesforce enforces a scope-count ceiling (~5) per
+//      authorize request; exceeding it returns OAUTH_CODE_CRED_SCOPE_TOO_LONG.
 //
-// Requesting a superset of ECA-configured scopes is safe — the IdP silently
-// drops ones not enabled on the ECA rather than erroring. So we ask for all
-// plausibly-needed scopes and let Salesforce intersect.
+// `cdp_api` ("Access all Data Cloud API resources") is a blanket that covers
+// cdp_profile_api / cdp_query_api / cdp_segment_api, so we don't need to
+// list those separately.
 export const SF_OAUTH_SCOPES =
-  "mcp_api sfap_api cdp_api cdp_query_api cdp_profile_api cdp_segment_api api refresh_token offline_access";
+  "mcp_api cdp_api refresh_token";
 
 // PKCE helpers — RFC 7636. The MCP spec + Salesforce ECA flow both require
 // Authorization Code + PKCE (S256). Plain Authorization Code (no PKCE) is
