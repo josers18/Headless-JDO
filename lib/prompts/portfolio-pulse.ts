@@ -5,17 +5,47 @@ export interface PortfolioPulseArgs {
 export function portfolioPulsePrompt(a: PortfolioPulseArgs): string {
   return `Produce a portfolio pulse for banker user id ${a.bankerUserId}.
 
-TOOL SELECTION — STRICT RULES
-A portfolio pulse MUST exercise at least two MCP servers. salesforce_crm gives you
-raw pipeline/activity counts; tableau_next gives you governed KPIs and
-period-over-period context. At least ONE of your final KPI tiles must be sourced
-from tableau_next — pipeline-SOQL-only pulses are rejected.
+TOOL SELECTION — prescriptive, not quota-based.
+Each server contributes a distinct flavor of KPI:
+  - salesforce_crm  → pipeline counts, win counts, activity counts (first-party)
+  - tableau_next    → governed ratios and period-over-period (narrative KPIs)
+  - data_360        → unified AUM / held-aways / cross-source engagement (external flows CRM cannot compute)
+A strong pulse uses whichever servers have concrete signal. If only CRM produces usable numbers this session, ship a CRM-only pulse and say so honestly — do not fabricate governed context to hit a diversity quota.
 
-Efficient plan — do not loop on errors, do not guess custom fields:
+HARD BUDGET: Maximum 5 tool calls total. Stop calling tools once you have 2–3 honest KPIs.
+
+Efficient plan — one pass, no retries on errors, do not guess custom fields:
 1. salesforce_crm (structured records): SELECT SUM(Amount) totalPipeline, COUNT(Id) oppCount FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false
 2. salesforce_crm (structured records): SELECT SUM(Amount) wonLast30 FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsWon = true AND CloseDate = LAST_N_DAYS:30
 3. salesforce_crm (structured records): SELECT COUNT(Id) recentActivity FROM Task WHERE OwnerId = '${a.bankerUserId}' AND CreatedDate = LAST_N_DAYS:7
-4. tableau_next (REQUIRED — must attempt): getSemanticModels (Sales/Service category filter only narrows the list). Then ONE analyze call — bind targetEntityIdOrApiName (or equivalent) to a real id/apiName from one returned row, never the word "Sales" or "Service". One concrete metric question for this banker (pipeline change, win rate, etc.). Use the answer for ONE KPI tile tagged tableau_next-sourced; if you cannot bind a model, skip Tableau for this run and say so in narrative.
+
+4. tableau_next (PRESCRIPTIVE — call when ANY criterion below is met). This is where period-over-period ratios and governed win-rate come from — CRM counts alone can't compute them without tableau_next.
+
+   CALL tableau_next IF ANY OF:
+   - Step 1 returned >0 open pipeline — get pipeline-change-over-last-7-days as a KPI tile.
+   - Step 2 returned >0 wins last 30d — get win-rate period-over-period for governed comparison.
+   - The banker's book has no wins this period (wonLast30 = 0) — get forward-looking pipeline velocity to pivot the narrative from "zero wins" to "expected close this month".
+
+   SKIP tableau_next ONLY IF: getSemanticModels errors, no model id binds, or the CRM signal is strong enough to stand alone.
+
+   EXECUTION: getSemanticModels ONCE (category filter "Sales" is OK ONLY to narrow the list). Copy a real model id from a returned row, then ONE analyze call asking ONE concrete metric question tied to this banker's book. NEVER pass "Sales"/"Service" as the model id — that's a category label, not an identifier. If analyze errors, do not retry.
+
+5. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). This surfaces unified AUM, held-aways, and cross-source engagement that neither CRM nor Tableau can compute. Skipping when a criterion applies means the pulse misses the banker's most-asked-about number: "how much wealth do my clients hold outside our platform?"
+
+   CALL data_360 IF ANY OF:
+   - The banker's book has HNW / affluent accounts — surface held-away AUM delta as a KPI tile (this is the highest-signal tile for HNW bankers).
+   - Step 2 returned zero wins — surface unified pipeline-plus-held-aways as a forward-looking tile that reframes the zero.
+   - It is a Monday OR the start of a month — surface weekly/monthly unified engagement score (tile: "Book health").
+   - Tableau (step 4) was skipped or errored AND CRM-only KPIs would be thin — fill the gap with a DC-sourced tile rather than a single-source pulse.
+
+   SKIP data_360 ONLY IF: getDcMetadata errors, no DMOs match any criterion, or you already have 3 strong KPI tiles from steps 1–4.
+
+   EXECUTION (one pass, no retries):
+   a) getDcMetadata ONCE unfiltered.
+   b) Pick ONE DMO matching the triggered criterion (held-aways, unified engagement, cross-source transaction).
+   c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
+   d) One narrow postDcQuerySql (LIMIT 20, OwnerId-qualified when the DMO exposes it).
+   e) If columns don't match, skip SQL — the breaker blocks retries anyway.
 
 Derive 2-3 KPIs from these results. For each, pick a concrete direction by comparing against a prior window when you have one; otherwise mark direction "flat" and say "insufficient history" in the explanation.
 

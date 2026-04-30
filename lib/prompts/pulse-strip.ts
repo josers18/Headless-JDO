@@ -3,7 +3,7 @@
 // F-5 rules: temperature label FIRST in ALL CAPS · positives over negatives ·
 // ≤ 4 segments · 2–4 words per segment · max 12 words total.
 
-export const PULSE_STRIP_PROMPT_VERSION = "v1.2.0-2026-04-20";
+export const PULSE_STRIP_PROMPT_VERSION = "v1.3.0-dc-prescriptive-2026-04-30";
 
 export interface PulseStripPromptArgs {
   bankerUserId: string;
@@ -22,7 +22,21 @@ TOOL PLAN — call MCP tools in parallel when the question spans sources:
    - Tasks: ActivityDate = TODAY or overdue, Priority = High when relevant, Status != Completed
    - Events: ActivityDate = TODAY, StartDateTime >= NOW() in org TZ (use the banker's day)
    - Opportunities: IsClosed = false, OwnerId = banker, CloseDate = TODAY or NEXT 7 DAYS if they imply same-day urgency
-2. data_360: ONLY after getDcMetadata — one tight postDcQuerySql if a DMO clearly supports same-day signals (anomalies, maturities). Never guess column names; copy from metadata. If nothing fits, skip data_360 honestly.
+2. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). Pulse strip is the flight-deck temperature read: DC is where same-day anomalies and held-away events live, and those often drive the URGENT temperature that CRM alone would miss.
+
+   CALL data_360 IF ANY OF:
+   - Step 1 returned any Event scheduled within the next 4 hours — check whether that client has a wire/ACH anomaly in the last 24h (concrete talking point for the imminent meeting).
+   - A high-Priority Task from step 1 is due today AND the client's account is HNW — check for held-away asset movements (same-day risk signal).
+   - It is ≤ 11 AM in the banker's local tz (MORNING band) — check for overnight external transaction anomalies across the banker's book (the "what happened overnight" flight-deck instinct).
+
+   SKIP data_360 ONLY IF: getDcMetadata errors, no DMOs match any criterion, or the temperature is already clearly QUIET from step 1 (no time-sensitive work in the next few hours).
+
+   EXECUTION — ultra-tight (strip must finish fast):
+   a) getDcMetadata ONCE unfiltered.
+   b) Pick ONE DMO matching the triggered criterion (transactions, held-aways).
+   c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
+   d) One narrow postDcQuerySql (LIMIT 10, filter by account ids from step 1).
+   e) If columns don't match, skip SQL — the breaker blocks retries anyway.
 3. tableau_next: Optional. getSemanticModels to narrow, then bind analyzeSemanticData to a real model id from a row — never use "Sales" or "Service" as the model id. One metric only if it signals intraday or before-EOD risk; otherwise skip.
 
 TEMPERATURE — pick exactly one:

@@ -1,6 +1,6 @@
 // Today's Arc — structured remainder-of-workday view (UI v2 T0-3).
 
-export const ARC_PROMPT_VERSION = "v1.3.1-2026-04-24";
+export const ARC_PROMPT_VERSION = "v1.4.0-dc-prescriptive-2026-04-30";
 
 export interface ArcPromptArgs {
   bankerUserId: string;
@@ -26,8 +26,23 @@ TOOL PLAN — parallel where helpful:
    SELECT Id, Subject, Status, ActivityDate, Priority, WhoId, WhatId FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY ORDER BY ActivityDate ASC LIMIT 50
 3. salesforce_crm: Opportunities closing soon for this user (deadlines in lookahead):
    SELECT Id, Name, CloseDate, StageName, Amount, AccountId, Account.Name FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND CloseDate >= TODAY ORDER BY CloseDate ASC LIMIT 50
-4. data_360: ONLY after getDcMetadata — optional ONE SQL if a DMO clearly supports dated triggers; never guess table or column names.
-5. tableau_next: optional only if you bind a real semantic model id from getSemanticModels (never use category labels like "Sales" as an id).
+4. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). This surfaces external / behavioral triggers CRM cannot see, which matter MOST for a time-boxed arc ("what else happens TODAY that my calendar doesn't show").
+
+   CALL data_360 IF ANY OF:
+   - Any account on today's calendar (from step 1) has a recent external wire / ACH / transfer anomaly in the last 48h — that is a live talking point for the meeting.
+   - An Opportunity closing in the next 7 days (from step 3) has a digital-engagement drop (no app/portal login in 14+ days) — that's a deal-risk signal for a recommended prep window today.
+   - A task due today (from step 2) references a client with a recent behavioral life-event inference (address change, dependent added) — reprioritize the task around that context.
+
+   SKIP data_360 ONLY IF: getDcMetadata errors, no DMOs match any criterion above, or you already have 5+ nodes filled from steps 1–3.
+
+   EXECUTION (one pass, no retries):
+   a) getDcMetadata ONCE unfiltered.
+   b) Pick ONE DMO matching the triggered criterion (transactions, engagement, life-event inference).
+   c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
+   d) One narrow postDcQuerySql (LIMIT 10, filter by account ids from steps 1–3 when possible).
+   e) If columns don't match, skip SQL — the breaker blocks retries anyway.
+
+5. tableau_next (OPTIONAL — skip unless a KPI is genuinely needed for a recommended_window). If you call: bind a real semantic model id from getSemanticModels (never use category labels like "Sales" as an id).
 
 NODE TYPES (map each item to one):
 - event — calendar meeting from Event

@@ -11,8 +11,24 @@ Efficient plan (follow this order):
 1. salesforce_crm.soqlQuery: open Opportunities assigned to this user — simple, no semi-joins with OR: SELECT Id, Name, AccountId, Account.Name, StageName, Amount, CloseDate, Probability, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY LastActivityDate ASC NULLS FIRST LIMIT 25
 2. salesforce_crm.soqlQuery: overdue/due-today Tasks for this user: SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY LIMIT 25
 3. salesforce_crm.soqlQuery: recent/open Cases tied to this user's accounts: SELECT Id, Subject, Status, Priority, AccountId, Account.Name FROM Case WHERE Account.OwnerId = '${a.bankerUserId}' AND IsClosed = false LIMIT 25
-4. data_360 (optional, best-effort): Call getDcMetadata first. Run postDcQuerySql ONLY using table and column API names that appear VERBATIM in that metadata response. NEVER invent or assume DMO names (e.g. do not query EngagementChannelAction__dll or any *.__dll table unless that exact identifier appears in metadata). If no clearly relevant DMO exists for this org, skip data_360 entirely — do not retry with guessed tables or copied training-data names.
-5. tableau_next (optional): getSemanticModels first (category filter like "Sales" is OK ONLY to narrow the list). Then at most ONE analyzeSemanticData — you MUST set targetEntityIdOrApiName (or the tool's equivalent field) to an id/apiName copied verbatim from ONE row in that getSemanticModels response. NEVER use "Sales", "Service", or any category label as the model identifier (that causes INVALID_INPUT). If the list is empty or you cannot bind a row, skip analyze entirely.
+4. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). DC differentiates a ranking from a CRM-only list: it reveals which clients have BEHAVIORAL risk that CRM's activity fields miss. Skipping when a criterion applies means under-ranking a real risk.
+
+   CALL data_360 IF ANY OF:
+   - Step 1 returned stalled opportunities (LastActivityDate > 30 days) — check for digital-engagement drops (portal/app login gap, statement opens declining) on those accounts.
+   - Step 3 returned open cases with high Priority — check for external transaction anomalies on those accounts (a wire to a competitor often precedes an escalation).
+   - Step 2 returned high-Priority overdue tasks on HNW accounts — check for held-away asset shifts (external movement the CRM activity log won't show).
+   - The banker's book has 10+ active accounts (from step 1 coverage) — run unified engagement scoring to surface the top at-risk clients CRM alone would rank lower.
+
+   SKIP data_360 ONLY IF: getDcMetadata errors, no DMOs match any criterion, or you already have strong evidence for the top N from steps 1–3.
+
+   EXECUTION (one pass, no retries):
+   a) getDcMetadata ONCE unfiltered.
+   b) Pick ONE DMO matching the triggered criterion (engagement, transactions, unified score).
+   c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
+   d) One narrow postDcQuerySql (LIMIT 20, filter by account ids from steps 1–3 where possible).
+   e) If columns don't match, skip SQL and rank from CRM only — the breaker blocks retries anyway.
+
+5. tableau_next (OPTIONAL — skip unless a governed KPI would change the ranking). If you call: getSemanticModels first, then ONE analyzeSemanticData with a model id copied verbatim from a returned row. NEVER use "Sales"/"Service" as the model id.
 
 Composite score (0-100): urgency (open tasks overdue, stale opps) × opportunity value (Amount) × signal strength. Pick the top ${n}.
 
