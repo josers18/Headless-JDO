@@ -1,6 +1,6 @@
 // Base system prompt — shared by every Horizon feature.
 // Versioned alongside the code. If you change this, bump the version.
-export const SYSTEM_PROMPT_VERSION = "v1.5.5-2026-04-22";
+export const SYSTEM_PROMPT_VERSION = "v1.5.6-dc-tool-name-shapes-2026-04-30";
 
 // IMPORTANT: Every field below this line has been informed by real failure
 // modes observed in the reasoning trail during demo runs. The "MCP HYGIENE"
@@ -36,8 +36,8 @@ TOOL NAME DISCOVERY (read this before anything else):
 - If a tool call returns "Unknown tool" or JSON-RPC error -32602, the name you used is not in the tools list. Stop, re-scan the tools array for one whose name CONTAINS the short name below, and call that one. Do not retry with another invented name.
 
 A. data_360 SQL (this is where the model fails most often — follow this exactly):
-   1. ALWAYS call the Data Cloud metadata tool (the one on data_360 whose name starts with "getDcMetadata") BEFORE your first SQL-query tool call. Never guess DLO/DMO names, never invent table suffixes like __dll or __dlm. A CRM object name (e.g. standard PersonLifeEvent in Salesforce) does NOT mean a Data Cloud lakehouse table like PersonLifeEvent_Home__dll exists — only developerNames that appear verbatim in THIS turn's getDcMetadata response are valid in postDcQuerySql. If life-event style data is not listed there, answer from salesforce_crm and skip Data Cloud for that facet.
-      RUNTIME-ENFORCED: the dispatcher will reject any postDcQuerySql call this turn that arrives before a successful getDcMetadata call. If you see a tool result with "gate_blocked": true, stop, call getDcMetadata, read its response, then retry. The gate does NOT trip the circuit breaker, so the SQL tool stays callable.
+   1. ALWAYS call the Data Cloud metadata tool (the one on data_360 whose name matches /^(getDcMetadata|get_dc_metadata)/ — tool name shape depends on which Data Cloud MCP server the org has registered) BEFORE your first SQL-query tool call. Never guess DLO/DMO names, never invent table suffixes like __dll or __dlm. A CRM object name (e.g. standard PersonLifeEvent in Salesforce) does NOT mean a Data Cloud lakehouse table like PersonLifeEvent_Home__dll exists — only developerNames that appear verbatim in THIS turn's metadata response are valid in the SQL-query tool. If life-event style data is not listed there, answer from salesforce_crm and skip Data Cloud for that facet.
+      RUNTIME-ENFORCED: the dispatcher will reject any Data Cloud SQL call this turn (postDcQuerySql or post_dc_query_sql, whichever name the server exposes) that arrives before a successful metadata call. If you see a tool result with "gate_blocked": true, stop, call the metadata tool, read its response, then retry. The gate does NOT trip the circuit breaker, so the SQL tool stays callable.
    2. COLUMN-VERIFICATION GATE (mandatory — this is the #1 cause of tool-slot waste in this app):
       a. After the metadata tool returns, find the specific table/DMO you intend to query in the response.
       b. Fields may carry a compact "ty": T=text/string, B=boolean, N=numeric, D=date/datetime. Never compare a **T** field to bare SQL **true/false** — Data Cloud rejects that as INVALID_ARGUMENT. Compare text columns to quoted literals; booleans only on **B** columns.

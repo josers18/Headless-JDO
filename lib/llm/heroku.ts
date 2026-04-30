@@ -253,7 +253,7 @@ function preflightDataCloudSql(
   if (server !== "data_360") return null;
   // OpenAI tool names are sanitized + max 64 chars; the MCP leaf name is
   // often suffixed (e.g. postDcQuerySqlmarketing_data_cloud_queries).
-  if (!/^postDcQuerySql/i.test(tool)) return null;
+  if (!/^(postDcQuerySql|post_dc_query_sql)/i.test(tool)) return null;
   const sql = typeof args.sql === "string" ? args.sql : "";
   if (!sql) return null;
 
@@ -394,11 +394,11 @@ function preflightDataCloudSql(
 // the model cannot hallucinate columns when it is required to read the
 // metadata response first.
 function isDataCloudSqlTool(server: string, tool: string): boolean {
-  return server === "data_360" && /^postDcQuerySql/i.test(tool);
+  return server === "data_360" && /^(postDcQuerySql|post_dc_query_sql)/i.test(tool);
 }
 
 function isDataCloudMetadataTool(server: string, tool: string): boolean {
-  return server === "data_360" && /^getDcMetadata/i.test(tool);
+  return server === "data_360" && /^(getDcMetadata|get_dc_metadata)/i.test(tool);
 }
 
 function metadataGatePayload(server: string, tool: string): string {

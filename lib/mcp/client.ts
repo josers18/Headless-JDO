@@ -452,9 +452,12 @@ const TIMEOUT_SOQL_MS = 8_000;
 const TIMEOUT_DEFAULT_MS = 10_000;
 
 function timeoutMsFor(server: McpServerName, tool: string): number {
-  if (server === "data_360" && /^getDcMetadata/i.test(tool))
+  if (server === "data_360" && /^(getDcMetadata|get_dc_metadata)/i.test(tool))
     return TIMEOUT_METADATA_MS;
-  if (server === "data_360" && /^postDcQuerySql/i.test(tool))
+  if (
+    server === "data_360" &&
+    /^(postDcQuerySql|post_dc_query_sql)/i.test(tool)
+  )
     return TIMEOUT_DC_SQL_MS;
   if (server === "tableau_next" && /analyzeSemantic/i.test(tool))
     return TIMEOUT_TABLEAU_ANALYZE_MS;
@@ -488,7 +491,7 @@ const SCHEMA_BUDGET_CHARS = 32_000;
 const DEFAULT_BUDGET_CHARS = 2_000;
 
 function modelBudgetFor(server: McpServerName, tool: string): number {
-  if (server === "data_360" && /^getDcMetadata/i.test(tool))
+  if (server === "data_360" && /^(getDcMetadata|get_dc_metadata)/i.test(tool))
     return METADATA_BUDGET_CHARS;
   if (
     server === "salesforce_crm" &&
@@ -517,7 +520,7 @@ function projectForModel(
   tool: string,
   content: unknown
 ): unknown {
-  if (!(server === "data_360" && /^getDcMetadata/i.test(tool))) return content;
+  if (!(server === "data_360" && /^(getDcMetadata|get_dc_metadata)/i.test(tool))) return content;
   if (!Array.isArray(content)) return content;
   const out: unknown[] = [];
   for (const part of content) {

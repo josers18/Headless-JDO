@@ -91,12 +91,15 @@ function prettifyToolSlug(slug: string): string {
 }
 
 export function formatToolLeafForDisplay(tool: string): string {
-  // Data 360 — getDcMetadata / postDcQuerySql / queryIndex + "<slug>_data_cloud_queries"
+  // Data 360 — getDcMetadata / postDcQuerySql / queryIndex (old Data360MCP)
+  // OR get_dc_metadata / post_dc_query_sql (new data-cloud-queries), all
+  // optionally followed by a "<slug>_data_cloud_queries" workspace suffix.
   const d360 = tool.match(
-    /^(getDcMetadata|postDcQuerySql|queryIndex)([a-z][a-z0-9_]*_data_cloud_queries)$/i
+    /^(getDcMetadata|postDcQuerySql|queryIndex|get_dc_metadata|post_dc_query_sql)([a-z][a-z0-9_]*_data_cloud_queries)?$/i
   );
-  if (d360?.[1] && d360[2]) {
-    return `${prettifyToolVerb(d360[1])} · ${prettifyToolSlug(d360[2])}`;
+  if (d360?.[1]) {
+    const verb = prettifyToolVerb(d360[1]);
+    return d360[2] ? `${verb} · ${prettifyToolSlug(d360[2])}` : verb;
   }
 
   // Tableau Next — e.g. "getSemanticModelsanalytics_tableau_next" or
