@@ -770,6 +770,15 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         const server = parsed?.server ?? "salesforce_crm";
         const tool = parsed?.name ?? c.name;
         const key = `${server}.${tool}`;
+        // Temporary diagnostic: log the model-emitted tool call exactly as
+        // received so we can detect cases where the model emits a name that
+        // bypasses our tool-filter (e.g. unqualified or alternate-form).
+        log.info("agent.tool_call.emit", {
+          rawName: c.name,
+          parsed: parsed ? { server: parsed.server, name: parsed.name } : null,
+          resolvedServer: server,
+          resolvedTool: tool,
+        });
         let argObj: Record<string, unknown> = {};
         try {
           argObj = c.argsJson ? JSON.parse(c.argsJson) : {};
