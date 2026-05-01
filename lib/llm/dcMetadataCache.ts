@@ -156,11 +156,31 @@ function isBankerRelevant(name: string, category?: string): boolean {
  */
 export function toSystemPromptSection(
   envelope: CachedDcMetadata | null,
-  opts: { bankerCap?: number; overflowCap?: number } = {}
+  opts: {
+    bankerCap?: number;
+    overflowCap?: number;
+    /**
+     * How many of the highest-rowCount (and otherwise hottest) DMOs get
+     * their FULL field list shown. Everything past this cap gets
+     * `tailFieldsPerDmo` fields and a `+N more` marker. Tuning this
+     * trades off prompt size vs hallucination-on-truncated-field risk.
+     *
+     * Default 20: covers the ~20 DMOs the model is most likely to query
+     * across a normal home-page load. Increase if you see column-guess
+     * rejections on banker-relevant DMOs past the top 20.
+     */
+    fullFieldsTopCount?: number;
+    /**
+     * Field cap for DMOs outside the full-fields bucket.
+     */
+    tailFieldsPerDmo?: number;
+  } = {}
 ): string {
   if (!envelope || envelope.dmos.length === 0) return "";
   const bankerCap = opts.bankerCap ?? 60;
   const overflowCap = opts.overflowCap ?? 10;
+  const fullFieldsTopCount = opts.fullFieldsTopCount ?? 20;
+  const tailFieldsPerDmo = opts.tailFieldsPerDmo ?? 12;
 
   // Envelope.dmos is already sorted by rowCount desc from the refresh job.
   const bankerRelevant = envelope.dmos
@@ -209,19 +229,27 @@ export function toSystemPromptSection(
   lines.push(
     `Format: <TableName> [category] (rowCount) — fields...`
   );
-  const FIELDS_PER_DMO = 12;
-  for (const d of shown) {
+  lines.push(
+    `The top ${fullFieldsTopCount} DMOs below show FULL field lists — you can pick any column listed. DMOs beyond the top ${fullFieldsTopCount} show only the first ${tailFieldsPerDmo} fields; if you need a column that was truncated, query against a top-${fullFieldsTopCount} DMO instead OR just say Data Cloud doesn't expose that column for that table.`
+  );
+  for (let i = 0; i < shown.length; i++) {
+    const d = shown[i];
+    if (!d) continue;
     const cat = d.category ? ` [${d.category}]` : "";
+    const isTopDmo = i < fullFieldsTopCount;
+    const cap = isTopDmo ? d.fields.length : tailFieldsPerDmo;
     const fields = d.fields
-      .slice(0, FIELDS_PER_DMO)
+      .slice(0, cap)
       .map((f) => (f.ty ? `${f.name}:${f.ty}` : f.name))
       .join(", ");
     const more =
-      d.fields.length > FIELDS_PER_DMO
-        ? `, +${d.fields.length - FIELDS_PER_DMO} more`
-        : "";
+      d.fields.length > cap ? `, +${d.fields.length - cap} more` : "";
+    // Visual marker so the model can tell at a glance which DMOs have
+    // full field coverage (safe to pick any column) vs which are
+    // truncated.
+    const marker = isTopDmo ? "★" : " ";
     lines.push(
-      `- ${d.name}${cat} (${d.rowCount.toLocaleString()}) — ${fields}${more}`
+      `- ${marker} ${d.name}${cat} (${d.rowCount.toLocaleString()}) — ${fields}${more}`
     );
   }
   const unshownCount = envelope.dmos.length - shown.length;
