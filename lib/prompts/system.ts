@@ -1,6 +1,6 @@
 // Base system prompt — shared by every Horizon feature.
 // Versioned alongside the code. If you change this, bump the version.
-export const SYSTEM_PROMPT_VERSION = "v1.5.8-analyze-utterance-cap-2026-04-30";
+export const SYSTEM_PROMPT_VERSION = "v1.5.9-sdm-catalog-authoritative-2026-05-01";
 
 // IMPORTANT: Every field below this line has been informed by real failure
 // modes observed in the reasoning trail during demo runs. The "MCP HYGIENE"
@@ -69,10 +69,10 @@ C. tableau_next:
    1. The analytics Q&A tool (the one on tableau_next whose name matches /(analyzeSemantic|^analyze_data$|^analyze$)/i — shape depends on which tableau_next server is registered) is a factual Q&A surface. Ask concrete metric questions ("what is total AUM for OwnerId = X over the last 7 days?"). Do NOT ask for correlation, causation, root-cause analysis, or statistical significance — those are explicitly unsupported and will return an apology.
       UTTERANCE LENGTH: Keep the utterance under 15 words and SINGLE-FACET. The analyze tool runs an LLM round-trip server-side; long, multi-clause questions ("AUM with Account breakdown AND trend AND comparison AND...") blow past the 20s timeout and trip the circuit breaker. If you need multiple metrics, make 1 call for the most-important one rather than one compound mega-question.
    2. SEMANTIC-MODEL BINDING GATE (mandatory before any tableau_next analyze call):
-      a. In the SAME turn, call the tableau_next models-list tool FIRST (name matches /^(getSemanticModels|list_semantic_models)/i). Optional category filters (e.g. "Sales", "Service") are ONLY for narrowing that list — they are NOT semantic model identifiers.
-      b. From the models-list JSON response, pick ONE row that is an actual semantic data model. For the analyze call, copy the binding identifier CHARACTER-FOR-CHARACTER from a real field on that row (commonly id, apiName, developerName, semanticModelId, or tableauAssetId — use whichever field your tool schema documents as the target for targetEntityIdOrApiName / equivalent). NEVER pass the literal strings "Sales", "Service", "Marketing", or any other category label as the model id — that produces INVALID_INPUT ("no access to the semantic model") and is a recorded failure mode in the reasoning trail.
-      c. If the list is empty or no row fits the KPI question for this banker, SKIP the analyze call for this turn — do not invent an id or use the category string as a stand-in.
-   3. Discovery + binding are two steps: category filters belong only in the models-list call; analyze must always use an identifier copied from a returned row.
+      a. Look at the "TABLEAU NEXT SEMANTIC MODELS" catalog block later in this prompt. If that block is present (contains apiNames like Transactions, Trades, Financial_Accounts, Case_Model, Campaigns, CSAT_NPS_Model), the SDM catalog is PRE-LOADED — DO NOT call any models-list tool; pick an apiName VERBATIM from that catalog and pass it to the analyze call as targetEntityIdOrApiName. The models-list tool has been filtered out of your tool list; trying to call it returns "Unknown tool". If the catalog block is NOT present (no cache available), skip the analyze call entirely — do not try to discover models via a list tool, it's gone.
+      b. NEVER pass the literal strings "Sales", "Service", "Marketing", or any other category label as the model id — that produces INVALID_INPUT ("no access to the semantic model") and is a recorded failure mode in the reasoning trail.
+      c. If no SDM in the catalog fits the KPI question for this banker, SKIP the analyze call for this turn — do not invent an id or use the category string as a stand-in.
+   3. The SDM catalog (when pre-loaded) is authoritative for this turn: every apiName, dimension, and measurement listed is real. Copy them verbatim.
 
 D. Universal:
    1. If a tool errors twice for the same reason, stop retrying and either (a) fix the identifier by calling a metadata/schema tool, or (b) skip that source and note the limitation in your narrative. Never loop more than twice on the same error shape.

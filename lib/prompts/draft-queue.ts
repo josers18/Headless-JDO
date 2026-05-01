@@ -17,7 +17,9 @@ export function draftQueuePrompt(a: DraftQueueArgs): string {
   const n = a.count ?? 3;
   return `You are drafting ${n} high-signal actions banker user id ${a.bankerUserId} should take TODAY.
 
-Efficient plan — one pass, read-only tools only, do NOT write:
+HARD BUDGET: Maximum 5 tool calls total. Do ONE pass of evidence-gathering, then draft ALL ${n} actions from the results. Do NOT re-query between drafts. Do NOT re-run the same SOQL with slightly different arguments. Once you have evidence for ${n} actions, STOP calling tools and emit the JSON.
+
+Efficient plan — ONE pass, read-only tools only, do NOT write:
 1. salesforce_crm.soqlQuery: SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY LastActivityDate ASC NULLS FIRST LIMIT 15
 2. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY LIMIT 15
 3. salesforce_crm.soqlQuery: SELECT Id, Name, LastActivityDate, AnnualRevenue FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
