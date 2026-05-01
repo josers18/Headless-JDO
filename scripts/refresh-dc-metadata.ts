@@ -44,6 +44,16 @@ const DATASPACE = process.env.DC_METADATA_DATASPACE ?? "default";
 const REDIS_KEY = `dc:metadata:v1:${DATASPACE}`;
 const TTL_SECONDS = 13 * 60 * 60; // 13h — buffer past the 12h cadence
 
+// Effective refresh cadence. The scheduler may fire more often (Heroku
+// Scheduler's smallest preset is hourly), but the actual DC work — 587
+// COUNT queries, ~75s of compute — is expensive. Skip with an early
+// exit when the existing cache is still fresh enough. Set the env var
+// DC_METADATA_MIN_AGE_HOURS to override; default 12h.
+const MIN_AGE_HOURS = Number(
+  process.env.DC_METADATA_MIN_AGE_HOURS ?? "12"
+);
+const FORCE = process.env.DC_METADATA_FORCE === "1";
+
 // COUNT(*) probing configuration. Batches parallelize on the DC query
 // engine; we keep it modest to avoid throttling. Error + 0-row DMOs are
 // dropped from the surviving list.
@@ -108,6 +118,32 @@ async function main() {
   if (!redis) {
     console.error("REDIS_URL missing — cannot cache Data Cloud metadata");
     process.exit(1);
+  }
+
+  // Early exit when the existing cache is still fresh. The scheduler fires
+  // hourly (its smallest preset) but we only do the real work when the
+  // cache is >= MIN_AGE_HOURS old. `DC_METADATA_FORCE=1` bypasses this.
+  if (!FORCE) {
+    try {
+      const existing = await redis.get(REDIS_KEY);
+      if (existing) {
+        const parsed = JSON.parse(existing) as { generatedAt?: string };
+        const generated = parsed.generatedAt
+          ? new Date(parsed.generatedAt).getTime()
+          : 0;
+        const ageHours = (Date.now() - generated) / (1000 * 60 * 60);
+        if (generated > 0 && ageHours < MIN_AGE_HOURS) {
+          console.log(
+            `[refresh-dc-metadata] cache is ${ageHours.toFixed(1)}h old (< ${MIN_AGE_HOURS}h threshold) — skipping refresh. Set DC_METADATA_FORCE=1 to bypass.`
+          );
+          await redis.quit().catch(() => {});
+          return;
+        }
+      }
+    } catch {
+      // If the freshness probe fails for any reason, fall through to a
+      // full refresh — better to do extra work than miss a stale cache.
+    }
   }
 
   // 1. Connect to data_360 MCP.
