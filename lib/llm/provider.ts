@@ -19,8 +19,12 @@ import {
 import {
   loadCachedDcMetadata,
   toDcSnapshot,
-  toSystemPromptSection,
+  toSystemPromptSection as toDcCatalogSection,
 } from "@/lib/llm/dcMetadataCache";
+import {
+  loadCachedSdms,
+  toSystemPromptSection as toSdmCatalogSection,
+} from "@/lib/llm/tableauSemanticCache";
 import { log } from "@/lib/log";
 
 export type { InferenceBackend } from "./inferenceClients";
@@ -80,15 +84,23 @@ export async function runAgentWithMcp(
     salesforceToken: input.salesforceToken,
   });
 
-  // Preload Data Cloud metadata from the Redis cache (populated every 12h
-  // by scripts/refresh-dc-metadata.ts). When present:
+  // Preload both catalogs from Redis in parallel (each refreshed every
+  // 12h by their respective scheduled jobs). When the DC cache is hit:
   //   - the SQL preflight starts strict on iteration 1
   //   - the metadata-before-SQL gate is pre-satisfied
   //   - get_dc_metadata is hidden from the model's tool list
   //   - a compact catalog block is appended to the system prompt
-  // When missing (Redis unavailable, cache not yet populated), we fall
-  // back to the existing live-metadata-per-turn behavior.
-  const cachedDcMetadata = await loadCachedDcMetadata();
+  // When the Tableau SDM cache is hit:
+  //   - the SDM catalog is appended to the system prompt (apiNames,
+  //     dimensions, measurements) so the model can call analyze_data
+  //     directly without a list_semantic_models round-trip
+  //   - list_semantic_models is hidden from the model's tool list
+  // Either cache can be missing independently — graceful fallback to
+  // live discovery in both cases.
+  const [cachedDcMetadata, cachedSdms] = await Promise.all([
+    loadCachedDcMetadata(),
+    loadCachedSdms(),
+  ]);
   if (cachedDcMetadata) {
     log.info("agent.dc_metadata.cache_hit", {
       routeHint: input.routeHint ?? "",
@@ -96,13 +108,25 @@ export async function runAgentWithMcp(
       generatedAt: cachedDcMetadata.generatedAt,
     });
   }
+  if (cachedSdms) {
+    log.info("agent.tableau_sdms.cache_hit", {
+      routeHint: input.routeHint ?? "",
+      sdms: cachedSdms.survivingSdms,
+      generatedAt: cachedSdms.generatedAt,
+    });
+  }
   const preloadedDcSnapshot = cachedDcMetadata
     ? toDcSnapshot(cachedDcMetadata)
     : undefined;
-  const dcCatalogSection = toSystemPromptSection(cachedDcMetadata);
-  const systemWithCatalog = dcCatalogSection
-    ? `${input.system}\n\n${dcCatalogSection}`
-    : input.system;
+  const dcCatalogSection = toDcCatalogSection(cachedDcMetadata);
+  const sdmCatalogSection = toSdmCatalogSection(cachedSdms);
+  const extraSections = [dcCatalogSection, sdmCatalogSection].filter(
+    (s) => s.length > 0
+  );
+  const systemWithCatalog =
+    extraSections.length > 0
+      ? `${input.system}\n\n${extraSections.join("\n\n")}`
+      : input.system;
 
   const runOnce = (backend: InferenceBackend) =>
     runAgent({
@@ -116,6 +140,7 @@ export async function runAgentWithMcp(
       forceFirstToolCall: input.forceFirstToolCall,
       inferenceBackend: backend,
       preloadedDcSnapshot,
+      preloadedTableauSdms: Boolean(cachedSdms),
     });
 
   try {

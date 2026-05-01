@@ -97,6 +97,13 @@ export interface AgentRunArgs {
    * from the same cache — see lib/llm/dcMetadataCache.ts#toSystemPromptSection.
    */
   preloadedDcSnapshot?: DcSnapshot;
+  /**
+   * True when the Tableau Next SDM catalog has been pre-loaded from Redis
+   * and appended to the system prompt. When true, list_semantic_models
+   * is hidden from the model's tool list — the catalog is already in
+   * context, so the model should call analyze_data directly.
+   */
+  preloadedTableauSdms?: boolean;
 }
 
 export interface AgentRunResult {
@@ -539,26 +546,39 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     forceFirstToolCall = false,
     inferenceBackend = "heroku",
     preloadedDcSnapshot,
+    preloadedTableauSdms = false,
   } = args;
 
   const client = openAiClientFor(inferenceBackend);
   const model = modelIdFor(inferenceBackend);
 
   const toolDefs = await registry.listAllTools();
-  // When the caller preloaded the DC catalog, the model doesn't need to
-  // call get_dc_metadata at all — we seed the snapshot from the cache
-  // below and inject the catalog into the system prompt. Hide the tool
-  // from the model so a redundant call isn't even possible. The SQL tool
-  // remains so the model can actually query.
-  const visibleToolDefs = preloadedDcSnapshot
-    ? toolDefs.filter(
-        (d) =>
-          !(
-            d.server === "data_360" &&
-            /^(getDcMetadata|get_dc_metadata)/i.test(d.name)
-          )
-      )
-    : toolDefs;
+  // Tool-list filtering based on what the caller pre-loaded:
+  //   - DC metadata cached → hide get_dc_metadata (the model has the
+  //     full catalog in the system prompt and the SQL gate is already
+  //     satisfied; a metadata call would just waste budget).
+  //   - Tableau SDM catalog cached → hide list_semantic_models for the
+  //     same reason (the catalog with apiNames + dimensions +
+  //     measurements is already in the prompt).
+  // analyze_data and post_dc_query_sql are ALWAYS visible so the model
+  // can actually query.
+  const visibleToolDefs = toolDefs.filter((d) => {
+    if (
+      preloadedDcSnapshot &&
+      d.server === "data_360" &&
+      /^(getDcMetadata|get_dc_metadata)/i.test(d.name)
+    ) {
+      return false;
+    }
+    if (
+      preloadedTableauSdms &&
+      d.server === "tableau_next" &&
+      /^(getSemanticModels|listModels|list_semantic_models)/i.test(d.name)
+    ) {
+      return false;
+    }
+    return true;
+  });
   const tools = toOpenAiTools(visibleToolDefs);
 
   // Once-per-turn capability probe: does the registry expose any tableau_next
