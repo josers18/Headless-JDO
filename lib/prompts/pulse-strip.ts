@@ -29,10 +29,10 @@ TOOL PLAN — call MCP tools in parallel when the question spans sources:
    - A high-Priority Task from step 1 is due today AND the client's account is HNW — check for held-away asset movements (same-day risk signal).
    - It is ≤ 11 AM in the banker's local tz (MORNING band) — check for overnight external transaction anomalies across the banker's book (the "what happened overnight" flight-deck instinct).
 
-   SKIP data_360 ONLY IF: the data_360 metadata tool errors, no DMOs match any criterion, or the temperature is already clearly QUIET from step 1 (no time-sensitive work in the next few hours).
+   SKIP data_360 ONLY IF: the DATA CLOUD CATALOG block is absent from the system prompt, OR no DMOs match any criterion, or the temperature is already clearly QUIET from step 1 (no time-sensitive work in the next few hours).
 
    EXECUTION — ultra-tight (strip must finish fast):
-   a) the data_360 metadata tool ONCE (unfiltered).
+   a) Pick a DMO VERBATIM from the DATA CLOUD CATALOG block in the system prompt — do NOT call any metadata tool, it has been filtered out of your tools this turn and returns "Unknown tool". If the catalog is absent, skip DC entirely.
    b) Pick ONE DMO matching the triggered criterion (transactions, held-aways).
    c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
    d) One narrow call on the data_360 SQL tool (LIMIT 10, filter by account ids from step 1).

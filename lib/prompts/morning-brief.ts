@@ -163,11 +163,11 @@ LIMIT 25
 4. tableau_next (REQUIRED — always attempt, governed KPIs are a core differentiator). This is the only server that can produce period-over-period ratios, win-rate, and governed metric narratives — CRM counts alone cannot compute these and DC cannot bind them to the semantic layer.
 
    EXECUTION (one pass, no retries):
-   a) the tableau_next models-list tool ONCE (category filter "Sales" is OK ONLY to narrow the list; never pass "Sales"/"Service" as the model id itself).
+   a) Pick an apiName VERBATIM from the TABLEAU NEXT SEMANTIC MODELS catalog block in the system prompt. DO NOT call a models-list tool — it has been filtered out of your tools this turn. If the catalog block is absent, skip the analyze call entirely.
    b) Pick ONE real model identifier from a returned row — copy verbatim.
    c) Call the analytics tool (name contains "analyzeSemantic" or starts with "analyze") ONCE with a concrete question tied to this banker (pipeline change over 7 days, win rate, AUM delta, etc.).
    d) Use the answer to ground ONE brief item with a tableau_next source.
-   e) If the tableau_next models-list tool errors, returns no rows, or analyze errors: do NOT retry — move on and note "governed metrics unavailable this turn" in the narrative of whichever item would have used it.
+   e) If the analyze call errors: do NOT retry.
 5. data_360 (PRESCRIPTIVE — call when ANY of the criteria below are met). This is the server that surfaces external, behavioral, and unified data that CRM alone cannot see — skipping it when a criterion applies is a defect, not a budget saving.
 
    CALL data_360 IF ANY OF:
@@ -177,10 +177,10 @@ LIMIT 25
    - Step 2 surfaced stale accounts (>30 days no activity) — check external transaction / wire / ACH anomalies for those accounts to find a concrete outreach hook.
    - It is a Monday OR the start of a month — weekly/monthly behavioral trend DMOs are most useful at these inflection points.
 
-   SKIP data_360 ONLY IF: the data_360 metadata tool errors, OR the metadata response lists no DMOs that map to the criterion above, OR you have already produced 3 strong items and would exceed the 5-call budget.
+   SKIP data_360 ONLY IF: the DATA CLOUD CATALOG block is absent from the system prompt, OR OR the metadata response lists no DMOs that map to the criterion above, OR you have already produced 3 strong items and would exceed the 5-call budget.
 
    EXECUTION (one pass, no retries):
-   a) the data_360 metadata tool ONCE (unfiltered) — read the full fields[] array for every returned DMO.
+   a) Pick a DMO VERBATIM from the DATA CLOUD CATALOG block in the system prompt — do NOT call any metadata tool, it has been filtered out of your tools this turn and returns "Unknown tool". If the catalog is absent, skip DC entirely.
    b) Pick ONE DMO whose name/fields match the criterion that triggered this step (transactions, engagement, profile, life events).
    c) Verify every column you plan to SELECT appears CHARACTER-FOR-CHARACTER in that DMO's fields array (case-sensitive, full prefix like "ssot__" or "__c").
    d) Emit ONE narrow SQL call (SELECT specific columns, LIMIT 20, filter by OwnerId when the DMO exposes it). Never "SELECT *", never bare lowercase "name"/"id".

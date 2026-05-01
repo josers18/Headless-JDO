@@ -22,11 +22,11 @@ Efficient plan — one pass, no retries on errors, do not guess custom fields:
 4. tableau_next (REQUIRED — always attempt). Tableau-sourced KPIs are the core differentiator of the pulse: CRM counts alone cannot compute period-over-period ratios or governed win-rate. At LEAST ONE KPI tile must come from tableau_next in a normal (non-degraded) pulse.
 
    EXECUTION (one pass, no retries):
-   a) Call the tableau_next models-list tool ONCE — it's the one whose name matches /^(getSemanticModels|list_semantic_models|listModels)/i. Category filter "Sales" is OK ONLY to narrow the list.
-   b) Pick ONE real model identifier from a returned row — copy verbatim; NEVER pass "Sales"/"Service" as the model id.
+   a) Pick an apiName VERBATIM from the TABLEAU NEXT SEMANTIC MODELS catalog block in the system prompt — e.g. "Transactions", "Financial_Accounts", "Trades", "Case_Model_1", "Campaigns". DO NOT call any models-list tool — it has been filtered out of your tools this turn and will return "Unknown tool". If the catalog block is absent (cache unavailable), skip the analyze call entirely and note "Governed comparisons unavailable this session."
+   b) NEVER pass "Sales"/"Service" as the targetEntityIdOrApiName — those are category labels, not model ids.
    c) One analyze call asking ONE concrete metric question tied to this banker's book (pipeline change last 7d, win rate, AUM trend, etc.).
    d) Tag the resulting tile with a tableau_next source.
-   e) If the models-list tool errors, returns no rows, or analyze errors: do NOT retry. Ship the pulse as CRM + DC with a narrative line like "Governed comparisons unavailable this session."
+   e) If the analyze call errors: do NOT retry.
 
 5. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). This surfaces unified AUM, held-aways, and cross-source engagement that neither CRM nor Tableau can compute. Skipping when a criterion applies means the pulse misses the banker's most-asked-about number: "how much wealth do my clients hold outside our platform?"
 
@@ -36,10 +36,10 @@ Efficient plan — one pass, no retries on errors, do not guess custom fields:
    - It is a Monday OR the start of a month — surface weekly/monthly unified engagement score (tile: "Book health").
    - Tableau (step 4) was skipped or errored AND CRM-only KPIs would be thin — fill the gap with a DC-sourced tile rather than a single-source pulse.
 
-   SKIP data_360 ONLY IF: getDcMetadata errors, no DMOs match any criterion, or you already have 3 strong KPI tiles from steps 1–4.
+   SKIP data_360 ONLY IF: the DATA CLOUD CATALOG block is absent from the system prompt, OR no DMOs match any criterion, or you already have 3 strong KPI tiles from steps 1–4.
 
    EXECUTION (one pass, no retries):
-   a) getDcMetadata ONCE unfiltered.
+   a) Pick a DMO VERBATIM from the DATA CLOUD CATALOG block in the system prompt — do NOT call any metadata tool, it has been filtered out of your tools this turn and returns "Unknown tool". If the catalog is absent, skip DC entirely.
    b) Pick ONE DMO matching the triggered criterion (held-aways, unified engagement, cross-source transaction).
    c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
    d) One narrow postDcQuerySql (LIMIT 20, OwnerId-qualified when the DMO exposes it).

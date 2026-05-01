@@ -30,10 +30,10 @@ Efficient plan — ONE pass, read-only tools only, do NOT write:
    - Step 2 returned no overdue tasks (no obvious hook from CRM) — check recent behavioral life-event inference (address change, employer change, dependent added) to seed a warm-touch outreach draft.
    - Step 3 returned stale accounts (>30d no activity) — check for external wire/ACH anomalies on those accounts; a wire-triggered draft outranks a generic "we haven't talked lately" note.
 
-   SKIP data_360 ONLY IF: the data_360 metadata tool errors, no DMOs match any criterion, or steps 1–3 already gave you enough concrete hooks for ${n} strong drafts.
+   SKIP data_360 ONLY IF: the DATA CLOUD CATALOG block is absent from the system prompt, OR no DMOs match any criterion, or steps 1–3 already gave you enough concrete hooks for ${n} strong drafts.
 
    EXECUTION (one pass, no retries):
-   a) the data_360 metadata tool ONCE (unfiltered).
+   a) Pick a DMO VERBATIM from the DATA CLOUD CATALOG block in the system prompt — do NOT call any metadata tool, it has been filtered out of your tools this turn and returns "Unknown tool". If the catalog is absent, skip DC entirely.
    b) Pick ONE DMO matching the triggered criterion.
    c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
    d) One narrow call on the data_360 SQL tool (LIMIT 20, filter by account ids from steps 1–3 where possible).
