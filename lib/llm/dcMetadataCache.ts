@@ -115,23 +115,65 @@ export function toDcSnapshot(envelope: CachedDcMetadata): DcSnapshot {
 }
 
 /**
+ * Regex matching DMO names a relationship banker would plausibly query.
+ * Matches common FSC / financial service entity families plus unified-
+ * profile and engagement shapes. The match is CASE-INSENSITIVE and
+ * applies to the name anywhere in the string, so both
+ * `Financial_Accounts__dlm` and `FinancialAccountHistory__dll` hit.
+ *
+ * Banker-relevant buckets:
+ *   - Financial / FinServ* / Finance — financial accounts, holdings, goals
+ *   - Account / Client / Contact / Household / Party — identity primitives
+ *   - Opportunity / Lead / Deal / Pipeline — sales surface
+ *   - Transaction / Trade / Wire / Ach / Balance — movements
+ *   - Engagement / Activity / Interaction / Touchpoint — digital signals
+ *   - LifeEvent / PersonLifeEvent — client moments
+ *   - UnifiedIndividual / Individual / Identity / Profile — canonical shape
+ *   - Case / Ticket / Complaint / Service — relationship maintenance
+ */
+const BANKER_RELEVANT_NAME_RE =
+  /financial|finserv|finance|account|client|contact|household|party|opportunity|lead|deal|pipeline|transaction|trade|wire|ach|balance|engagement|activity|interaction|touchpoint|lifeevent|person[_]?life|unifiedindividual|unified[_]?individual|identity|profile|case|ticket|complaint|service/i;
+
+function isBankerRelevant(name: string, category?: string): boolean {
+  if (BANKER_RELEVANT_NAME_RE.test(name)) return true;
+  // Accept category-level inclusion for Profile tables even if the
+  // name doesn't match the heuristic — they're canonical for FSC.
+  if (category === "Profile") return true;
+  return false;
+}
+
+/**
  * Render the surviving DMO catalog as a compact markdown block injectable
  * into the system prompt. The model reads this at turn start and can pick
  * a table + column directly, skipping the get_dc_metadata tool call.
  *
- * We cap at `maxDmos` (default 200) and prefer the highest-rowCount
- * entries in each banker-relevant category. An empty or missing cache
- * produces "".
+ * Filtering strategy (Option C — tight + banker-relevant):
+ *   1. Partition into banker-relevant vs everything-else via name+category.
+ *   2. Take the top `bankerCap` (default 60) banker-relevant by rowCount.
+ *   3. Append `overflowCap` (default 10) highest-rowCount catch-all rows.
+ *   4. Total cap ~70 rows ≈ ~5–8KB of prompt — small enough that the model
+ *      actually reads table names verbatim instead of skimming.
  */
 export function toSystemPromptSection(
   envelope: CachedDcMetadata | null,
-  maxDmos = 200
+  opts: { bankerCap?: number; overflowCap?: number } = {}
 ): string {
   if (!envelope || envelope.dmos.length === 0) return "";
+  const bankerCap = opts.bankerCap ?? 60;
+  const overflowCap = opts.overflowCap ?? 10;
 
-  const topDmos = envelope.dmos.slice(0, maxDmos);
+  // Envelope.dmos is already sorted by rowCount desc from the refresh job.
+  const bankerRelevant = envelope.dmos
+    .filter((d) => isBankerRelevant(d.name, d.category))
+    .slice(0, bankerCap);
+  const bankerSet = new Set(bankerRelevant.map((d) => d.name));
+  const overflow = envelope.dmos
+    .filter((d) => !bankerSet.has(d.name))
+    .slice(0, overflowCap);
+
+  const shown = [...bankerRelevant, ...overflow];
   const categoryCounts = new Map<string, number>();
-  for (const d of topDmos) {
+  for (const d of shown) {
     const cat = d.category ?? "Other";
     categoryCounts.set(cat, (categoryCounts.get(cat) ?? 0) + 1);
   }
@@ -145,29 +187,47 @@ export function toSystemPromptSection(
     `DATA CLOUD CATALOG (pre-loaded from ${envelope.generatedAt}; no get_dc_metadata call needed this turn)`
   );
   lines.push(
-    `Dataspace: ${envelope.dataspace} · ${envelope.survivingDmos} DMOs have data (${envelope.emptyDmos} empty + ${envelope.errorDmos} errors filtered out) · by category: ${categorySummary}`
+    `Dataspace: ${envelope.dataspace} · ${envelope.survivingDmos} DMOs total have data; the ${shown.length} banker-relevant ones are listed below (sorted by row count desc).`
   );
   lines.push(
-    `Use these DMO names and field names verbatim in post_dc_query_sql. The runtime preflight will STRICTLY reject any table or column that is not listed here — don't improvise.`
+    `Categories shown: ${categorySummary} · ${envelope.emptyDmos} empty + ${envelope.errorDmos} errored DMOs were filtered out during refresh.`
   );
   lines.push("");
   lines.push(
-    `Format: <TableName> [category] (rowCount) fields...`
+    `RULES (STRICT — the runtime preflight enforces these):`
   );
-  for (const d of topDmos) {
+  lines.push(
+    `- Copy DMO table names VERBATIM from this list — every underscore, every __dll/__dlm suffix, case-sensitive. Do NOT improvise variants (no "_Snow__dlm" when the list has "_Snow_XL__dll").`
+  );
+  lines.push(
+    `- Copy field names VERBATIM from the listed fields. The ":ty" suffix is a compact kind hint: T=text, N=number, B=boolean, D=date. It's NOT part of the column name — drop it in SQL.`
+  );
+  lines.push(
+    `- If the table you need isn't listed here, say so and move on — do NOT guess. This list already filtered to ${envelope.survivingDmos} DMOs with real data across ${envelope.totalDmos} total; if it's not here it either has 0 rows or isn't banker-relevant.`
+  );
+  lines.push("");
+  lines.push(
+    `Format: <TableName> [category] (rowCount) — fields...`
+  );
+  const FIELDS_PER_DMO = 12;
+  for (const d of shown) {
     const cat = d.category ? ` [${d.category}]` : "";
     const fields = d.fields
-      .slice(0, 20)
+      .slice(0, FIELDS_PER_DMO)
       .map((f) => (f.ty ? `${f.name}:${f.ty}` : f.name))
       .join(", ");
-    const more = d.fields.length > 20 ? `, +${d.fields.length - 20} more` : "";
+    const more =
+      d.fields.length > FIELDS_PER_DMO
+        ? `, +${d.fields.length - FIELDS_PER_DMO} more`
+        : "";
     lines.push(
-      `- ${d.name}${cat} (${d.rowCount.toLocaleString()}): ${fields}${more}`
+      `- ${d.name}${cat} (${d.rowCount.toLocaleString()}) — ${fields}${more}`
     );
   }
-  if (envelope.dmos.length > maxDmos) {
+  const unshownCount = envelope.dmos.length - shown.length;
+  if (unshownCount > 0) {
     lines.push(
-      `- …and ${envelope.dmos.length - maxDmos} more (truncated to keep the prompt compact — request a specific DMO via get_dc_metadata ONLY if the table you need isn't in this list).`
+      `- …and ${unshownCount} more non-banker-relevant DMOs not shown (experimentation cohorts, embeddings, directory tables, etc.).`
     );
   }
   return lines.join("\n");

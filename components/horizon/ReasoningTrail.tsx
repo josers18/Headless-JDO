@@ -177,7 +177,7 @@ function AggregateRow({
         <span className="ml-auto truncate text-[10px] text-text-muted/60">
           {isBlocked
             ? "breaker — further calls suppressed"
-            : "schema mismatch — handled"}
+            : `${count} guesses caught — recovered`}
         </span>
         <ChevronRight
           size={11}
