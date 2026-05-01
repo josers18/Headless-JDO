@@ -38,6 +38,7 @@ import {
   modelIdFor,
   openAiClientFor,
 } from "@/lib/llm/inferenceClients";
+import { log } from "@/lib/log";
 
 export interface AgentEvent {
   type:
@@ -562,12 +563,14 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   //     measurements is already in the prompt).
   // analyze_data and post_dc_query_sql are ALWAYS visible so the model
   // can actually query.
+  const strippedForDebug: string[] = [];
   const visibleToolDefs = toolDefs.filter((d) => {
     if (
       preloadedDcSnapshot &&
       d.server === "data_360" &&
       /^(getDcMetadata|get_dc_metadata)/i.test(d.name)
     ) {
+      strippedForDebug.push(`${d.server}.${d.name}`);
       return false;
     }
     if (
@@ -575,11 +578,24 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
       d.server === "tableau_next" &&
       /^(getSemanticModels|listModels|list_semantic_models)/i.test(d.name)
     ) {
+      strippedForDebug.push(`${d.server}.${d.name}`);
       return false;
     }
     return true;
   });
   const tools = toOpenAiTools(visibleToolDefs);
+  // Temporary diagnostic: log which tools are being stripped this turn so
+  // we can prove the filter is doing what we expect across the entire
+  // agent loop's lifetime. Also log the full tableau_next tool names we
+  // saw so we can spot any unexpected variants the server registers under.
+  log.info("agent.tools.filter", {
+    preloadedDcSnapshot: Boolean(preloadedDcSnapshot),
+    preloadedTableauSdms,
+    stripped: strippedForDebug,
+    tableauNames: toolDefs
+      .filter((d) => d.server === "tableau_next")
+      .map((d) => d.name),
+  });
 
   // Once-per-turn capability probe: does the registry expose any tableau_next
   // analyze tool? If not, the preflight blocks getSemanticModels/listModels
