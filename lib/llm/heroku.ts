@@ -581,6 +581,15 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     return true;
   });
   const tools = toOpenAiTools(visibleToolDefs);
+  // Set of visible-and-callable qualified names for defensive dispatch
+  // filtering. When the model emits a tool name that isn't in this set
+  // (a hallucination like "$MCP_SERVER_DATA_360__get_dc_metadata" from
+  // observed trails, or any stripped tool), we reject the call at the
+  // dispatcher rather than letting parseToolName fall back to
+  // salesforce_crm and hit sobject-all with an unknown tool name.
+  const visibleToolNameSet = new Set(
+    visibleToolDefs.map((d) => d.qualifiedName)
+  );
 
   // Once-per-turn capability probe: does the registry expose any tableau_next
   // analyze tool? If not, the preflight blocks getSemanticModels/listModels
@@ -755,6 +764,53 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         const server = parsed?.server ?? "salesforce_crm";
         const tool = parsed?.name ?? c.name;
         const key = `${server}.${tool}`;
+
+        // Reject hallucinated tool names BEFORE any dispatch logic runs.
+        // Observed pattern: model emits names like
+        //   "$MCP_SERVER_DATA_360__get_dc_metadata"
+        // when it wants a tool that's been filtered. parseToolName can't
+        // match the prefix, falls back to salesforce_crm, and the bad
+        // name gets dispatched into sobject-all. Our first line of
+        // defense: reject any call whose qualifiedName isn't in the
+        // pre-approved visible set. Emit a tool_use/tool_result pair
+        // so the reasoning trail shows what happened and the model
+        // sees an unambiguous error on its next iteration.
+        if (!visibleToolNameSet.has(c.name)) {
+          const rejection = JSON.stringify({
+            rejected: true,
+            server,
+            tool,
+            reason: `Unknown tool "${c.name}". It was either never registered, or it was filtered out of this turn's tool list because the required data is already pre-loaded into the system prompt (Data Cloud DMO catalog, Tableau Next semantic models).`,
+            instruction:
+              "Do NOT retry with a different prefix or suffix. The tool list given to you this turn is authoritative — pick a real tool from that list, or if you need Data Cloud metadata / Tableau semantic models, read the pre-loaded catalogs that were included in the system prompt instead of calling any discovery tool.",
+          });
+          onEvent({ type: "tool_use", server, tool, input: {} });
+          onEvent({
+            type: "tool_result",
+            server,
+            tool,
+            preview: rejection,
+            is_error: true,
+          });
+          // Trip the breaker on this hallucinated name so the model
+          // can't retry with the same invented prefix.
+          blockedTools.add(key);
+          return {
+            c,
+            server,
+            tool,
+            argObj: {},
+            result: {
+              server: server as McpServerName,
+              tool,
+              isError: true,
+              content: null,
+              textPreview: rejection,
+              modelText: rejection,
+            },
+          };
+        }
+
         let argObj: Record<string, unknown> = {};
         try {
           argObj = c.argsJson ? JSON.parse(c.argsJson) : {};
