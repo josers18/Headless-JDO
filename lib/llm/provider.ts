@@ -16,6 +16,11 @@ import {
   resolveInferenceBackend,
   type InferenceBackend,
 } from "./inferenceClients";
+import {
+  loadCachedDcMetadata,
+  toDcSnapshot,
+  toSystemPromptSection,
+} from "@/lib/llm/dcMetadataCache";
 import { log } from "@/lib/log";
 
 export type { InferenceBackend } from "./inferenceClients";
@@ -75,9 +80,33 @@ export async function runAgentWithMcp(
     salesforceToken: input.salesforceToken,
   });
 
+  // Preload Data Cloud metadata from the Redis cache (populated every 12h
+  // by scripts/refresh-dc-metadata.ts). When present:
+  //   - the SQL preflight starts strict on iteration 1
+  //   - the metadata-before-SQL gate is pre-satisfied
+  //   - get_dc_metadata is hidden from the model's tool list
+  //   - a compact catalog block is appended to the system prompt
+  // When missing (Redis unavailable, cache not yet populated), we fall
+  // back to the existing live-metadata-per-turn behavior.
+  const cachedDcMetadata = await loadCachedDcMetadata();
+  if (cachedDcMetadata) {
+    log.info("agent.dc_metadata.cache_hit", {
+      routeHint: input.routeHint ?? "",
+      dmos: cachedDcMetadata.survivingDmos,
+      generatedAt: cachedDcMetadata.generatedAt,
+    });
+  }
+  const preloadedDcSnapshot = cachedDcMetadata
+    ? toDcSnapshot(cachedDcMetadata)
+    : undefined;
+  const dcCatalogSection = toSystemPromptSection(cachedDcMetadata);
+  const systemWithCatalog = dcCatalogSection
+    ? `${input.system}\n\n${dcCatalogSection}`
+    : input.system;
+
   const runOnce = (backend: InferenceBackend) =>
     runAgent({
-      system: input.system,
+      system: systemWithCatalog,
       messages: input.messages,
       registry,
       onEvent: input.onEvent,
@@ -86,6 +115,7 @@ export async function runAgentWithMcp(
       maxTokens: input.maxTokens,
       forceFirstToolCall: input.forceFirstToolCall,
       inferenceBackend: backend,
+      preloadedDcSnapshot,
     });
 
   try {

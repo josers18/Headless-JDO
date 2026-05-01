@@ -25,6 +25,7 @@
     "verify:p02": "tsx --env-file=.env scripts/verify-p02.ts",
     "mcp:check": "tsx --env-file=.env scripts/mcp-check.ts",
     "mcp:refresh": "bash scripts/mcp-refresh.sh",
+    "refresh:dc-metadata": "tsx --env-file=.env scripts/refresh-dc-metadata.ts",
     "test:signoff": "tsx scripts/test-signoff-policy.ts"
   },
   "cacheDirectories": [

@@ -84,6 +84,19 @@ export interface AgentRunArgs {
    * Default heroku (primary INFERENCE_* endpoint).
    */
   inferenceBackend?: InferenceBackend;
+  /**
+   * Pre-loaded Data Cloud metadata snapshot (usually from the Redis cache
+   * written by scripts/refresh-dc-metadata.ts). When provided:
+   *   - the snapshot is seeded before the first iteration, so the SQL
+   *     preflight's strict table/column checks fire on iteration 1
+   *   - the metadata-before-SQL gate is pre-satisfied, letting the model
+   *     call post_dc_query_sql directly without a metadata round-trip
+   *   - the get_dc_metadata tool is hidden from the model's tools array
+   *     so it can't waste a call re-fetching what we already have
+   * The model still sees the catalog via a system-prompt section built
+   * from the same cache — see lib/llm/dcMetadataCache.ts#toSystemPromptSection.
+   */
+  preloadedDcSnapshot?: DcSnapshot;
 }
 
 export interface AgentRunResult {
@@ -525,13 +538,28 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     onEvent = () => {},
     forceFirstToolCall = false,
     inferenceBackend = "heroku",
+    preloadedDcSnapshot,
   } = args;
 
   const client = openAiClientFor(inferenceBackend);
   const model = modelIdFor(inferenceBackend);
 
   const toolDefs = await registry.listAllTools();
-  const tools = toOpenAiTools(toolDefs);
+  // When the caller preloaded the DC catalog, the model doesn't need to
+  // call get_dc_metadata at all — we seed the snapshot from the cache
+  // below and inject the catalog into the system prompt. Hide the tool
+  // from the model so a redundant call isn't even possible. The SQL tool
+  // remains so the model can actually query.
+  const visibleToolDefs = preloadedDcSnapshot
+    ? toolDefs.filter(
+        (d) =>
+          !(
+            d.server === "data_360" &&
+            /^(getDcMetadata|get_dc_metadata)/i.test(d.name)
+          )
+      )
+    : toolDefs;
+  const tools = toOpenAiTools(visibleToolDefs);
 
   // Once-per-turn capability probe: does the registry expose any tableau_next
   // analyze tool? If not, the preflight blocks getSemanticModels/listModels
@@ -559,19 +587,21 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   const blockedTools = new Set<string>();
 
   // Per-turn metadata-before-SQL gate for data_360. Flips to true when the
-  // first getDcMetadata* tool call returns without an error. Used by the
-  // dispatcher to short-circuit any postDcQuerySql* call that arrives
-  // before metadata has been read. See isDataCloudSqlTool / metadataGatePayload.
-  let dataCloudMetadataSeen = false;
+  // first getDcMetadata* tool call returns without an error — OR when the
+  // caller pre-seeded a cached snapshot (no live call needed).
+  let dataCloudMetadataSeen = Boolean(preloadedDcSnapshot);
 
   // Schema-grounded snapshot for D1/D2 preflight checks. Successful
   // getDcMetadata responses get ingested here; postDcQuerySql calls
   // have their table and column references verified against it before
-  // dispatch. Starts empty and grows monotonically within a turn —
-  // nothing is shared across turns, because schema can differ by
-  // dataspace and we should never reject on stale data from a prior
-  // request. See lib/llm/dataCloudSchema.ts.
-  const dcSnapshot = emptyDcSnapshot();
+  // dispatch. When preloadedDcSnapshot is provided by the caller
+  // (typically from the Redis-backed Data Cloud metadata cache), we
+  // start with a fully-populated snapshot so the preflight is STRICT
+  // on iteration 1 and the model can call SQL directly without a
+  // metadata round-trip. See lib/llm/dcMetadataCache.ts.
+  const dcSnapshot: DcSnapshot = preloadedDcSnapshot
+    ? clonePreloadedSnapshot(preloadedDcSnapshot)
+    : emptyDcSnapshot();
 
   // Per-turn tool-call result cache. Keyed by `${server}.${tool}:${argsJson}`.
   // When the model re-emits the exact same tool_call in a later iteration
@@ -994,6 +1024,21 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     toolCalls: collectedCalls,
     iterations: iteration - 1,
     transcript: messages.slice(1),
+  };
+}
+
+/**
+ * Shallow clone of a cached DcSnapshot so per-turn mutations (if any
+ * accidental ones slip in) don't bleed into the module-level cache
+ * object. Tables are shared by reference — they're read-only from
+ * the preflight's perspective — but the top-level Map + boolean
+ * flags are fresh per turn.
+ */
+function clonePreloadedSnapshot(source: DcSnapshot): DcSnapshot {
+  return {
+    tables: new Map(source.tables),
+    truncated: source.truncated,
+    hasData: source.hasData,
   };
 }
 

@@ -14,10 +14,16 @@ export function getRedis(): Redis | null {
     redis = null;
     return null;
   }
+  // Heroku Redis uses rediss:// with a self-signed cert chain. ioredis's
+  // default tls.createSecureContext() rejects self-signed certs, so we
+  // relax the check ONLY when the URL is rediss://. Plain redis:// (local
+  // dev) is unaffected.
+  const isTls = url.startsWith("rediss://");
   redis = new Redis(url, {
     maxRetriesPerRequest: 2,
     enableReadyCheck: true,
     lazyConnect: true,
+    ...(isTls ? { tls: { rejectUnauthorized: false } } : {}),
   });
   return redis;
 }
