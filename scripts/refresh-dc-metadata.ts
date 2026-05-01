@@ -16,7 +16,7 @@
  *      fields: [{name, ty}] } where ty is our compact 1-char kind.
  *   5. Write to Redis:
  *        dc:metadata:v1:default  → JSON.stringify({ generatedAt, dmos })
- *        TTL: 13h (buffer past the 12h schedule)
+ *        TTL: 25h (survives a fully-missed refresh cycle at 12h cadence)
  *
  * Runtime impact:
  *   - One-time 5.5MB fetch per refresh (scheduler host, not a web dyno)
@@ -42,7 +42,12 @@ import {
 
 const DATASPACE = process.env.DC_METADATA_DATASPACE ?? "default";
 const REDIS_KEY = `dc:metadata:v1:${DATASPACE}`;
-const TTL_SECONDS = 13 * 60 * 60; // 13h — buffer past the 12h cadence
+// Generous buffer: 25h TTL on a 12h effective refresh cadence means a
+// MISSED refresh (scheduler outage, deploy window, transient token failure)
+// still leaves up to 13h of runway before users see an expired cache.
+// Sized to "scheduler can miss one full run without regression". DMO schema
+// is deploy-frequency semi-static so a 25h-stale catalog is still fine.
+const TTL_SECONDS = 25 * 60 * 60;
 
 // Effective refresh cadence. The scheduler may fire more often (Heroku
 // Scheduler's smallest preset is hourly), but the actual DC work — 587

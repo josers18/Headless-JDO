@@ -10,7 +10,8 @@
  *      semanticDataObjects -> semanticDimensions / semanticMeasurements
  *      shape. That's what the model needs to write targeted analyze_data
  *      utterances instead of asking vague "show me sales" questions.
- *   4. Writes to Redis at tableau:sdms:v1:default with 13h TTL.
+ *   4. Writes to Redis at tableau:sdms:v1:default with 26h TTL (2h buffer
+ *      past the 24h daily cadence).
  *
  * Runtime impact: 1 list call + N get_semantic_model calls (N ≈ 10 for
  * banker-relevant filter). Total ~15s on the scheduler dyno. Cheap.
@@ -29,7 +30,11 @@ import { log } from "../lib/log";
 
 const DATASPACE = process.env.TABLEAU_SDM_DATASPACE ?? "default";
 const REDIS_KEY = `tableau:sdms:v1:${DATASPACE}`;
-const TTL_SECONDS = 13 * 60 * 60;
+// Tableau runs DAILY (at midnight UTC), so TTL needs >24h to tolerate any
+// missed run. 26h gives 2h of buffer past the cadence — any scheduler
+// outage past that window forces a cache miss, but SDM changes are deploy-
+// frequency rare so this is acceptable.
+const TTL_SECONDS = 26 * 60 * 60;
 
 // Same cadence-gating pattern as refresh-dc-metadata.ts. Scheduler's
 // smallest preset is hourly; we skip when the cache is < MIN_AGE_HOURS old.
