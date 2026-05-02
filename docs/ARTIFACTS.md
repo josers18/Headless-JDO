@@ -35,6 +35,17 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 | `npm run smoke:api` | HTTP smoke against configured `APP_URL` |
 | `npm run sf:login` | Refresh Salesforce tokens for local scripts |
 | `npm run mcp:check` | Quick MCP initialize probe |
+| `npm run mcp:refresh` | Wrapper around `sf:login` that also prints Cursor re-source reminders |
+| `npm run refresh:dc-metadata` | Scheduled job — rebuilds the DC DMO catalog cache in Redis (see [OPERATIONS.md](./OPERATIONS.md#scheduled-jobs)) |
+| `npm run refresh:tableau-sdms` | Scheduled job — rebuilds the Tableau Next SDM catalog cache in Redis |
+| `npm run seed:dc` | Populate synthetic Data Cloud seed records |
+
+## Admin / diagnostic endpoints
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `/api/health` | GET | Liveness probe — used by Heroku + smoke tests |
+| `/api/admin/refresh-dc-cache` | GET | Returns current DC metadata cache freshness, surviving DMO count, and top 10 DMOs by row count. Does NOT trigger a refresh — that runs out-of-band via the scheduler. |
 
 ## Reference documentation
 

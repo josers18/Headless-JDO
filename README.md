@@ -47,8 +47,8 @@
 | ------ | ------------------------------------------------------------------------------------ |
 | App    | Next.js 15 (App Router), React 18, TypeScript strict, Tailwind, shadcn-style UI      |
 | Deploy | Single Heroku `web` dyno (`Procfile`: `npm start`)                                   |
-| Data   | Heroku Postgres (sessions / history), Redis (streaming / TTS cache where configured) |
-| Auth   | Salesforce OAuth 2.1 + PKCE (ECA, `mcp_api` scope)                                   |
+| Data   | Heroku Postgres (sessions / history), Redis (streaming, TTS cache, **DMO + SDM catalog caches** refreshed by Heroku Scheduler) |
+| Auth   | Salesforce OAuth 2.1 + PKCE (ECA, `mcp_api` + `cdp_api` scopes)                      |
 | Voice  | Web Speech API (TTS / STT); optional ElevenLabs via `/api/tts` when configured       |
 
 
@@ -61,11 +61,17 @@
 | -------------------------- | ---------------------------------------------------------------------------------------- |
 | `app/page.tsx`             | Home — primary surface                                                                   |
 | `app/api/`*                | SSE / JSON routes: `ask`, `brief`, `priority`, `pulse`, `drafts`, `signals`, OAuth, etc. |
-| `lib/llm/heroku.ts`        | Agent loop: model → tool calls → parallel MCP → repeat                                   |
-| `lib/mcp/client.ts`        | MCP SDK sessions to Salesforce + optional Heroku toolkit                                 |
+| `app/api/admin/refresh-dc-cache/` | Diagnostic GET — returns DC metadata cache freshness + top DMOs by row count   |
+| `lib/llm/heroku.ts`        | Agent loop: model → tool calls → parallel MCP → repeat; tool-filter + hallucination-reject |
+| `lib/llm/provider.ts`      | `runAgentWithMcp` wrapper — loads both caches, injects catalogs into system prompt        |
+| `lib/llm/dcMetadataCache.ts` | Reads DC DMO catalog from Redis, renders system-prompt block                           |
+| `lib/llm/tableauSemanticCache.ts` | Reads Tableau SDM catalog from Redis, renders system-prompt block                 |
+| `lib/mcp/client.ts`        | MCP SDK sessions to Salesforce + optional Heroku toolkit; per-tool timeouts              |
 | `lib/prompts/*`            | Versioned prompts (`SYSTEM_PROMPT_VERSION` + per-feature `*_PROMPT_VERSION`)             |
 | `components/horizon/*`     | UI sections                                                                              |
 | `scripts/verify-mcp.ts`    | Smoke test all three Salesforce MCPs                                                     |
+| `scripts/refresh-dc-metadata.ts` | Heroku-Scheduler job — rebuilds DC DMO catalog into Redis every 12h (hourly with internal skip gate) |
+| `scripts/refresh-tableau-sdms.ts` | Heroku-Scheduler job — rebuilds Tableau SDM catalog into Redis daily               |
 | `.github/workflows/ci.yml` | Lint, typecheck, build on `main` / PRs                                                   |
 
 
@@ -101,6 +107,8 @@ Sign in via Salesforce from the app; the callback URL must match your External C
 | `npm run sf:login`                   | PKCE login; refreshes tokens for scripts |
 | `npm run smoke:api`                  | Hit deployed API health / smoke paths    |
 | `npm run mcp:check`                  | Fast MCP `initialize` probe              |
+| `npm run refresh:dc-metadata`        | Rebuild DC DMO catalog cache in Redis (Heroku Scheduler job) |
+| `npm run refresh:tableau-sdms`       | Rebuild Tableau Next SDM catalog cache in Redis (Heroku Scheduler job) |
 
 
 ---

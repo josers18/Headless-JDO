@@ -43,7 +43,40 @@ These patterns **actually appeared** in demo runs; `system.ts` §MCP HYGIENE enc
 
 | Symptom | Cause | Mitigation |
 |---------|--------|------------|
-| `no access to the semantic model` | Passing category label (`"Sales"`) as model id. | `getSemanticModels` → copy real **id / developerName** from a row. |
+| `no access to the semantic model` | Passing category label (`"Sales"`) as model id. | Pick an `apiName` **verbatim** from the TABLEAU NEXT SEMANTIC MODELS catalog injected into the system prompt. Never improvise a model id. |
+| `analyze_data exceeded 20000ms` | Utterance is too long or multi-clause; Tableau's LLM Q&A takes >20s. | Keep utterances under 15 words and single-facet (one metric, one filter window). Break compound questions into separate analyze calls — the Tableau side times out faster on simple questions. |
+| `Unknown tool "tableau_next__list_semantic_models"` | Model called a tool the cache-aware filter strips. | Expected rejection — means a prompt still directs the model to a filtered tool. Rewrite that prompt to point at the injected catalog. |
+
+## Catalog-first prompt discipline
+
+Horizon pre-computes both discovery catalogs (Data Cloud DMOs, Tableau SDMs) and injects them into the system prompt on every turn when cached. See [ARCHITECTURE.md#metadata-cache-layer](./ARCHITECTURE.md#metadata-cache-layer) for the mechanics.
+
+**Hard rule:** no prompt in `lib/prompts/*` may direct the model to call a discovery tool that has been filtered out when the cache is hit. Specifically:
+
+| Server | Filtered-when-cached tools | Prompt must say |
+|--------|---------------------------|-----------------|
+| `data_360` | `get_dc_metadata`, `getDcMetadata*` | "Pick a DMO VERBATIM from the DATA CLOUD CATALOG block" |
+| `tableau_next` | `list_semantic_models`, `getSemanticModels*`, `listModels*` | "Pick an apiName VERBATIM from the TABLEAU NEXT SEMANTIC MODELS block" |
+
+**Why:** when a prompt says "call the metadata tool first" and the runtime has stripped that tool from the OpenAI function list, the model obediently emits the tool_call, the dispatcher rejects it as an unknown tool, and the reasoning trail shows an avoidable `schema mismatch — handled` rejection row. The model has to loop back and self-correct, which wastes iterations and looks messy in the trail. Keeping prompt and filter in sync eliminates the class entirely.
+
+**When adding a new prompt or touching an existing one:**
+
+1. If your prompt needs to reference DC DMO names or columns, say "from the DATA CLOUD CATALOG block" — not "from getDcMetadata".
+2. If your prompt needs a Tableau SDM apiName, say "from the TABLEAU NEXT SEMANTIC MODELS block" — not "from list_semantic_models".
+3. Add a skip-condition for when the catalog is absent (cold Redis, first deploy): "If the catalog block is absent, skip this facet entirely."
+
+## Hard budget pattern
+
+Every section prompt that does multi-step evidence gathering should open with a `HARD BUDGET` line specifying max tool calls. Observed pattern: without an explicit budget, the model re-queries on every iteration and trails balloon to 12+ calls. Template:
+
+```
+HARD BUDGET: Maximum N tool calls total. Do ONE pass of evidence-gathering,
+then emit the final output from those results. Do NOT re-query between
+output items. Once you have enough evidence, STOP calling tools.
+```
+
+Applied across `morning-brief.ts` (5), `draft-queue.ts` (5), `portfolio-pulse.ts` (5).
 
 ## Editing checklist
 

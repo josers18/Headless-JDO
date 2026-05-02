@@ -29,7 +29,7 @@
 3. **Verify** — open any Cursor chat and ask:
    > List all Data 360 tools available.
 
-   You should see tool names like `data_360__getDcMetadata…`, `data_360__postDcQuerySql…` (exact suffixes vary by workspace binding), `salesforce_crm__soqlQuery`, etc., in the agent’s tool list.
+   You should see tool names like `data_360__get_dc_metadata`, `data_360__post_dc_query_sql`, `tableau_next__analyze_data`, `tableau_next__list_semantic_models`, `salesforce_crm__soqlQuery`, etc., in the agent's tool list. (Both snake_case first-party names and the older camelCase `custom/*MCP` names are possible depending on which endpoint family is registered; runtime code tolerates both shapes.)
 
 ---
 
@@ -52,8 +52,8 @@ Cursor resolves `${env:NAME}` at server-load time from **its own process environ
 | Server (Cursor) | URL | Transport | Auth | Token source |
 |---|---|---|---|---|
 | `salesforce_crm` | `https://api.salesforce.com/platform/mcp/v1/platform/sobject-all` | Streamable HTTP | `Authorization: Bearer ${env:SF_ACCESS_TOKEN}` | `.env` (refreshed by `sf:login`) |
-| `data_360` | `https://api.salesforce.com/platform/mcp/v1/custom/Data360MCP` | Streamable HTTP | Same SF token | Same |
-| `tableau_next` | `https://api.salesforce.com/platform/mcp/v1/custom/AnalyticsMCP` | Streamable HTTP | Same SF token | Same |
+| `data_360` | `https://api.salesforce.com/platform/mcp/v1/data/data-cloud-queries` | Streamable HTTP | Same SF token | Same |
+| `tableau_next` | `https://api.salesforce.com/platform/mcp/v1/analytics/tableau-next` | Streamable HTTP | Same SF token | Same |
 | `heroku_toolkit` | `${INFERENCE_URL}/mcp/sse` | SSE | `Authorization: Bearer ${env:INFERENCE_KEY}` | `.env` (static, no refresh) |
 
 All three SF MCPs share a single Salesforce access token — that's how the production app authenticates them too (see `lib/mcp/client.ts` lines 165–172).
@@ -71,7 +71,7 @@ Both are useful. Pick based on what you're asking:
 | Question | Best tool |
 |---|---|
 | "What custom fields exist on the `FinServ__FinancialAccount__c` object?" | **DX MCP** — `run_soql_query` against `FieldDefinition` is faster and doesn't need an ECA token. |
-| "What DMOs are registered in Data Cloud for this org?" | **Cursor `data_360`** — `data_360__getDcMetadata`. The DX MCP cannot reach Data Cloud. |
+| "What DMOs are registered in Data Cloud for this org?" | **Cursor `data_360`** — `data_360__get_dc_metadata`. The DX MCP cannot reach Data Cloud. Tip: the app's cached catalog (Redis) is a faster read for day-to-day checks — hit `/api/admin/refresh-dc-cache` for a JSON summary. |
 | "What datasources and calculated fields are on the executive dashboard?" | **Cursor `tableau_next`** — no DX-equivalent. |
 | "Does the agent loop use this exact tool name?" | **Cursor `salesforce_crm`** — same server the app uses, so tool names and schemas are guaranteed to match. DX MCP uses different tool names. |
 | "Run an Apex test / deploy metadata / scaffold an LWC." | **DX MCP** — those tools are not on the Hosted MCPs. |
