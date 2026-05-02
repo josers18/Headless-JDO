@@ -28,7 +28,8 @@
     "refresh:dc-metadata": "tsx --env-file=.env scripts/refresh-dc-metadata.ts",
     "refresh:tableau-sdms": "tsx --env-file=.env scripts/refresh-tableau-sdms.ts",
     "test:signoff": "tsx scripts/test-signoff-policy.ts",
-    "smoke:heroku-inference": "tsx --env-file=.env scripts/smoke-heroku-inference.ts"
+    "smoke:heroku-inference": "tsx --env-file=.env scripts/smoke-heroku-inference.ts",
+    "seed:ask-data": "tsx --env-file=.env scripts/seed-ask-data.ts"
   },
   "cacheDirectories": [
     "node_modules",

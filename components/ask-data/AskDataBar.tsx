@@ -25,6 +25,15 @@ export type AskDataBarProps = {
   disabled?: boolean;
   /** Ref escape hatch for parent components (e.g. starter pills). */
   innerRef?: React.RefObject<AskDataBarRef | null>;
+  /**
+   * Positioning strategy. `"viewport"` = viewport-wide fixed-bottom pill
+   * (Today AskBar treatment; what we shipped in T1-1). `"column"` = stick
+   * to the bottom of the main column only, used in the /ask 3-column
+   * workspace so the pill respects the sidebar + right rail (T1-2,
+   * Q-T1-2-b = B). Defaults to `"column"` — T1-1's call site passed no
+   * value, so we flip the default and let the old behavior opt in.
+   */
+  position?: "viewport" | "column";
 };
 
 /**
@@ -55,6 +64,7 @@ export function AskDataBar(props: AskDataBarProps) {
     placeholder = "Ask about your book… (⌘K)",
     disabled = false,
     innerRef,
+    position = "column",
   } = props;
 
   const [focus, setFocus] = useState(false);
@@ -123,8 +133,18 @@ export function AskDataBar(props: AskDataBarProps) {
     console.info("[ask-data] T1-1: submit no-op pending T1-3 wiring:", q);
   }
 
+  // When mounted inside the AskWorkspace grid (`position = "column"`), the
+  // pill uses `sticky bottom-0` so it pins to the bottom of the main
+  // column only, leaving the sidebar and right rail undisturbed (Q-T1-2-b
+  // = B). `position = "viewport"` falls back to the Today AskBar
+  // treatment: a `fixed inset-x-0` floating pill.
+  const outerClass =
+    position === "viewport"
+      ? "pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))]"
+      : "pointer-events-none sticky z-30 mt-auto flex justify-center px-4 pb-[max(1.25rem,env(safe-area-inset-bottom,0px))] bottom-[max(1.25rem,env(safe-area-inset-bottom,0px))]";
+
   return (
-    <div className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
+    <div className={outerClass}>
       <div className="pointer-events-auto flex w-full max-w-[760px] flex-col gap-3">
         {speech.error && (
           <div className="mx-auto max-w-prose rounded-md border border-danger/30 bg-danger/10 px-3 py-1.5 text-[11px] text-danger/90">
