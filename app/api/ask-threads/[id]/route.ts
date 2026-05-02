@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteThread, getThread, renameThread } from "@/lib/db/askThreads";
+import {
+  deleteThread,
+  getThread,
+  isDbConfigured,
+  renameThread,
+} from "@/lib/db/askThreads";
 import { currentBankerUserId } from "@/lib/ask/currentUser";
+
+const NO_DB_RESPONSE = () =>
+  NextResponse.json(
+    { error: "database unavailable", db: "unconfigured" },
+    { status: 503 }
+  );
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +23,7 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   const userId = await currentBankerUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!isDbConfigured()) return NO_DB_RESPONSE();
 
   const { id } = await ctx.params;
   const thread = await getThread({ id, userId });
@@ -26,6 +38,7 @@ export async function PATCH(req: NextRequest, ctx: RouteContext) {
   const userId = await currentBankerUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!isDbConfigured()) return NO_DB_RESPONSE();
 
   const { id } = await ctx.params;
   const body = await req.json().catch(() => ({}));
@@ -50,6 +63,7 @@ export async function DELETE(_req: NextRequest, ctx: RouteContext) {
   const userId = await currentBankerUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!isDbConfigured()) return NO_DB_RESPONSE();
 
   const { id } = await ctx.params;
   const ok = await deleteThread({ id, userId });

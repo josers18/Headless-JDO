@@ -30,6 +30,16 @@ function pool(): Pool {
   return _pool;
 }
 
+/**
+ * True when DATABASE_URL is set. API routes use this to short-circuit
+ * with a 200 "unconfigured" response in dev when Postgres isn't wired up
+ * instead of throwing a 500 from pool() — this keeps /ask functional
+ * (entry state + starter pills) without a DB.
+ */
+export function isDbConfigured(): boolean {
+  return Boolean(process.env.DATABASE_URL?.trim());
+}
+
 export type AskThreadRow = {
   id: string;
   user_id: string;

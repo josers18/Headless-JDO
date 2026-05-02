@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import {
   groupThreadsByRecency,
   type ThreadLike,
@@ -14,7 +14,8 @@ type FetchState =
   | { kind: "loading" }
   | { kind: "ready"; threads: ThreadLike[] }
   | { kind: "error"; message: string }
-  | { kind: "unauth" };
+  | { kind: "unauth" }
+  | { kind: "unconfigured" };
 
 export function ThreadList() {
   const router = useRouter();
@@ -33,10 +34,20 @@ export function ThreadList() {
         return;
       }
       if (!res.ok) {
-        setState({ kind: "error", message: `Load failed (${res.status})` });
+        setState({ kind: "error", message: `Conversations unavailable (${res.status})` });
         return;
       }
-      const data = (await res.json()) as { threads: ThreadLike[] };
+      const data = (await res.json()) as {
+        threads: ThreadLike[];
+        db?: string;
+      };
+      // The API returns 200 with db:"unconfigured" when DATABASE_URL is
+      // missing. We split that out from the normal "ready" state so the
+      // UI can tell the user why their threads aren't there.
+      if (data.db === "unconfigured") {
+        setState({ kind: "unconfigured" });
+        return;
+      }
       setState({ kind: "ready", threads: data.threads ?? [] });
     } catch (e) {
       setState({
@@ -62,6 +73,12 @@ export function ThreadList() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "New conversation" }),
       });
+      if (res.status === 503) {
+        // Graceful: sidebar already communicates the "unconfigured"
+        // state; reloading ensures it shows.
+        await load();
+        return;
+      }
       if (!res.ok) return;
       const data = (await res.json()) as { thread: ThreadLike };
       router.push(`/ask/${data.thread.id}`);
@@ -103,7 +120,23 @@ export function ThreadList() {
         <div className="px-4 text-[12px] text-text-muted">Loading…</div>
       )}
       {state.kind === "error" && (
-        <div className="px-4 text-[12px] text-danger/90">{state.message}</div>
+        <div className="flex flex-col items-start gap-2 px-4">
+          <p className="text-[12px] text-danger/90">{state.message}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="flex items-center gap-1.5 rounded-md border border-border-soft px-2 py-1 text-[11px] text-text-muted transition hover:border-accent/50 hover:text-text"
+          >
+            <RefreshCw size={11} />
+            Retry
+          </button>
+        </div>
+      )}
+      {state.kind === "unconfigured" && (
+        <div className="px-4 text-[12px] text-text-muted">
+          Conversation history disabled — DATABASE_URL is not configured
+          in this environment.
+        </div>
       )}
       {state.kind === "unauth" && (
         <div className="px-4 text-[12px] text-text-muted">

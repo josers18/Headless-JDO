@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getThread, listMessages } from "@/lib/db/askThreads";
+import {
+  getThread,
+  isDbConfigured,
+  listMessages,
+} from "@/lib/db/askThreads";
 import { currentBankerUserId } from "@/lib/ask/currentUser";
 
 export const runtime = "nodejs";
@@ -15,6 +19,12 @@ export async function GET(_req: NextRequest, ctx: RouteContext) {
   const userId = await currentBankerUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  if (!isDbConfigured()) {
+    return NextResponse.json(
+      { error: "database unavailable", db: "unconfigured" },
+      { status: 503 }
+    );
+  }
 
   const { id } = await ctx.params;
   const thread = await getThread({ id, userId });

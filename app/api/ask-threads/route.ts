@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createThread, listThreads } from "@/lib/db/askThreads";
+import {
+  createThread,
+  isDbConfigured,
+  listThreads,
+} from "@/lib/db/askThreads";
 import { currentBankerUserId } from "@/lib/ask/currentUser";
 
 export const runtime = "nodejs";
@@ -12,6 +16,10 @@ export async function GET(_req: NextRequest) {
   if (!userId)
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
 
+  if (!isDbConfigured()) {
+    return NextResponse.json({ threads: [], db: "unconfigured" });
+  }
+
   const threads = await listThreads({ userId });
   return NextResponse.json({ threads });
 }
@@ -23,6 +31,16 @@ export async function POST(req: NextRequest) {
   const userId = await currentBankerUserId();
   if (!userId)
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+
+  if (!isDbConfigured()) {
+    return NextResponse.json(
+      {
+        error: "database unavailable",
+        db: "unconfigured",
+      },
+      { status: 503 }
+    );
+  }
 
   let body: { title?: unknown } = {};
   try {
