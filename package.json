@@ -27,7 +27,8 @@
     "mcp:refresh": "bash scripts/mcp-refresh.sh",
     "refresh:dc-metadata": "tsx --env-file=.env scripts/refresh-dc-metadata.ts",
     "refresh:tableau-sdms": "tsx --env-file=.env scripts/refresh-tableau-sdms.ts",
-    "test:signoff": "tsx scripts/test-signoff-policy.ts"
+    "test:signoff": "tsx scripts/test-signoff-policy.ts",
+    "smoke:heroku-inference": "tsx --env-file=.env scripts/smoke-heroku-inference.ts"
   },
   "cacheDirectories": [
     "node_modules",
