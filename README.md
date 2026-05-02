@@ -115,7 +115,7 @@ Sign in via Salesforce from the app; the callback URL must match your External C
 
 ## Environment variables
 
-Copy `[.env.example](./.env.example)` to `.env`. **Do not** paste real keys into issues, PRs, screenshots, or committed markdown. See **[docs/OPERATIONS.md](docs/OPERATIONS.md)** for rotation guidance.
+Copy [`.env.example`](./.env.example) to `.env`. **Do not** paste real keys into issues, PRs, screenshots, or committed markdown. See **[docs/OPERATIONS.md](docs/OPERATIONS.md)** for rotation guidance.
 
 
 | Area             | Variables (names only)                                                  |
