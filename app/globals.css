@@ -19,6 +19,15 @@
   --hz-success: #4ade80;
   --hz-warn: #f5a524;
   --hz-danger: #f87171;
+
+  /*
+   * Surface lift used by elements that must pop above cards sharing
+   * `--hz-surface` (notably the Ask Bar). Mixing `--hz-text` into
+   * `--hz-surface` self-adjusts by palette: on dark themes `--hz-text` is
+   * near-white so the mix lightens; on light themes it's near-black so the
+   * mix darkens. One token, correct direction for all 42 themes.
+   */
+  --hz-surface-raised: color-mix(in srgb, var(--hz-surface) 93%, var(--hz-text) 7%);
 }
 
 :root:not([data-theme]),

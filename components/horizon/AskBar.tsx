@@ -364,7 +364,7 @@ export function AskBar() {
     <div className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
       <div className="pointer-events-auto flex w-full max-w-[760px] flex-col gap-3">
         {showPanel && (
-          <div className="animate-fade-rise overflow-visible rounded-2xl border border-border-soft bg-surface/95 shadow-[0_28px_60px_-30px_rgba(0,0,0,0.7)] backdrop-blur-md">
+          <div className="animate-fade-rise overflow-visible rounded-2xl border border-border bg-surface-raised/95 shadow-[0_28px_60px_-30px_rgba(0,0,0,0.7)] backdrop-blur-md">
             <div className="flex items-start justify-between gap-3 border-b border-border-soft/80 bg-black/20 px-5 py-3">
               <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-text-muted">
                 <span
@@ -484,7 +484,12 @@ export function AskBar() {
             void submit();
           }}
           className={cn(
-            "group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-border-soft bg-surface/95 px-4 py-3 backdrop-blur-md transition-all duration-med ease-out",
+            // The Ask Bar must pop above the cards that share `--hz-surface`.
+            // `bg-surface-raised` mixes a touch of text color into surface so
+            // it reads a half-step brighter on dark themes and a half-step
+            // darker on light themes. The `shadow-ask-lift` + stronger
+            // `border-border` give it definition without adding chrome.
+            "group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-border bg-surface-raised/95 px-4 py-3 shadow-ask-lift backdrop-blur-md transition-all duration-med ease-out",
             focus
               ? "border-accent/50 shadow-glow"
               : "hover:border-border",

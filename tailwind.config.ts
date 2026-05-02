@@ -17,6 +17,7 @@ const config: Config = {
         bg: "var(--hz-bg)",
         surface: "var(--hz-surface)",
         surface2: "var(--hz-surface2)",
+        "surface-raised": "var(--hz-surface-raised)",
         border: "var(--hz-border)",
         "border-soft": "var(--hz-border-soft)",
         text: "var(--hz-text)",
@@ -58,6 +59,12 @@ const config: Config = {
         "glow-danger": "0 0 32px rgba(248, 113, 113, 0.22)",
         "inset-border":
           "inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 1px 0 rgba(0,0,0,0.3)",
+        // Ask Bar ambient lift — subtle inset highlight on top, soft drop
+        // shadow below. The rgba values are intentionally neutral (not
+        // theme-derived) so the lift reads the same on dark and light:
+        // a faint white rim, a faint shadow beneath.
+        "ask-lift":
+          "inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 40px -24px rgba(0, 0, 0, 0.55)",
       },
       backgroundImage: {
         "hero-glow":
