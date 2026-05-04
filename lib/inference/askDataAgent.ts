@@ -1,9 +1,9 @@
 /**
  * Ask My Data agent loop — orchestrates Kimi K2 Thinking against the
- * self-hosted Data 360 MCP. Deliberately isolated from lib/llm/heroku.ts;
- * re-uses the same OpenAI-compatible tool-call semantics but owns its own
- * vocabulary, tool-filter policy, dedup cache, and error handling so
- * Today's loop can evolve without collateral damage here.
+ * first-party Salesforce-hosted Data 360 MCP. Deliberately isolated from
+ * lib/llm/heroku.ts; re-uses the same OpenAI-compatible tool-call semantics
+ * but owns its own vocabulary, tool-filter policy, dedup cache, and error
+ * handling so Today's loop can evolve without collateral damage here.
  *
  * Yields normalized events via an async generator:
  *   - tokens (assistant prose deltas)
@@ -12,12 +12,10 @@
  *   - turn_complete (final assistant text + tool-use/tool-result blocks,
  *                    ready to persist as an assistant message)
  *
- * Per Q-T1-3-b = A we use a tight system prompt and do NOT preload a
- * metadata catalog. Kimi decides when to call `get_data_lake_objects` or
- * `describe_data_lake_object` itself.
- *
- * Per Q-T1-3-a = B we drop the two mutating tools (ingest_records,
- * publish_segment) from the tool list Kimi sees.
+ * The first-party MCP exposes two tools — `get_dc_metadata` (list DLOs +
+ * full schema) and `post_dc_query_sql` (ANSI SQL). Kimi decides when to
+ * call metadata vs. query on each turn; no catalog is preloaded
+ * (Q-T1-3-b = A).
  */
 
 import type {
@@ -25,11 +23,10 @@ import type {
   ChatCompletionTool,
 } from "openai/resources/chat/completions";
 import { streamHeroku } from "@/lib/inference/heroku";
-import type { SelfDcSession, SelfDcToolDef } from "@/lib/mcp/selfHostedDataCloud";
-
-// Tools the model may NOT call in Ask My Data. Exploratory surface only;
-// we never let the agent mutate on behalf of the banker.
-const DROPPED_TOOLS = new Set(["ingest_records", "publish_segment"]);
+import type {
+  FirstPartyDcSession,
+  FirstPartyDcToolDef,
+} from "@/lib/mcp/firstPartyDataCloud";
 
 // Soft budget: if the agent hasn't answered after N tool-call iterations
 // we bail. Heroku router already stalls long requests — this keeps us well
@@ -82,7 +79,7 @@ export interface AskDataAgentOptions {
   /** Prior messages (user + assistant turns from DB), plus the new user turn. */
   messages: ChatCompletionMessageParam[];
   /** Open MCP session owned by the caller. */
-  mcp: SelfDcSession;
+  mcp: FirstPartyDcSession;
   /** Abort when the client disconnects. */
   signal?: AbortSignal;
 }
@@ -98,8 +95,9 @@ export async function* runAskDataAgent(
 
   // Build visible tool list once per session. MCP schemas come back as
   // JSON Schema; we wrap them in OpenAI's `function` tool envelope.
-  const allTools = await mcp.listTools();
-  const visibleTools = allTools.filter((t) => !DROPPED_TOOLS.has(t.name));
+  // The first-party Data 360 MCP exposes 2 read-only tools so no filter
+  // is required (nothing to drop).
+  const visibleTools = await mcp.listTools();
   const toolDefs: ChatCompletionTool[] = visibleTools.map((t) =>
     toOpenAiTool(t)
   );
@@ -354,7 +352,7 @@ export async function* runAskDataAgent(
 /**
  * Convert an MCP tool schema into an OpenAI function-tool envelope.
  */
-function toOpenAiTool(t: SelfDcToolDef): ChatCompletionTool {
+function toOpenAiTool(t: FirstPartyDcToolDef): ChatCompletionTool {
   // OpenAI requires a JSON-schema-ish object for parameters. The MCP
   // already provides one — defensively fill in `properties: {}` if empty.
   const schema: Record<string, unknown> = { ...t.inputSchema };

@@ -22,7 +22,8 @@ import {
   askDataSseHeaders,
   makeAskDataStream,
 } from "@/lib/sse/askData";
-import { openSelfHostedDataCloud } from "@/lib/mcp/selfHostedDataCloud";
+import { openFirstPartyDataCloud } from "@/lib/mcp/firstPartyDataCloud";
+import { ensureFreshToken } from "@/lib/salesforce/token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +43,16 @@ export async function POST(req: NextRequest) {
   const userId = await currentBankerUserId();
   if (!userId) {
     return jsonError("unauthenticated", 401);
+  }
+
+  // Auth upgrade from T1-3 (self-hosted MCP) to Path C (first-party
+  // Data 360 MCP): the Salesforce-hosted MCP authenticates with the
+  // banker's PKCE-issued access token, so we need a live + fresh one
+  // here. A cookie alone isn't enough — if refresh fails the caller
+  // needs to re-authenticate via /api/connect.
+  const sfToken = await ensureFreshToken();
+  if (!sfToken?.access_token) {
+    return jsonError("salesforce session expired", 401);
   }
 
   if (!isDbConfigured()) {
@@ -82,9 +93,13 @@ export async function POST(req: NextRequest) {
     });
     send({ type: "user_persisted", messageId: userRow.id });
 
-    // (2) Open the self-hosted MCP session. If this throws, error event
-    // propagates via makeAskDataStream's catch.
-    const mcp = await openSelfHostedDataCloud({ signal: req.signal });
+    // (2) Open the first-party Data 360 MCP session with the banker's
+    // Salesforce token. If this throws, the error event propagates via
+    // makeAskDataStream's catch.
+    const mcp = await openFirstPartyDataCloud({
+      salesforceToken: sfToken.access_token,
+      signal: req.signal,
+    });
 
     // (3) Build the chat message list the agent reads.
     const chatMessages: ChatCompletionMessageParam[] = [
