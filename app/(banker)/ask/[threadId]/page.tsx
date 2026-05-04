@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { SectionTopBar } from "@/components/nav/SectionTopBar";
 import { AskWorkspace } from "@/components/ask-data/AskWorkspace";
-import { ThreadConversationPlaceholder } from "@/components/ask-data/ThreadConversationPlaceholder";
+import { Conversation } from "@/components/ask-data/Conversation";
 import { getThread, isDbConfigured } from "@/lib/db/askThreads";
 import { currentBankerUserId } from "@/lib/ask/currentUser";
 
@@ -26,9 +26,9 @@ export default async function AskThreadPage({ params }: PageProps) {
     <main className="relative mx-auto w-full max-w-[1600px] px-6 pb-10">
       <SectionTopBar title="Ask My Data" />
       <AskWorkspace>
-        <ThreadConversationPlaceholder
+        <Conversation
           threadId={threadId}
-          title={thread?.title ?? "Conversation"}
+          initialTitle={thread?.title ?? "Conversation"}
         />
       </AskWorkspace>
     </main>
