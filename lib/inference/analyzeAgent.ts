@@ -297,13 +297,16 @@ export async function* runAnalyzeAgent(
     }
     const results = await Promise.all(dispatches);
 
+    // Emit tool_call result events + push raw blocks + feed the model
+    // message. Answer emission + chart extraction are deferred so we
+    // can dedupe across multiple analyze_data calls in the same turn.
     for (const r of results) {
       yield {
         type: "tool_result",
         callId: r.callId,
         name: r.name,
         isError: r.isError,
-        preview: r.preview,
+        preview: cleanPreview(r.name, r.preview, r.analyzeAnswer),
       };
       contentBlocks.push({
         type: "tool_result",
@@ -311,100 +314,6 @@ export async function* runAnalyzeAgent(
         is_error: r.isError,
         content: r.modelText,
       });
-
-      // If analyze_data returned a natural-language answer, surface it
-      // as narrative tokens. Kimi often defers when the tool answer is
-      // already complete and prose-shaped, which left the banker
-      // staring at an empty response. Emitting the answer as tokens
-      // guarantees the banker sees the Analytics Agent's output.
-      if (r.analyzeAnswer && r.analyzeAnswer.length > 0) {
-        const text = r.analyzeAnswer;
-        turnText += text;
-        accumulatedText += text;
-        yield { type: "token", text };
-        contentBlocks.push({ type: "text", text });
-      }
-
-      // When analyze_data returned only prose (no structured rows),
-      // try to extract a table from the narrative via MiniMax. Most
-      // banker questions that mention numbers ("CSAT by month", "top
-      // performers") have parseable data in the prose; this makes
-      // charts possible without requiring Analytics Agent to emit
-      // structured payloads.
-      if (
-        r.name === "analyze_data" &&
-        !r.isError &&
-        !r.tableFallback &&
-        r.analyzeAnswer &&
-        r.analyzeAnswer.length >= 30
-      ) {
-        try {
-          const extracted = await extractStructuredFromProse({
-            question: bankerQuestion,
-            prose: r.analyzeAnswer,
-          });
-          if (extracted && extracted.rows.length > 0) {
-            // Build a table fallback from the extracted data. This
-            // flows through the same chart-selection path as a native
-            // Tableau structured response.
-            r.tableFallback = {
-              columns: extracted.columns,
-              rows: extracted.rows,
-            };
-          }
-        } catch {
-          /* prose extraction is best-effort */
-        }
-      }
-
-      // Emit the table fallback right after the tool_result so the UI
-      // can render it alongside Kimi's eventual prose.
-      if (r.tableFallback) {
-        yield {
-          type: "table_fallback",
-          columns: r.tableFallback.columns,
-          rows: r.tableFallback.rows,
-          caption: r.tableFallback.caption,
-        };
-        contentBlocks.push({
-          type: "table_fallback",
-          columns: r.tableFallback.columns,
-          rows: r.tableFallback.rows,
-          ...(r.tableFallback.caption ? { caption: r.tableFallback.caption } : {}),
-        });
-
-        // Chart selection happens right after the table lands. MiniMax
-        // picks from the 18 types; validateChartSpec guarantees a
-        // table fallback on malformed responses, so this call NEVER
-        // fails the turn — worst case we emit a table spec (which is
-        // already shown above, so the UI deduplicates on type).
-        try {
-          const picked = await selectChartSpec({
-            bankerQuestion,
-            data: r.tableFallback.rows,
-            caption: r.tableFallback.caption,
-          });
-          yield {
-            type: "chart_spec",
-            spec: picked.spec,
-            wasFallback: picked.wasFallback,
-            ...(picked.fallbackReason
-              ? { fallbackReason: picked.fallbackReason }
-              : {}),
-          };
-          contentBlocks.push({
-            type: "chart_spec",
-            spec: picked.spec as unknown as Record<string, unknown>,
-            wasFallback: picked.wasFallback,
-            ...(picked.fallbackReason
-              ? { fallbackReason: picked.fallbackReason }
-              : {}),
-          });
-        } catch {
-          /* non-fatal — the table_fallback already rendered */
-        }
-      }
-
       messages.push({
         role: "tool" as const,
         tool_call_id: r.callId,
@@ -413,6 +322,102 @@ export async function* runAnalyzeAgent(
 
       if (r.isError) consecutiveErrors += 1;
       else consecutiveErrors = 0;
+    }
+
+    // Dedupe narrative emission across multiple analyze_data calls
+    // (Kimi sometimes decomposes "show X by month" into an aggregate
+    // call + a monthly breakdown call, resulting in two answers that
+    // used to get emitted back-to-back as doubled prose).
+    //
+    // Strategy: pick the single most-useful answer — the longest one
+    // that's plausibly a real breakdown (the "overall average is 70.15"
+    // answer is short; the month-by-month answer is long). Emit that
+    // and feed it to prose extraction; discard the others.
+    const successfulAnalyze = results.filter(
+      (r) =>
+        r.name === "analyze_data" &&
+        !r.isError &&
+        r.analyzeAnswer &&
+        r.analyzeAnswer.length > 0
+    );
+    const dominant = pickDominantAnswer(successfulAnalyze);
+
+    if (dominant && dominant.analyzeAnswer) {
+      const text = dominant.analyzeAnswer;
+      turnText += text;
+      accumulatedText += text;
+      yield { type: "token", text };
+      contentBlocks.push({ type: "text", text });
+
+      // Prose → structured data extraction. Runs only on the dominant
+      // (longest) answer since it's most likely to contain tabular
+      // breakdowns.
+      if (!dominant.tableFallback && text.length >= 30) {
+        try {
+          const extracted = await extractStructuredFromProse({
+            question: bankerQuestion,
+            prose: text,
+          });
+          if (extracted && extracted.rows.length > 0) {
+            dominant.tableFallback = {
+              columns: extracted.columns,
+              rows: extracted.rows,
+            };
+          }
+        } catch {
+          /* prose extraction is best-effort */
+        }
+      }
+    }
+
+    // Emit table fallbacks + chart specs. We prefer the dominant
+    // analyze_data's fallback; other calls with their own structured
+    // data still get their tables rendered for completeness.
+    const fallbackEmitters = dominant
+      ? [dominant, ...results.filter((r) => r !== dominant && r.tableFallback)]
+      : results.filter((r) => r.tableFallback);
+
+    for (const r of fallbackEmitters) {
+      if (!r.tableFallback) continue;
+      yield {
+        type: "table_fallback",
+        columns: r.tableFallback.columns,
+        rows: r.tableFallback.rows,
+        caption: r.tableFallback.caption,
+      };
+      contentBlocks.push({
+        type: "table_fallback",
+        columns: r.tableFallback.columns,
+        rows: r.tableFallback.rows,
+        ...(r.tableFallback.caption ? { caption: r.tableFallback.caption } : {}),
+      });
+
+      // Chart selection per fallback.
+      try {
+        const picked = await selectChartSpec({
+          bankerQuestion,
+          data: r.tableFallback.rows,
+          caption: r.tableFallback.caption,
+        });
+        yield {
+          type: "chart_spec",
+          spec: picked.spec,
+          wasFallback: picked.wasFallback,
+          ...(picked.fallbackReason
+            ? { fallbackReason: picked.fallbackReason }
+            : {}),
+        };
+        contentBlocks.push({
+          type: "chart_spec",
+          spec: picked.spec as unknown as Record<string, unknown>,
+          wasFallback: picked.wasFallback,
+          ...(picked.fallbackReason
+            ? { fallbackReason: picked.fallbackReason }
+            : {}),
+        });
+      } catch {
+        /* non-fatal — the table_fallback already rendered */
+      }
     }
 
     if (consecutiveErrors >= ERROR_CIRCUIT_THRESHOLD) {
@@ -509,6 +514,58 @@ function extractAnalyzeAnswer(text: string): string | null {
   if (typeof obj.message === "string") return cleanAnswer(obj.message);
 
   return null;
+}
+
+/**
+ * Banker-friendly preview for the reasoning trail. For analyze_data
+ * results, show the extracted answer (not the raw nested JSON that the
+ * MCP returns). For other tools (metadata listings, etc.), the raw
+ * preview is fine since it's short JSON the agent only sees internally.
+ */
+function cleanPreview(
+  toolName: string,
+  rawPreview: string,
+  analyzeAnswer: string | null | undefined
+): string {
+  if (toolName === "analyze_data" && analyzeAnswer) {
+    // Strip markdown emphasis so the single-line preview reads as prose.
+    const oneLine = analyzeAnswer
+      .replace(/\s*\n+\s*/g, " ")
+      .replace(/\*\*(.+?)\*\*/g, "$1")
+      .replace(/\*(.+?)\*/g, "$1")
+      .trim();
+    return oneLine.slice(0, 200);
+  }
+  return rawPreview;
+}
+
+type AnalyzeResult = {
+  callId: string;
+  name: string;
+  isError: boolean;
+  modelText: string;
+  preview: string;
+  tableFallback: TableFallback | null;
+  analyzeAnswer?: string | null;
+};
+
+/**
+ * When Kimi makes multiple analyze_data calls in one turn, pick the
+ * single most useful answer to surface as narrative. Heuristic: the
+ * longest answer — brief aggregates ("the average is 70.15") rarely
+ * contain tabular breakdowns; longer answers almost always do.
+ */
+function pickDominantAnswer(
+  candidates: AnalyzeResult[]
+): AnalyzeResult | null {
+  if (candidates.length === 0) return null;
+  let best = candidates[0]!;
+  for (const c of candidates) {
+    if ((c.analyzeAnswer?.length ?? 0) > (best.analyzeAnswer?.length ?? 0)) {
+      best = c;
+    }
+  }
+  return best;
 }
 
 function cleanAnswer(s: string): string {
