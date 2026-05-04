@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { AnalyzeBar, type AnalyzeBarRef } from "./AnalyzeBar";
 import { AnalyzeTable } from "./AnalyzeTable";
 import { ChartRenderer } from "./ChartRenderer";
+import { StarterQuestions } from "./StarterQuestions";
 import { AskDataTrace } from "@/components/ask-data/AskDataTrace";
 import {
   useAnalyzeStream,
@@ -27,6 +28,8 @@ export type AnalyzeLatest = {
 
 export type AnalyzeWorkbenchProps = {
   modelId: string;
+  /** Stable apiName of the SDM — drives per-model starter questions. */
+  modelApiName: string;
   /** Persisted last-analysis from the server — null for first-time visit. */
   latest: AnalyzeLatest | null;
 };
@@ -37,7 +40,11 @@ export type AnalyzeWorkbenchProps = {
  * component is client-only because the stream hook needs to mount on
  * arrival.
  */
-export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
+export function AnalyzeWorkbench({
+  modelId,
+  modelApiName,
+  latest,
+}: AnalyzeWorkbenchProps) {
   const barRef = useRef<AnalyzeBarRef | null>(null);
   const stream = useAnalyzeStream();
   const scrollAnchor = useRef<HTMLDivElement>(null);
@@ -84,6 +91,11 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
     stream.cancel();
   }
 
+  // Empty state: no live turn in progress AND no persisted analysis.
+  // Show starter-question pills so the banker has concrete clickable
+  // entry points instead of a blank Ask bar.
+  const showStarters = !hasLiveTurn && !latest;
+
   return (
     <>
       <section className="mt-10 flex flex-col gap-6">
@@ -95,6 +107,14 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
 
         <div ref={scrollAnchor} />
       </section>
+
+      {showStarters && (
+        <StarterQuestions
+          apiName={modelApiName}
+          onPick={(q) => void handleSubmit(q)}
+          disabled={isStreaming}
+        />
+      )}
 
       <section className="mt-6">
         <AnalyzeBar

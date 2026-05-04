@@ -50,7 +50,11 @@ export default async function AnalyzeModelPage({ params }: PageProps) {
       <AnalyzeWorkspace>
         <ModelHeader profile={profile} />
         <ModelMetricsPills modelId={profile.id} />
-        <AnalyzeWorkbench modelId={profile.id} latest={latest} />
+        <AnalyzeWorkbench
+          modelId={profile.id}
+          modelApiName={profile.apiName}
+          latest={latest}
+        />
       </AnalyzeWorkspace>
     </main>
   );
