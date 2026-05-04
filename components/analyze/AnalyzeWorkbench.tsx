@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { AnalyzeBar, type AnalyzeBarRef } from "./AnalyzeBar";
 import { AnalyzeTable } from "./AnalyzeTable";
@@ -41,6 +41,7 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
   const barRef = useRef<AnalyzeBarRef | null>(null);
   const stream = useAnalyzeStream();
   const scrollAnchor = useRef<HTMLDivElement>(null);
+  const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
 
   const isStreaming = stream.state === "streaming";
 
@@ -75,6 +76,7 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
   ]);
 
   async function handleSubmit(question: string) {
+    setActiveQuestion(question);
     await stream.submit(modelId, question);
   }
 
@@ -86,7 +88,7 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
     <>
       <section className="mt-10 flex flex-col gap-6">
         {hasLiveTurn ? (
-          <LiveTurn stream={stream} />
+          <LiveTurn stream={stream} question={activeQuestion} />
         ) : (
           latest && <PersistedAnalysis latest={latest} />
         )}
@@ -114,8 +116,10 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
  */
 function LiveTurn({
   stream,
+  question,
 }: {
   stream: ReturnType<typeof useAnalyzeStream>;
+  question: string | null;
 }) {
   const isStreaming = stream.state === "streaming";
   const hasNarrative = stream.narrative.length > 0;
@@ -125,6 +129,8 @@ function LiveTurn({
 
   return (
     <>
+      {question && <QuestionEcho question={question} />}
+
       {hasTrace && (
         <AskDataTrace
           steps={stream.trace as AnalyzeTraceStep[]}
@@ -181,23 +187,18 @@ function PersistedAnalysis({ latest }: { latest: AnalyzeLatest }) {
     return null;
 
   return (
-    <div className="max-w-full">
-      <div className="mb-3 text-[11px] uppercase tracking-[0.18em] text-text-muted">
-        Last analysis{" "}
-        {latest.question && (
-          <span className="normal-case text-text-muted/80">
-            · &ldquo;{latest.question}&rdquo;
-          </span>
-        )}
+    <div className="flex max-w-full flex-col gap-4">
+      <div className="text-[11px] uppercase tracking-[0.18em] text-text-muted">
+        Last analysis
       </div>
 
+      {latest.question && <QuestionEcho question={latest.question} />}
+
       {trace.length > 0 && (
-        <div className="mb-3">
-          <AskDataTrace
-            steps={trace as AnalyzeTraceStep[]}
-            defaultOpen={false}
-          />
-        </div>
+        <AskDataTrace
+          steps={trace as AnalyzeTraceStep[]}
+          defaultOpen={false}
+        />
       )}
 
       {narrative && (
@@ -209,6 +210,21 @@ function PersistedAnalysis({ latest }: { latest: AnalyzeLatest }) {
       {charts.length > 0
         ? charts.map((c, i) => <ChartRenderer key={i} spec={c} />)
         : tables.map((t, i) => <AnalyzeTable key={i} table={t} />)}
+    </div>
+  );
+}
+
+/**
+ * Echoes the banker's question above the response. Styled as a right-
+ * aligned bubble so it reads as "what the banker said" — same pattern
+ * Ask My Data uses for user messages.
+ */
+function QuestionEcho({ question }: { question: string }) {
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-surface-raised px-4 py-2.5 text-[14px] text-text">
+        {question}
+      </div>
     </div>
   );
 }

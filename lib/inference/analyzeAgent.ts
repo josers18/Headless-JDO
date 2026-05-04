@@ -22,6 +22,7 @@ import type {
 import { selectChartSpec } from "@/lib/analyze/chartSelector";
 import type { ChartSpec } from "@/lib/analyze/chartTypes";
 import { stripThinkTags } from "@/lib/analyze/sanitize";
+import { extractStructuredFromProse } from "@/lib/analyze/proseToData";
 
 /**
  * Tools Kimi is allowed to see on the Analyze surface. Doc-grounded
@@ -322,6 +323,38 @@ export async function* runAnalyzeAgent(
         accumulatedText += text;
         yield { type: "token", text };
         contentBlocks.push({ type: "text", text });
+      }
+
+      // When analyze_data returned only prose (no structured rows),
+      // try to extract a table from the narrative via MiniMax. Most
+      // banker questions that mention numbers ("CSAT by month", "top
+      // performers") have parseable data in the prose; this makes
+      // charts possible without requiring Analytics Agent to emit
+      // structured payloads.
+      if (
+        r.name === "analyze_data" &&
+        !r.isError &&
+        !r.tableFallback &&
+        r.analyzeAnswer &&
+        r.analyzeAnswer.length >= 30
+      ) {
+        try {
+          const extracted = await extractStructuredFromProse({
+            question: bankerQuestion,
+            prose: r.analyzeAnswer,
+          });
+          if (extracted && extracted.rows.length > 0) {
+            // Build a table fallback from the extracted data. This
+            // flows through the same chart-selection path as a native
+            // Tableau structured response.
+            r.tableFallback = {
+              columns: extracted.columns,
+              rows: extracted.rows,
+            };
+          }
+        } catch {
+          /* prose extraction is best-effort */
+        }
       }
 
       // Emit the table fallback right after the tool_result so the UI
