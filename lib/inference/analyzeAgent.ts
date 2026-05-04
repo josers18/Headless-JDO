@@ -1,0 +1,455 @@
+/**
+ * Analyze agent loop — orchestrates Kimi K2 Thinking against the
+ * first-party Tableau Next MCP. Deliberately isolated from
+ * lib/inference/askDataAgent.ts; shares the same normalized event
+ * shape so UI primitives can be reused but the tool subset, prompt,
+ * and error handling are Analyze-specific.
+ *
+ * Q-T2-arch-a = D: 9 curated tools (see CURATED_TOOLS below).
+ * Q-T2-3-a = A: `list_semantic_models` is NOT exposed — the active
+ *               SDM is injected into the system prompt instead.
+ */
+
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from "openai/resources/chat/completions";
+import { streamHeroku } from "@/lib/inference/heroku";
+import type {
+  TableauNextSession,
+  TableauNextToolDef,
+} from "@/lib/mcp/firstPartyTableauNext";
+
+/**
+ * Tools Kimi is allowed to see on the Analyze surface. Doc-grounded
+ * curated set (see the Tableau Next docs reference + the "5 Critical /
+ * High" tiers), minus `list_semantic_models` because the active SDM is
+ * pre-selected via the URL.
+ */
+const CURATED_TOOLS = new Set([
+  "analyze_data",
+  "get_semantic_model",
+  "list_semantic_model_metrics",
+  "get_semantic_model_metric",
+  "list_semantic_model_measures",
+  "list_semantic_model_dimensions",
+  "list_semantic_model_calculated_measures",
+  "list_semantic_model_calculated_dimensions",
+]);
+
+const MAX_ITERATIONS = 5;
+const ERROR_CIRCUIT_THRESHOLD = 3;
+
+export type AnalyzeContentBlock = {
+  type: string;
+  [key: string]: unknown;
+};
+
+export type AnalyzeAgentEvent =
+  | { type: "token"; text: string }
+  | {
+      type: "tool_call";
+      callId: string;
+      name: string;
+      input: unknown;
+    }
+  | {
+      type: "tool_result";
+      callId: string;
+      name: string;
+      isError: boolean;
+      preview: string;
+    }
+  | {
+      type: "table_fallback";
+      /** Parsed structured data we surfaced from an analyze_data response. */
+      columns: string[];
+      rows: Array<Record<string, unknown>>;
+      caption?: string;
+    }
+  | {
+      type: "turn_complete";
+      text: string;
+      /** Content blocks to persist as the stored analysis. */
+      contentBlocks: AnalyzeContentBlock[];
+    }
+  | { type: "error"; message: string };
+
+export interface AnalyzeAgentOptions {
+  system: string;
+  messages: ChatCompletionMessageParam[];
+  mcp: TableauNextSession;
+  signal?: AbortSignal;
+}
+
+export async function* runAnalyzeAgent(
+  options: AnalyzeAgentOptions
+): AsyncGenerator<AnalyzeAgentEvent, void, unknown> {
+  const { system, mcp, signal } = options;
+
+  // Intersect the live tool list with our curated set — if Salesforce
+  // removes or renames tools, we surface what's actually available.
+  const allTools = await mcp.listTools();
+  const visibleTools = allTools.filter((t) => CURATED_TOOLS.has(t.name));
+  const toolDefs: ChatCompletionTool[] = visibleTools.map(toOpenAiTool);
+  const visibleNames = new Set(visibleTools.map((t) => t.name));
+
+  const messages: ChatCompletionMessageParam[] = [...options.messages];
+  const contentBlocks: AnalyzeContentBlock[] = [];
+  let accumulatedText = "";
+  let consecutiveErrors = 0;
+  let iteration = 0;
+
+  while (iteration < MAX_ITERATIONS) {
+    iteration += 1;
+    if (signal?.aborted) {
+      yield { type: "error", message: "Request cancelled." };
+      return;
+    }
+
+    // Per-turn dedup cache — same pattern as askDataAgent.
+    const toolResultCache = new Map<
+      string,
+      { modelText: string; isError: boolean }
+    >();
+
+    const inflightCalls = new Map<
+      number,
+      { id: string; name: string; argsJson: string }
+    >();
+    let turnText = "";
+    let stopReason: string | null = null;
+
+    try {
+      for await (const ev of streamHeroku({
+        tier: "reasoning",
+        system,
+        messages,
+        tools: toolDefs.length > 0 ? toolDefs : undefined,
+        toolChoice: toolDefs.length > 0 ? "auto" : undefined,
+        maxTokens: 4000,
+        signal,
+      })) {
+        if (ev.type === "token") {
+          turnText += ev.text;
+          accumulatedText += ev.text;
+          yield { type: "token", text: ev.text };
+        } else if (ev.type === "tool_call") {
+          const prev = inflightCalls.get(ev.index) ?? {
+            id: "",
+            name: "",
+            argsJson: "",
+          };
+          if (ev.id) prev.id = ev.id;
+          if (ev.name) prev.name = ev.name;
+          if (ev.inputDelta) prev.argsJson += ev.inputDelta;
+          inflightCalls.set(ev.index, prev);
+        } else if (ev.type === "tool_call_complete") {
+          inflightCalls.set(ev.index, {
+            id: ev.id,
+            name: ev.name,
+            argsJson: JSON.stringify(ev.input ?? {}),
+          });
+        } else if (ev.type === "done") {
+          stopReason = ev.stopReason;
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      yield { type: "error", message };
+      return;
+    }
+
+    const calls = [...inflightCalls.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, v]) => v)
+      .filter((c) => c.name);
+
+    if (turnText) {
+      contentBlocks.push({ type: "text", text: turnText });
+    }
+
+    if (calls.length === 0) {
+      const finalText = turnText.trim() || accumulatedText.trim();
+      yield {
+        type: "turn_complete",
+        text: finalText,
+        contentBlocks:
+          contentBlocks.length > 0
+            ? contentBlocks
+            : [{ type: "text", text: finalText }],
+      };
+      return;
+    }
+
+    // Record the assistant turn with tool_calls before dispatching.
+    messages.push({
+      role: "assistant",
+      content: turnText || " ",
+      tool_calls: calls.map((c) => ({
+        id: c.id,
+        type: "function" as const,
+        function: {
+          name: c.name,
+          arguments: c.argsJson || "{}",
+        },
+      })),
+    });
+
+    // Dispatch all tool calls in parallel.
+    const dispatches = calls.map(async (c) => {
+      if (!visibleNames.has(c.name)) {
+        const body = {
+          error: "unknown tool",
+          message: `Tool "${c.name}" is not available. Use one of: ${[...visibleNames].join(", ")}.`,
+        };
+        return {
+          callId: c.id,
+          name: c.name,
+          isError: true,
+          modelText: JSON.stringify(body),
+          preview: `Unknown tool: ${c.name}`,
+          tableFallback: null as TableFallback | null,
+        };
+      }
+
+      const cacheKey = `${c.name}|${c.argsJson}`;
+      const cached = toolResultCache.get(cacheKey);
+      if (cached) {
+        return {
+          callId: c.id,
+          name: c.name,
+          isError: cached.isError,
+          modelText: cached.modelText,
+          preview: cached.modelText.slice(0, 200),
+          tableFallback: null as TableFallback | null,
+        };
+      }
+
+      let args: Record<string, unknown> = {};
+      try {
+        args = c.argsJson
+          ? (JSON.parse(c.argsJson) as Record<string, unknown>)
+          : {};
+      } catch {
+        args = {};
+      }
+      const r = await mcp.callTool(c.name, args);
+      toolResultCache.set(cacheKey, {
+        modelText: r.modelText,
+        isError: r.isError,
+      });
+      const tableFallback =
+        c.name === "analyze_data" && !r.isError
+          ? extractTableFallback(r.modelText)
+          : null;
+      return {
+        callId: c.id,
+        name: c.name,
+        isError: r.isError,
+        modelText: r.modelText,
+        preview: r.textPreview,
+        tableFallback,
+      };
+    });
+
+    // Stream tool_call rows + build content blocks before awaiting.
+    for (const c of calls) {
+      let parsed: unknown = {};
+      try {
+        parsed = c.argsJson ? JSON.parse(c.argsJson) : {};
+      } catch {
+        parsed = { _raw: c.argsJson };
+      }
+      yield { type: "tool_call", callId: c.id, name: c.name, input: parsed };
+      contentBlocks.push({
+        type: "tool_use",
+        id: c.id,
+        name: c.name,
+        input: parsed,
+      });
+    }
+    const results = await Promise.all(dispatches);
+
+    for (const r of results) {
+      yield {
+        type: "tool_result",
+        callId: r.callId,
+        name: r.name,
+        isError: r.isError,
+        preview: r.preview,
+      };
+      contentBlocks.push({
+        type: "tool_result",
+        tool_use_id: r.callId,
+        is_error: r.isError,
+        content: r.modelText,
+      });
+
+      // Emit the table fallback right after the tool_result so the UI
+      // can render it alongside Kimi's eventual prose.
+      if (r.tableFallback) {
+        yield {
+          type: "table_fallback",
+          columns: r.tableFallback.columns,
+          rows: r.tableFallback.rows,
+          caption: r.tableFallback.caption,
+        };
+        contentBlocks.push({
+          type: "table_fallback",
+          columns: r.tableFallback.columns,
+          rows: r.tableFallback.rows,
+          ...(r.tableFallback.caption ? { caption: r.tableFallback.caption } : {}),
+        });
+      }
+
+      messages.push({
+        role: "tool" as const,
+        tool_call_id: r.callId,
+        content: r.modelText,
+      });
+
+      if (r.isError) consecutiveErrors += 1;
+      else consecutiveErrors = 0;
+    }
+
+    if (consecutiveErrors >= ERROR_CIRCUIT_THRESHOLD) {
+      const msg = `Tableau Next dispatch failed ${consecutiveErrors} times in a row. Stopping to avoid a runaway loop.`;
+      yield { type: "error", message: msg };
+      const finalText =
+        accumulatedText.trim() ||
+        "I hit repeated errors trying to reach Tableau Next and couldn't complete this question.";
+      yield {
+        type: "turn_complete",
+        text: finalText,
+        contentBlocks:
+          contentBlocks.length > 0
+            ? contentBlocks
+            : [{ type: "text", text: finalText }],
+      };
+      return;
+    }
+
+    if (stopReason && stopReason !== "tool_calls") {
+      // Defensive — if the model reports a non-tool stop but we still
+      // dispatched, the next iteration runs anyway.
+    }
+  }
+
+  const finalText =
+    accumulatedText.trim() ||
+    "I ran out of steps before finishing this question — try a narrower ask.";
+  yield {
+    type: "turn_complete",
+    text: finalText,
+    contentBlocks:
+      contentBlocks.length > 0
+        ? contentBlocks
+        : [{ type: "text", text: finalText }],
+  };
+}
+
+function toOpenAiTool(t: TableauNextToolDef): ChatCompletionTool {
+  const schema: Record<string, unknown> = { ...t.inputSchema };
+  if (!("type" in schema)) schema.type = "object";
+  if (!("properties" in schema) || !schema.properties) schema.properties = {};
+  return {
+    type: "function",
+    function: {
+      name: t.name,
+      description: (t.description ?? "").slice(0, 1024) || undefined,
+      parameters: schema,
+    },
+  };
+}
+
+// ─── Table fallback extraction ─────────────────────────────────────────
+
+type TableFallback = {
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+  caption?: string;
+};
+
+/**
+ * Pull a structured data set out of an `analyze_data` response so the
+ * UI can render a markdown table below the narrative (Q-T2-3-c = B).
+ * Tableau's answer payload varies — we probe a few common shapes and
+ * return null when none match, which is fine (the UI just skips it).
+ */
+function extractTableFallback(text: string): TableFallback | null {
+  if (!text || text.length > 64_000) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+
+  // Shape 1: { data: { columns: [...], rows: [...] } }
+  const data = obj.data;
+  if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    if (Array.isArray(d.columns) && Array.isArray(d.rows)) {
+      return normalize(d.columns, d.rows, asString(obj.answer));
+    }
+  }
+
+  // Shape 2: { result: [...] } where result is an array of row objects
+  if (Array.isArray(obj.result) && obj.result.length > 0) {
+    const first = obj.result[0];
+    if (first && typeof first === "object") {
+      const columns = Object.keys(first as Record<string, unknown>);
+      return normalize(columns, obj.result, asString(obj.answer));
+    }
+  }
+
+  // Shape 3: bare { columns: [...], rows: [...] }
+  if (Array.isArray(obj.columns) && Array.isArray(obj.rows)) {
+    return normalize(obj.columns, obj.rows, asString(obj.answer));
+  }
+
+  return null;
+}
+
+function normalize(
+  columnsRaw: unknown[],
+  rowsRaw: unknown[],
+  caption: string | undefined
+): TableFallback | null {
+  const columns: string[] = [];
+  for (const c of columnsRaw) {
+    if (typeof c === "string") columns.push(c);
+    else if (c && typeof c === "object") {
+      const name = (c as Record<string, unknown>).name;
+      if (typeof name === "string") columns.push(name);
+    }
+  }
+  if (columns.length === 0) return null;
+
+  const rows: Array<Record<string, unknown>> = [];
+  for (const r of rowsRaw.slice(0, 50)) {
+    if (Array.isArray(r)) {
+      const row: Record<string, unknown> = {};
+      columns.forEach((col, i) => {
+        row[col] = r[i];
+      });
+      rows.push(row);
+    } else if (r && typeof r === "object") {
+      rows.push(r as Record<string, unknown>);
+    }
+  }
+  if (rows.length === 0) return null;
+
+  return {
+    columns,
+    rows,
+    ...(caption && caption.length <= 500 ? { caption } : {}),
+  };
+}
+
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}

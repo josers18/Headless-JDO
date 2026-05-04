@@ -65,3 +65,16 @@ create table if not exists ask_my_data_messages (
 );
 create index if not exists ask_my_data_messages_thread_idx
   on ask_my_data_messages (thread_id, created_at);
+
+-- v1.1-expansion / Tier 2 (Analyze): per-user, per-model "latest
+-- analysis" — auto-loads when the banker returns to /analyze/[modelId].
+-- Q-T2-3-b-detail = A: one row per (user, model), overwritten on each
+-- new turn. Full history per model is deliberately out of scope.
+create table if not exists analyze_latest (
+  user_id        text not null,
+  model_id       text not null,
+  question       text not null,
+  content        jsonb not null,  -- [{type:text|tool_use|tool_result, ...}]
+  updated_at     timestamptz not null default now(),
+  primary key (user_id, model_id)
+);
