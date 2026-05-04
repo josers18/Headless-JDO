@@ -29,7 +29,8 @@
     "refresh:tableau-sdms": "tsx --env-file=.env scripts/refresh-tableau-sdms.ts",
     "test:signoff": "tsx scripts/test-signoff-policy.ts",
     "smoke:heroku-inference": "tsx --env-file=.env scripts/smoke-heroku-inference.ts",
-    "seed:ask-data": "tsx --env-file=.env scripts/seed-ask-data.ts"
+    "seed:ask-data": "tsx --env-file=.env scripts/seed-ask-data.ts",
+    "diagnose:self-mcp": "tsx scripts/diagnose-self-mcp-oauth.ts"
   },
   "cacheDirectories": [
     "node_modules",
