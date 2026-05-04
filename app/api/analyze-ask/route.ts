@@ -87,6 +87,7 @@ export async function POST(req: NextRequest) {
         messages: chatMessages,
         mcp,
         signal: req.signal,
+        bankerQuestion: question,
       })) {
         if (ev.type === "token") {
           send({ type: "token", text: ev.text });
@@ -111,6 +112,13 @@ export async function POST(req: NextRequest) {
             columns: ev.columns,
             rows: ev.rows,
             ...(ev.caption ? { caption: ev.caption } : {}),
+          });
+        } else if (ev.type === "chart_spec") {
+          send({
+            type: "chart_spec",
+            spec: ev.spec,
+            wasFallback: ev.wasFallback,
+            ...(ev.fallbackReason ? { fallbackReason: ev.fallbackReason } : {}),
           });
         } else if (ev.type === "turn_complete") {
           finalAssistantText = ev.text;

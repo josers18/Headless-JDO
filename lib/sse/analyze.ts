@@ -4,6 +4,8 @@
  * events land in T2-4/T2-5 without touching Ask My Data).
  */
 
+import type { ChartSpec } from "@/lib/analyze/chartTypes";
+
 export type AnalyzeSseEvent =
   | { type: "token"; text: string }
   | {
@@ -24,6 +26,12 @@ export type AnalyzeSseEvent =
       columns: string[];
       rows: Array<Record<string, unknown>>;
       caption?: string;
+    }
+  | {
+      type: "chart_spec";
+      spec: ChartSpec;
+      wasFallback: boolean;
+      fallbackReason?: string;
     }
   | { type: "persisted" }
   | { type: "done" }

@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { AnalyzeSseEvent } from "@/lib/sse/analyze";
+import type { ChartSpec } from "@/lib/analyze/chartTypes";
 
 export type AnalyzeState = "idle" | "streaming" | "done" | "error";
 
@@ -25,6 +26,7 @@ export interface AnalyzeStream {
   narrative: string;
   trace: AnalyzeTraceStep[];
   tables: AnalyzeTable[];
+  charts: ChartSpec[];
   persisted: boolean;
   submit: (modelId: string, question: string) => Promise<void>;
   reset: () => void;
@@ -37,6 +39,7 @@ export function useAnalyzeStream(): AnalyzeStream {
   const [narrative, setNarrative] = useState("");
   const [trace, setTrace] = useState<AnalyzeTraceStep[]>([]);
   const [tables, setTables] = useState<AnalyzeTable[]>([]);
+  const [charts, setCharts] = useState<ChartSpec[]>([]);
   const [persisted, setPersisted] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -46,6 +49,7 @@ export function useAnalyzeStream(): AnalyzeStream {
     setNarrative("");
     setTrace([]);
     setTables([]);
+    setCharts([]);
     setPersisted(false);
   }, []);
 
@@ -153,6 +157,9 @@ export function useAnalyzeStream(): AnalyzeStream {
               },
             ]);
             return false;
+          case "chart_spec":
+            setCharts((c) => [...c, ev.spec]);
+            return false;
           case "persisted":
             setPersisted(true);
             return false;
@@ -174,6 +181,7 @@ export function useAnalyzeStream(): AnalyzeStream {
     narrative,
     trace,
     tables,
+    charts,
     persisted,
     submit,
     reset,

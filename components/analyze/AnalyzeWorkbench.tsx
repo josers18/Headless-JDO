@@ -4,12 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { AnalyzeBar, type AnalyzeBarRef } from "./AnalyzeBar";
 import { AnalyzeTable } from "./AnalyzeTable";
+import { ChartRenderer } from "./ChartRenderer";
 import { AskDataTrace } from "@/components/ask-data/AskDataTrace";
 import {
   useAnalyzeStream,
   type AnalyzeTable as AnalyzeTableType,
   type AnalyzeTraceStep,
 } from "@/lib/client/useAnalyzeStream";
+import type { ChartSpec } from "@/lib/analyze/chartTypes";
+import { isChartType } from "@/lib/analyze/chartTypes";
 
 type PersistedBlock = {
   type: string;
@@ -45,7 +48,8 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
     stream.state !== "idle" ||
     stream.narrative.length > 0 ||
     stream.trace.length > 0 ||
-    stream.tables.length > 0;
+    stream.tables.length > 0 ||
+    stream.charts.length > 0;
 
   // After a completed turn, store its content locally so we don't wipe
   // the UI on stream close. Newer live turn wins over persisted.
@@ -54,10 +58,11 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
     const blocks = hydrateBlocksFromStream(
       stream.narrative,
       stream.trace,
-      stream.tables
+      stream.tables,
+      stream.charts
     );
     setActiveLatest({
-      question: "", // persisted question comes from server on next reload
+      question: "",
       content: blocks,
       updatedAt: new Date().toISOString(),
     });
@@ -66,7 +71,12 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
 
   useEffect(() => {
     scrollAnchor.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [stream.narrative, stream.trace.length, stream.tables.length]);
+  }, [
+    stream.narrative,
+    stream.trace.length,
+    stream.tables.length,
+    stream.charts.length,
+  ]);
 
   async function handleSubmit(question: string) {
     await stream.submit(modelId, question);
@@ -110,9 +120,12 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
             </div>
           )}
 
-        {stream.tables.map((t, i) => (
-          <AnalyzeTable key={i} table={t} />
-        ))}
+        {/* Charts supersede tables when available (they already render
+            the same data). If the chart selector hasn't landed yet (or
+            failed), render the table so the banker always sees data. */}
+        {stream.charts.length > 0
+          ? stream.charts.map((c, i) => <ChartRenderer key={i} spec={c} />)
+          : stream.tables.map((t, i) => <AnalyzeTable key={i} table={t} />)}
 
         {stream.state === "error" && stream.error && (
           <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger/90">
@@ -142,8 +155,15 @@ function PersistedAnalysis({ latest }: { latest: AnalyzeLatest }) {
   const narrative = flattenText(latest.content);
   const trace = extractTrace(latest.content);
   const tables = extractTables(latest.content);
+  const charts = extractCharts(latest.content);
 
-  if (!narrative && trace.length === 0 && tables.length === 0) return null;
+  if (
+    !narrative &&
+    trace.length === 0 &&
+    tables.length === 0 &&
+    charts.length === 0
+  )
+    return null;
 
   return (
     <div className="max-w-full">
@@ -171,9 +191,9 @@ function PersistedAnalysis({ latest }: { latest: AnalyzeLatest }) {
         </div>
       )}
 
-      {tables.map((t, i) => (
-        <AnalyzeTable key={i} table={t} />
-      ))}
+      {charts.length > 0
+        ? charts.map((c, i) => <ChartRenderer key={i} spec={c} />)
+        : tables.map((t, i) => <AnalyzeTable key={i} table={t} />)}
     </div>
   );
 }
@@ -237,6 +257,22 @@ function extractTables(blocks: PersistedBlock[]): AnalyzeTableType[] {
   return out;
 }
 
+function extractCharts(blocks: PersistedBlock[]): ChartSpec[] {
+  const out: ChartSpec[] = [];
+  for (const b of blocks) {
+    if (b.type !== "chart_spec") continue;
+    const spec = b.spec as unknown;
+    if (!spec || typeof spec !== "object") continue;
+    const obj = spec as Record<string, unknown>;
+    if (!isChartType(obj.type)) continue;
+    const props = obj.props as Record<string, unknown> | undefined;
+    if (!props || !Array.isArray(props.data)) continue;
+    // Trust persisted specs — they've already passed validateChartSpec.
+    out.push(spec as ChartSpec);
+  }
+  return out;
+}
+
 /**
  * Build a content-block array from live stream state. Called at the
  * end of a turn so the UI can keep rendering without re-fetching.
@@ -244,7 +280,8 @@ function extractTables(blocks: PersistedBlock[]): AnalyzeTableType[] {
 function hydrateBlocksFromStream(
   narrative: string,
   trace: AnalyzeTraceStep[],
-  tables: AnalyzeTableType[]
+  tables: AnalyzeTableType[],
+  charts: ChartSpec[]
 ): PersistedBlock[] {
   const out: PersistedBlock[] = [];
   if (narrative) out.push({ type: "text", text: narrative });
@@ -268,6 +305,12 @@ function hydrateBlocksFromStream(
       columns: t.columns,
       rows: t.rows,
       ...(t.caption ? { caption: t.caption } : {}),
+    });
+  }
+  for (const c of charts) {
+    out.push({
+      type: "chart_spec",
+      spec: c as unknown as Record<string, unknown>,
     });
   }
   return out;

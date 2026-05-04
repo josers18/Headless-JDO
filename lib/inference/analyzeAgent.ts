@@ -19,6 +19,9 @@ import type {
   TableauNextSession,
   TableauNextToolDef,
 } from "@/lib/mcp/firstPartyTableauNext";
+import { selectChartSpec } from "@/lib/analyze/chartSelector";
+import type { ChartSpec } from "@/lib/analyze/chartTypes";
+import { stripThinkTags } from "@/lib/analyze/sanitize";
 
 /**
  * Tools Kimi is allowed to see on the Analyze surface. Doc-grounded
@@ -68,6 +71,12 @@ export type AnalyzeAgentEvent =
       caption?: string;
     }
   | {
+      type: "chart_spec";
+      spec: ChartSpec;
+      wasFallback: boolean;
+      fallbackReason?: string;
+    }
+  | {
       type: "turn_complete";
       text: string;
       /** Content blocks to persist as the stored analysis. */
@@ -80,12 +89,18 @@ export interface AnalyzeAgentOptions {
   messages: ChatCompletionMessageParam[];
   mcp: TableauNextSession;
   signal?: AbortSignal;
+  /**
+   * The banker's question for this turn. Fed to the MiniMax chart
+   * selector alongside table_fallback data so chart picks are
+   * grounded in what the banker actually asked.
+   */
+  bankerQuestion: string;
 }
 
 export async function* runAnalyzeAgent(
   options: AnalyzeAgentOptions
 ): AsyncGenerator<AnalyzeAgentEvent, void, unknown> {
-  const { system, mcp, signal } = options;
+  const { system, mcp, signal, bankerQuestion } = options;
 
   // Intersect the live tool list with our curated set — if Salesforce
   // removes or renames tools, we surface what's actually available.
@@ -99,6 +114,10 @@ export async function* runAnalyzeAgent(
   let accumulatedText = "";
   let consecutiveErrors = 0;
   let iteration = 0;
+
+  // <think> stripper carries state across token chunks because tags can
+  // span chunk boundaries. Returns the sanitized slice for this chunk.
+  const thinkStripper = stripThinkTags();
 
   while (iteration < MAX_ITERATIONS) {
     iteration += 1;
@@ -131,9 +150,10 @@ export async function* runAnalyzeAgent(
         signal,
       })) {
         if (ev.type === "token") {
-          turnText += ev.text;
-          accumulatedText += ev.text;
-          yield { type: "token", text: ev.text };
+          const sanitized = thinkStripper.push(ev.text);
+          turnText += sanitized;
+          accumulatedText += sanitized;
+          if (sanitized) yield { type: "token", text: sanitized };
         } else if (ev.type === "tool_call") {
           const prev = inflightCalls.get(ev.index) ?? {
             id: "",
@@ -301,6 +321,37 @@ export async function* runAnalyzeAgent(
           rows: r.tableFallback.rows,
           ...(r.tableFallback.caption ? { caption: r.tableFallback.caption } : {}),
         });
+
+        // Chart selection happens right after the table lands. MiniMax
+        // picks from the 18 types; validateChartSpec guarantees a
+        // table fallback on malformed responses, so this call NEVER
+        // fails the turn — worst case we emit a table spec (which is
+        // already shown above, so the UI deduplicates on type).
+        try {
+          const picked = await selectChartSpec({
+            bankerQuestion,
+            data: r.tableFallback.rows,
+            caption: r.tableFallback.caption,
+          });
+          yield {
+            type: "chart_spec",
+            spec: picked.spec,
+            wasFallback: picked.wasFallback,
+            ...(picked.fallbackReason
+              ? { fallbackReason: picked.fallbackReason }
+              : {}),
+          };
+          contentBlocks.push({
+            type: "chart_spec",
+            spec: picked.spec as unknown as Record<string, unknown>,
+            wasFallback: picked.wasFallback,
+            ...(picked.fallbackReason
+              ? { fallbackReason: picked.fallbackReason }
+              : {}),
+          });
+        } catch {
+          /* non-fatal — the table_fallback already rendered */
+        }
       }
 
       messages.push({
