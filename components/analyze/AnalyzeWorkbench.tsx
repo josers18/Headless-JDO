@@ -91,11 +91,13 @@ export function AnalyzeWorkbench({
     stream.cancel();
   }
 
-  // Empty state: no live turn in progress AND no persisted analysis.
-  // Show starter-question pills so the banker has concrete clickable
-  // entry points instead of a blank Ask bar.
-  const showStarters = !hasLiveTurn && !latest;
-
+  // Starter questions are always visible so the banker has concrete
+  // clickable entry points regardless of whether they've used this
+  // model before. Placed directly above the Ask bar so [suggestions]
+  // and [input] read as one composition element — the banker's eye
+  // always finds them together near the bottom of the main column.
+  // Disabled during an in-flight stream to prevent queued duplicate
+  // submits.
   return (
     <>
       <section className="mt-10 flex flex-col gap-6">
@@ -108,13 +110,11 @@ export function AnalyzeWorkbench({
         <div ref={scrollAnchor} />
       </section>
 
-      {showStarters && (
-        <StarterQuestions
-          apiName={modelApiName}
-          onPick={(q) => void handleSubmit(q)}
-          disabled={isStreaming}
-        />
-      )}
+      <StarterQuestions
+        apiName={modelApiName}
+        onPick={(q) => void handleSubmit(q)}
+        disabled={isStreaming}
+      />
 
       <section className="mt-6">
         <AnalyzeBar
