@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { NavCircle } from "./NavCircle";
 
 type RailProps = {
@@ -14,7 +14,6 @@ type RailProps = {
 // (per Q-T0-1-d Option A) with Ask / Analyze disabled until auth.
 export function LeftRail({ signedIn }: RailProps) {
   const pathname = usePathname();
-  const router = useRouter();
 
   // Active route is just the URL — route groups are URL-invisible.
   const activeRoute: "today" | "ask" | "analyze" = pathname.startsWith("/ask")
@@ -48,12 +47,14 @@ export function LeftRail({ signedIn }: RailProps) {
 
       if (dest) {
         e.preventDefault();
-        router.push(dest);
+        // Hard-navigate so the shortcut feels instant even mid-render.
+        // See NavCircle.tsx for the rationale.
+        window.location.assign(dest);
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, signedIn]);
+  }, [signedIn]);
 
   return (
     <nav

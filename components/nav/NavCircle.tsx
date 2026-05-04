@@ -1,10 +1,8 @@
 "use client";
 
-import Link, { type LinkProps } from "next/link";
 import type { ReactNode } from "react";
 
-// Typed routes (see next.config.mjs) require the href be a known literal,
-// so the rail passes its three destinations as a narrow union.
+// Rail destinations — narrow union so we can validate hard-nav targets.
 type RailHref = "/" | "/ask" | "/analyze";
 
 type NavCircleProps = {
@@ -54,14 +52,23 @@ export function NavCircle({
     );
   }
 
+  // Hard-navigate with a plain <a> instead of next/link's soft-nav.
+  // Next's client router queues a nav behind the in-flight render, so
+  // clicking "Ask My Data" during Today's 8 serial section fetches
+  // feels stuck — the URL won't swap until Today either finishes or
+  // suspends. A plain <a> hands the navigation to the browser, which
+  // cancels whatever's rendering and fetches the destination fresh.
+  //
+  // Cost: rail re-renders on each nav (~0ms, client-only component).
+  // Win: navigation is immediate even mid-render.
   return (
-    <Link
-      href={href as LinkProps<RailHref>["href"]}
+    <a
+      href={href}
       className={base + " " + state}
       aria-current={active ? "page" : undefined}
       aria-label={label}
     >
       {body}
-    </Link>
+    </a>
   );
 }
