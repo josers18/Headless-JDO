@@ -1,33 +1,30 @@
+import { notFound } from "next/navigation";
 import { SectionTopBar } from "@/components/nav/SectionTopBar";
 import { AnalyzeWorkspace } from "@/components/analyze/AnalyzeWorkspace";
+import { ModelHeader } from "@/components/analyze/ModelHeader";
+import { ModelMetricsPills } from "@/components/analyze/ModelMetricsPills";
+import { getModelProfile } from "@/lib/analyze/getModelProfile";
 
 export const dynamic = "force-dynamic";
 
 type PageProps = { params: Promise<{ modelId: string }> };
 
-/**
- * Per-model workspace. Full model profile + metric pills + Ask bar land
- * in T2-2. T2-1 only ensures the route resolves so the sidebar's active
- * state has a valid destination.
- */
 export default async function AnalyzeModelPage({ params }: PageProps) {
   const { modelId } = await params;
+
+  // Server-render the profile (Q-T2-2-a = C). If the banker isn't
+  // signed in or the MCP can't reach Tableau, getModelProfile returns
+  // null and we 404 — clearer than rendering an empty shell.
+  const profile = await getModelProfile(modelId);
+  if (!profile) notFound();
+
   return (
     <main className="relative mx-auto w-full max-w-[1600px] px-6 pb-10">
       <SectionTopBar title="Analyze" />
       <AnalyzeWorkspace>
-        <section className="mt-16 animate-fade-rise">
-          <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-text-muted">
-            Model
-          </div>
-          <h1 className="mt-2 font-display text-2xl tracking-tight text-text md:text-3xl">
-            {modelId}
-          </h1>
-          <p className="mt-3 max-w-xl text-[13px] text-text-muted">
-            Model profile, named metrics, and the Ask bar render here in
-            the next increment.
-          </p>
-        </section>
+        <ModelHeader profile={profile} />
+        <ModelMetricsPills modelId={profile.id} />
+        {/* T2-3: Ask bar + question/answer flow lands here. */}
       </AnalyzeWorkspace>
     </main>
   );

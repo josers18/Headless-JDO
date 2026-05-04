@@ -22,3 +22,34 @@ export type SemanticModelSummary = {
   /** Categories (e.g. ["Banking", "Sales"]). Empty when unscoped. */
   categories: string[];
 };
+
+/**
+ * Model detail — what the main column on /analyze/[modelId] renders at
+ * the top. Richer than the sidebar summary because this is the focus
+ * of the page.
+ */
+export type SemanticModelProfile = {
+  id: string;
+  apiName: string;
+  label: string;
+  description?: string;
+  /**
+   * Free-form "business preferences" guidance string the SDM author
+   * provides; often contains #-prefixed hints the Analytics Agent uses.
+   */
+  businessPreferences?: string;
+  dataspace?: string;
+  lastModifiedDate?: string;
+  categories: string[];
+};
+
+/**
+ * Named metric attached to a semantic model. Populated from
+ * list_semantic_model_metrics and rendered as a clickable pill in the
+ * main column. Clicking a pill pre-fills the Ask bar (T2-3+).
+ */
+export type SemanticModelMetric = {
+  apiName: string;
+  label: string;
+  description?: string;
+};
