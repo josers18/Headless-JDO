@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { AnalyzeBar, type AnalyzeBarRef } from "./AnalyzeBar";
 import { AnalyzeTable } from "./AnalyzeTable";
@@ -40,34 +40,30 @@ export type AnalyzeWorkbenchProps = {
 export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
   const barRef = useRef<AnalyzeBarRef | null>(null);
   const stream = useAnalyzeStream();
-  const [activeLatest, setActiveLatest] = useState(latest);
   const scrollAnchor = useRef<HTMLDivElement>(null);
 
   const isStreaming = stream.state === "streaming";
-  const hasLiveContent =
+
+  /*
+   * Rendering strategy: once the banker submits anything in this
+   * session, the LIVE stream becomes the authoritative source of truth
+   * and stays rendered until they navigate away. We never copy live
+   * state into a separate "latest" bucket — that double-source caused
+   * the reasoning trail to disappear a few seconds after streaming
+   * completed (the useEffect fired, React re-rendered with derived
+   * blocks, and per-frame boolean state made content flicker out).
+   *
+   * - Before any live turn (state === "idle" AND narrative empty):
+   *     render the persisted `latest` from the server.
+   * - Once a turn has begun (state transitions away from "idle"):
+   *     render live stream state until unmount.
+   */
+  const hasLiveTurn =
     stream.state !== "idle" ||
     stream.narrative.length > 0 ||
     stream.trace.length > 0 ||
     stream.tables.length > 0 ||
     stream.charts.length > 0;
-
-  // After a completed turn, store its content locally so we don't wipe
-  // the UI on stream close. Newer live turn wins over persisted.
-  useEffect(() => {
-    if (stream.state !== "done") return;
-    const blocks = hydrateBlocksFromStream(
-      stream.narrative,
-      stream.trace,
-      stream.tables,
-      stream.charts
-    );
-    setActiveLatest({
-      question: "",
-      content: blocks,
-      updatedAt: new Date().toISOString(),
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream.state]);
 
   useEffect(() => {
     scrollAnchor.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -86,54 +82,14 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
     stream.cancel();
   }
 
-  const showPersisted = !hasLiveContent && activeLatest;
-
   return (
     <>
       <section className="mt-10 flex flex-col gap-6">
-        {isStreaming && stream.trace.length > 0 && (
-          <div>
-            <AskDataTrace
-              steps={stream.trace as AnalyzeTraceStep[]}
-              defaultOpen={false}
-            />
-          </div>
+        {hasLiveTurn ? (
+          <LiveTurn stream={stream} />
+        ) : (
+          latest && <PersistedAnalysis latest={latest} />
         )}
-
-        {isStreaming && stream.narrative.length === 0 && stream.trace.length === 0 && (
-          <div className="text-[13px] text-text-muted">
-            Analyzing through Concierge…
-          </div>
-        )}
-
-        {(isStreaming || stream.state === "done" || stream.state === "error") &&
-          stream.narrative && (
-            <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
-              {stream.narrative}
-              {isStreaming && (
-                <span
-                  className={cn(
-                    "ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] animate-pulse bg-accent"
-                  )}
-                />
-              )}
-            </div>
-          )}
-
-        {/* Charts supersede tables when available (they already render
-            the same data). If the chart selector hasn't landed yet (or
-            failed), render the table so the banker always sees data. */}
-        {stream.charts.length > 0
-          ? stream.charts.map((c, i) => <ChartRenderer key={i} spec={c} />)
-          : stream.tables.map((t, i) => <AnalyzeTable key={i} table={t} />)}
-
-        {stream.state === "error" && stream.error && (
-          <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger/90">
-            {stream.error}
-          </div>
-        )}
-
-        {showPersisted && <PersistedAnalysis latest={activeLatest} />}
 
         <div ref={scrollAnchor} />
       </section>
@@ -147,6 +103,65 @@ export function AnalyzeWorkbench({ modelId, latest }: AnalyzeWorkbenchProps) {
           streaming={isStreaming}
         />
       </section>
+    </>
+  );
+}
+
+/**
+ * Single component that renders everything produced by the live
+ * stream. Isolates the live-view render logic so it isn't entangled
+ * with the persisted-view path.
+ */
+function LiveTurn({
+  stream,
+}: {
+  stream: ReturnType<typeof useAnalyzeStream>;
+}) {
+  const isStreaming = stream.state === "streaming";
+  const hasNarrative = stream.narrative.length > 0;
+  const hasTrace = stream.trace.length > 0;
+  const hasCharts = stream.charts.length > 0;
+  const hasTables = stream.tables.length > 0;
+
+  return (
+    <>
+      {hasTrace && (
+        <AskDataTrace
+          steps={stream.trace as AnalyzeTraceStep[]}
+          defaultOpen={false}
+        />
+      )}
+
+      {isStreaming && !hasNarrative && !hasTrace && (
+        <div className="text-[13px] text-text-muted">
+          Analyzing through Concierge…
+        </div>
+      )}
+
+      {hasNarrative && (
+        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
+          {stream.narrative}
+          {isStreaming && (
+            <span
+              className={cn(
+                "ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] animate-pulse bg-accent"
+              )}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Charts supersede tables when available. */}
+      {hasCharts
+        ? stream.charts.map((c, i) => <ChartRenderer key={i} spec={c} />)
+        : hasTables &&
+          stream.tables.map((t, i) => <AnalyzeTable key={i} table={t} />)}
+
+      {stream.state === "error" && stream.error && (
+        <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger/90">
+          {stream.error}
+        </div>
+      )}
     </>
   );
 }
@@ -273,45 +288,3 @@ function extractCharts(blocks: PersistedBlock[]): ChartSpec[] {
   return out;
 }
 
-/**
- * Build a content-block array from live stream state. Called at the
- * end of a turn so the UI can keep rendering without re-fetching.
- */
-function hydrateBlocksFromStream(
-  narrative: string,
-  trace: AnalyzeTraceStep[],
-  tables: AnalyzeTableType[],
-  charts: ChartSpec[]
-): PersistedBlock[] {
-  const out: PersistedBlock[] = [];
-  if (narrative) out.push({ type: "text", text: narrative });
-  for (const s of trace) {
-    out.push({
-      type: "tool_use",
-      id: s.callId,
-      name: s.name,
-      input: s.input,
-    });
-    out.push({
-      type: "tool_result",
-      tool_use_id: s.callId,
-      is_error: s.status === "error",
-      content: s.preview ?? "",
-    });
-  }
-  for (const t of tables) {
-    out.push({
-      type: "table_fallback",
-      columns: t.columns,
-      rows: t.rows,
-      ...(t.caption ? { caption: t.caption } : {}),
-    });
-  }
-  for (const c of charts) {
-    out.push({
-      type: "chart_spec",
-      spec: c as unknown as Record<string, unknown>,
-    });
-  }
-  return out;
-}

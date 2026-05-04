@@ -263,6 +263,10 @@ export async function* runAnalyzeAgent(
         c.name === "analyze_data" && !r.isError
           ? extractTableFallback(r.modelText)
           : null;
+      const analyzeAnswer =
+        c.name === "analyze_data" && !r.isError
+          ? extractAnalyzeAnswer(r.modelText)
+          : null;
       return {
         callId: c.id,
         name: c.name,
@@ -270,6 +274,7 @@ export async function* runAnalyzeAgent(
         modelText: r.modelText,
         preview: r.textPreview,
         tableFallback,
+        analyzeAnswer,
       };
     });
 
@@ -305,6 +310,19 @@ export async function* runAnalyzeAgent(
         is_error: r.isError,
         content: r.modelText,
       });
+
+      // If analyze_data returned a natural-language answer, surface it
+      // as narrative tokens. Kimi often defers when the tool answer is
+      // already complete and prose-shaped, which left the banker
+      // staring at an empty response. Emitting the answer as tokens
+      // guarantees the banker sees the Analytics Agent's output.
+      if (r.analyzeAnswer && r.analyzeAnswer.length > 0) {
+        const text = r.analyzeAnswer;
+        turnText += text;
+        accumulatedText += text;
+        yield { type: "token", text };
+        contentBlocks.push({ type: "text", text });
+      }
 
       // Emit the table fallback right after the tool_result so the UI
       // can render it alongside Kimi's eventual prose.
@@ -412,6 +430,64 @@ function toOpenAiTool(t: TableauNextToolDef): ChatCompletionTool {
       parameters: schema,
     },
   };
+}
+
+// ─── analyze_data answer extraction ────────────────────────────────────
+
+/**
+ * Pull the natural-language answer out of an analyze_data response.
+ * Tableau wraps the real answer in a few possible shapes:
+ *
+ *   { answer: "..." }                            — simple shape
+ *   { defaultExc: "{\"answer\":\"...\"}" }        — observed live: JSON
+ *                                                  string inside defaultExc,
+ *                                                  HTML-encoded (&#39; etc.)
+ *
+ * Returns null if no answer string is found, trimmed of HTML entities
+ * and length-capped to 4KB (typical answer is 300-2000 chars).
+ */
+function extractAnalyzeAnswer(text: string): string | null {
+  if (!text || text.length > 64_000) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+
+  const directAnswer = typeof obj.answer === "string" ? obj.answer : null;
+  if (directAnswer) return cleanAnswer(directAnswer);
+
+  // Nested defaultExc (observed on this org's Analytics Agent responses).
+  const defaultExc = obj.defaultExc;
+  if (typeof defaultExc === "string") {
+    try {
+      const inner = JSON.parse(defaultExc) as Record<string, unknown>;
+      if (typeof inner.answer === "string") return cleanAnswer(inner.answer);
+    } catch {
+      // Sometimes defaultExc itself is a plain sentence. Use it as-is.
+      return cleanAnswer(defaultExc);
+    }
+  }
+
+  // Some Analytics Agent responses put the narrative under "message".
+  if (typeof obj.message === "string") return cleanAnswer(obj.message);
+
+  return null;
+}
+
+function cleanAnswer(s: string): string {
+  const decoded = s
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+  return decoded.slice(0, 4_000);
 }
 
 // ─── Table fallback extraction ─────────────────────────────────────────
