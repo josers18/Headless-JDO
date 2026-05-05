@@ -4,6 +4,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -13,6 +14,9 @@ import {
 import type { ChartProps, ChartType } from "@/lib/analyze/chartTypes";
 import {
   AXIS_PROPS,
+  axisTickFormatter,
+  CHART_AXIS,
+  chartValueFormatter,
   CHART_GRID,
   LEGEND_PROPS,
   seriesColor,
@@ -46,8 +50,8 @@ export function BarChartView({
       <BarChart data={data} margin={{ top: 16, right: 16, left: 4, bottom: 8 }}>
         <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey={xKey} {...AXIS_PROPS} />
-        <YAxis {...AXIS_PROPS} />
-        <Tooltip {...TOOLTIP_STYLES} />
+        <YAxis {...AXIS_PROPS} tickFormatter={axisTickFormatter} />
+        <Tooltip {...TOOLTIP_STYLES} formatter={(v: unknown) => chartValueFormatter(v)} />
         {keys.length > 1 && <Legend {...LEGEND_PROPS} />}
         {keys.map((k, i) => (
           <Bar
@@ -57,7 +61,20 @@ export function BarChartView({
             stackId={stacked ? "1" : undefined}
             radius={stacked || keys.length > 1 ? [0, 0, 0, 0] : [4, 4, 0, 0]}
             animationDuration={280}
-          />
+          >
+            {/* On-bar value labels — K/M/B-formatted. Single-series
+                bars get labels above the bar; stacked/grouped skip to
+                avoid overlap (tooltip covers those cases). */}
+            {keys.length === 1 && !stacked && (
+              <LabelList
+                dataKey={k}
+                position="top"
+                formatter={chartValueFormatter}
+                fill={CHART_AXIS}
+                fontSize={11}
+              />
+            )}
+          </Bar>
         ))}
       </BarChart>
     </ResponsiveContainer>

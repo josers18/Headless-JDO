@@ -178,6 +178,22 @@ export async function* runAnalyzeAgent(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       yield { type: "error", message };
+      // If we haven't emitted any narrative yet, surface a banker-
+      // facing fallback so the UI renders something + follow-ups can
+      // still fire. Without this the banker sees a silent empty
+      // response on Kimi upstream errors (timeout, 429, bad gateway).
+      if (!accumulatedText.trim()) {
+        const fallback =
+          "The analytics engine had trouble with that question. Try rephrasing, narrowing the scope, or picking a different model.";
+        accumulatedText = fallback;
+        yield { type: "token", text: fallback };
+        contentBlocks.push({ type: "text", text: fallback });
+        yield {
+          type: "turn_complete",
+          text: fallback,
+          contentBlocks,
+        };
+      }
       return;
     }
 
@@ -191,7 +207,18 @@ export async function* runAnalyzeAgent(
     }
 
     if (calls.length === 0) {
-      const finalText = turnText.trim() || accumulatedText.trim();
+      let finalText = turnText.trim() || accumulatedText.trim();
+      // Kimi emitted no tool calls AND no prose — the banker is left
+      // staring at a blank response. Emit a helpful fallback as a
+      // token so the UI renders something and follow-ups still fire
+      // with non-empty context.
+      if (!finalText) {
+        finalText =
+          "I couldn't answer that from this semantic model. The data or metric you asked about may not be available here — try rephrasing, or pick a different model from the sidebar.";
+        accumulatedText = finalText;
+        yield { type: "token", text: finalText };
+        contentBlocks.push({ type: "text", text: finalText });
+      }
       yield {
         type: "turn_complete",
         text: finalText,

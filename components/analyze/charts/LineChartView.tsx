@@ -2,6 +2,7 @@
 
 import {
   CartesianGrid,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -13,6 +14,9 @@ import {
 import type { ChartProps } from "@/lib/analyze/chartTypes";
 import {
   AXIS_PROPS,
+  axisTickFormatter,
+  CHART_AXIS,
+  chartValueFormatter,
   CHART_GRID,
   LEGEND_PROPS,
   seriesColor,
@@ -33,9 +37,10 @@ export function LineChartView({ props }: { props: ChartProps }) {
         />
         <YAxis
           {...AXIS_PROPS}
+          tickFormatter={axisTickFormatter}
           label={yLabel ? { value: yLabel, angle: -90, position: "insideLeft", fill: "var(--hz-text-muted)", fontSize: 11 } : undefined}
         />
-        <Tooltip {...TOOLTIP_STYLES} />
+        <Tooltip {...TOOLTIP_STYLES} formatter={(v: unknown) => chartValueFormatter(v)} />
         {keys.length > 1 && <Legend {...LEGEND_PROPS} />}
         {keys.map((k, i) => (
           <Line
@@ -47,7 +52,20 @@ export function LineChartView({ props }: { props: ChartProps }) {
             dot={{ r: 3, fill: seriesColor(i), strokeWidth: 0 }}
             activeDot={{ r: 5, fill: seriesColor(i) }}
             animationDuration={280}
-          />
+          >
+            {/* On-point value labels — K/M/B-formatted. Single-series
+                charts get labels automatically; multi-series charts skip
+                labels to avoid overlap (the tooltip covers that case). */}
+            {keys.length === 1 && (
+              <LabelList
+                dataKey={k}
+                position="top"
+                formatter={chartValueFormatter}
+                fill={CHART_AXIS}
+                fontSize={11}
+              />
+            )}
+          </Line>
         ))}
       </LineChart>
     </ResponsiveContainer>

@@ -32,7 +32,10 @@ export function AnalyzeFollowUps({
   const [state, setState] = useState<FetchState>({ kind: "idle" });
 
   const load = useCallback(async () => {
-    if (!question || !assistantText) return;
+    // Require meaningful content on both sides before asking MiniMax
+    // for follow-ups — short stubs produce generic or nonsensical
+    // suggestions.
+    if (!question || !assistantText || assistantText.trim().length < 40) return;
     setState({ kind: "loading" });
     try {
       const res = await fetch("/api/analyze-followups", {

@@ -59,3 +59,43 @@ export const LEGEND_PROPS = {
     color: "var(--hz-text-muted)",
   } as const,
 };
+
+/**
+ * Format a numeric value for on-chart labels + axis ticks. Applies
+ * banker-readable magnitude suffixes (K, M, B, T) so a chart showing
+ * $313,190 becomes "313.2K" on the bar and "313K" on the axis tick.
+ * Preserves sign; handles non-numeric values gracefully.
+ *
+ * Banker convention: 2 significant digits in the formatted output is
+ * readable at a glance without feeling precise-for-its-own-sake.
+ */
+export function formatChartValue(
+  value: unknown,
+  opts: { compact?: boolean } = {}
+): string {
+  if (value == null) return "";
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  const compact = opts.compact ?? false;
+
+  if (abs >= 1_000_000_000_000)
+    return sign + (abs / 1_000_000_000_000).toFixed(compact ? 0 : 1) + "T";
+  if (abs >= 1_000_000_000)
+    return sign + (abs / 1_000_000_000).toFixed(compact ? 0 : 1) + "B";
+  if (abs >= 1_000_000)
+    return sign + (abs / 1_000_000).toFixed(compact ? 0 : 1) + "M";
+  if (abs >= 1_000)
+    return sign + (abs / 1_000).toFixed(compact ? 0 : 1) + "K";
+  if (abs >= 10) return sign + abs.toFixed(0);
+  if (abs > 0) return sign + abs.toFixed(2);
+  return "0";
+}
+
+/** Shared Recharts-compatible label formatter. */
+export const chartValueFormatter = (v: unknown): string => formatChartValue(v);
+
+/** Shorter variant for axis ticks where width is scarce. */
+export const axisTickFormatter = (v: unknown): string =>
+  formatChartValue(v, { compact: true });

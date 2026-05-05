@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { Home, MessageSquare, BarChart3 } from "lucide-react";
 import { NavCircle } from "./NavCircle";
 
 type RailProps = {
@@ -105,7 +106,7 @@ export function LeftRail({ signedIn }: RailProps) {
 
       <div className="mt-8 flex flex-col items-center gap-3">
         <NavCircle href="/" label="Today — ⌘1" active={activeRoute === "today"}>
-          ●
+          <Home size={16} strokeWidth={1.75} aria-hidden />
         </NavCircle>
         <NavCircle
           href="/ask"
@@ -115,7 +116,7 @@ export function LeftRail({ signedIn }: RailProps) {
           active={activeRoute === "ask"}
           disabled={!signedIn}
         >
-          ○
+          <MessageSquare size={16} strokeWidth={1.75} aria-hidden />
         </NavCircle>
         <NavCircle
           href="/analyze"
@@ -125,7 +126,7 @@ export function LeftRail({ signedIn }: RailProps) {
           active={activeRoute === "analyze"}
           disabled={!signedIn}
         >
-          ○
+          <BarChart3 size={16} strokeWidth={1.75} aria-hidden />
         </NavCircle>
       </div>
 

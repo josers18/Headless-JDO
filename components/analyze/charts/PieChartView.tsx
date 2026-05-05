@@ -2,6 +2,7 @@
 
 import {
   Cell,
+  Label,
   Legend,
   Pie,
   PieChart,
@@ -9,7 +10,12 @@ import {
   Tooltip,
 } from "recharts";
 import type { ChartProps } from "@/lib/analyze/chartTypes";
-import { LEGEND_PROPS, seriesColor, TOOLTIP_STYLES } from "./chartTheme";
+import {
+  chartValueFormatter,
+  LEGEND_PROPS,
+  seriesColor,
+  TOOLTIP_STYLES,
+} from "./chartTheme";
 
 export function PieChartView({ props }: { props: ChartProps }) {
   const { data, nameKey, valueKey } = props;
@@ -17,7 +23,10 @@ export function PieChartView({ props }: { props: ChartProps }) {
   return (
     <ResponsiveContainer width="100%" height={320}>
       <PieChart margin={{ top: 16, right: 16, left: 16, bottom: 16 }}>
-        <Tooltip {...TOOLTIP_STYLES} />
+        <Tooltip
+          {...TOOLTIP_STYLES}
+          formatter={(v: unknown) => chartValueFormatter(v)}
+        />
         <Legend {...LEGEND_PROPS} />
         <Pie
           data={data}
@@ -28,6 +37,10 @@ export function PieChartView({ props }: { props: ChartProps }) {
           outerRadius={110}
           strokeWidth={1}
           stroke="var(--hz-bg)"
+          label={(entry: { value?: unknown }) =>
+            chartValueFormatter(entry.value)
+          }
+          labelLine={false}
           animationDuration={280}
         >
           {data.map((_, i) => (

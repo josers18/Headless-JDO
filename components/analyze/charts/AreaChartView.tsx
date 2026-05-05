@@ -4,6 +4,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  LabelList,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -13,6 +14,9 @@ import {
 import type { ChartProps, ChartType } from "@/lib/analyze/chartTypes";
 import {
   AXIS_PROPS,
+  axisTickFormatter,
+  CHART_AXIS,
+  chartValueFormatter,
   CHART_GRID,
   LEGEND_PROPS,
   seriesColor,
@@ -45,8 +49,8 @@ export function AreaChartView({
         </defs>
         <CartesianGrid stroke={CHART_GRID} strokeDasharray="3 3" />
         <XAxis dataKey={xKey} {...AXIS_PROPS} />
-        <YAxis {...AXIS_PROPS} />
-        <Tooltip {...TOOLTIP_STYLES} />
+        <YAxis {...AXIS_PROPS} tickFormatter={axisTickFormatter} />
+        <Tooltip {...TOOLTIP_STYLES} formatter={(v: unknown) => chartValueFormatter(v)} />
         {keys.length > 1 && <Legend {...LEGEND_PROPS} />}
         {keys.map((k, i) => (
           <Area
@@ -58,7 +62,17 @@ export function AreaChartView({
             strokeWidth={2}
             stackId={stacked ? "1" : undefined}
             animationDuration={280}
-          />
+          >
+            {keys.length === 1 && (
+              <LabelList
+                dataKey={k}
+                position="top"
+                formatter={chartValueFormatter}
+                fill={CHART_AXIS}
+                fontSize={11}
+              />
+            )}
+          </Area>
         ))}
       </AreaChart>
     </ResponsiveContainer>

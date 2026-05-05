@@ -87,12 +87,13 @@ export function AnalyzeWorkbench({
     stream.tables.length > 0 ||
     stream.charts.length > 0;
 
-  // When the current stream completes, snapshot it into finishedTurns
-  // so the next turn renders below instead of replacing it. Runs only
-  // on the state transition to "done" (or error with content) and
-  // resets the hook for the next turn.
+  // When the current stream ends (done OR error), snapshot it into
+  // finishedTurns so the next turn renders below instead of replacing
+  // it. Snapshotting on "error" too ensures failed turns still show up
+  // as part of the transcript — the banker sees what they asked + any
+  // fallback narrative the agent yielded.
   useEffect(() => {
-    if (stream.state !== "done") return;
+    if (stream.state !== "done" && stream.state !== "error") return;
     if (!activeQuestion) return;
     const snapshot: FinishedTurn = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
