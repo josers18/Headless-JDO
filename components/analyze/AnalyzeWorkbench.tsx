@@ -3,11 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { AnalyzeBar, type AnalyzeBarRef } from "./AnalyzeBar";
+import { AnalyzeFollowUps } from "./AnalyzeFollowUps";
 import { AnalyzeTable } from "./AnalyzeTable";
 import { ChartRenderer } from "./ChartRenderer";
 import { MetricChips } from "./MetricChips";
 import { StarterQuestions } from "./StarterQuestions";
+import {
+  ANALYZE_ASK_BAR_FILL_EVENT,
+  type AnalyzeAskBarFillDetail,
+} from "./analyzeEvents";
 import { AskDataTrace } from "@/components/ask-data/AskDataTrace";
+import { MarkdownView } from "@/components/horizon/MarkdownView";
 import {
   useAnalyzeStream,
   type AnalyzeTable as AnalyzeTableType,
@@ -112,6 +118,20 @@ export function AnalyzeWorkbench({
     finishedTurns.length,
   ]);
 
+  // Listen for "fill the Ask bar" events from the named-metric pills
+  // at the top of the page (outside this component's render tree).
+  // Named pills dispatch; the bar ref handles the setValue + focus.
+  useEffect(() => {
+    function onFill(e: Event) {
+      const detail = (e as CustomEvent<AnalyzeAskBarFillDetail>).detail;
+      if (!detail?.value) return;
+      barRef.current?.setValue(detail.value);
+    }
+    window.addEventListener(ANALYZE_ASK_BAR_FILL_EVENT, onFill);
+    return () =>
+      window.removeEventListener(ANALYZE_ASK_BAR_FILL_EVENT, onFill);
+  }, []);
+
   async function handleSubmit(question: string) {
     setActiveQuestion(question);
     await stream.submit(modelId, question);
@@ -164,11 +184,29 @@ export function AnalyzeWorkbench({
         <div ref={scrollAnchor} />
       </section>
 
-      <StarterQuestions
-        apiName={modelApiName}
-        onPick={(q) => void handleSubmit(q)}
-        disabled={isStreaming}
-      />
+      {/*
+       * Q-T2-6-a = C: starters show on fresh model, follow-ups
+       * replace them once the banker has completed at least one turn
+       * this session. Follow-ups key on the latest turn's Q/A so each
+       * new turn refreshes the suggestions.
+       * Q-T2-6-b = B: onPick pre-fills the Ask bar (does NOT submit)
+       * so the banker can edit before firing.
+       */}
+      {finishedTurns.length === 0 ? (
+        <StarterQuestions
+          apiName={modelApiName}
+          onPick={(q) => barRef.current?.setValue(q)}
+          disabled={isStreaming}
+        />
+      ) : (
+        <AnalyzeFollowUps
+          key={finishedTurns[finishedTurns.length - 1]!.id}
+          question={finishedTurns[finishedTurns.length - 1]!.question}
+          assistantText={finishedTurns[finishedTurns.length - 1]!.narrative}
+          onPick={(q) => barRef.current?.setValue(q)}
+          disabled={isStreaming}
+        />
+      )}
 
       <section className="mt-6">
         <AnalyzeBar
@@ -232,8 +270,8 @@ function LiveTurn({
       )}
 
       {hasNarrative && (
-        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
-          {stream.narrative}
+        <div className="max-w-full">
+          <MarkdownView source={stream.narrative} />
           {isStreaming && (
             <span
               className={cn(
@@ -292,8 +330,8 @@ function FinishedTurnView({
       )}
 
       {turn.narrative && (
-        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
-          {turn.narrative}
+        <div className="max-w-full">
+          <MarkdownView source={turn.narrative} />
         </div>
       )}
 
@@ -349,8 +387,8 @@ function PersistedAnalysis({
       )}
 
       {narrative && (
-        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
-          {narrative}
+        <div className="max-w-full">
+          <MarkdownView source={narrative} />
         </div>
       )}
 

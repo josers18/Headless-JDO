@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import type { SemanticModelMetric } from "@/lib/analyze/types";
+import { dispatchAnalyzeAskBarFill } from "./analyzeEvents";
 
 type FetchState =
   | { kind: "loading" }
@@ -86,10 +87,14 @@ export function ModelMetricsPills({ modelId }: { modelId: string }) {
             <button
               key={m.apiName}
               type="button"
-              disabled
-              className="rounded-full border border-border-soft bg-surface/60 px-3.5 py-2 text-left text-[13px] text-text-muted disabled:cursor-not-allowed"
-              title={m.description ?? m.apiName}
-              aria-label={m.label}
+              onClick={() =>
+                dispatchAnalyzeAskBarFill(
+                  `Show me ${m.label} over the last 6 months`
+                )
+              }
+              className="rounded-full border border-border-soft bg-surface/60 px-3.5 py-2 text-left text-[13px] text-text-muted transition hover:border-accent/50 hover:bg-surface-raised hover:text-text focus:outline-none focus-visible:border-accent focus-visible:text-text"
+              title={m.description ?? `Click to ask about ${m.label}`}
+              aria-label={`Ask about ${m.label}`}
             >
               {m.label}
             </button>
