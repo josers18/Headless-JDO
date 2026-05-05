@@ -8,6 +8,7 @@ import {
   type AnalyzeLatest,
 } from "@/components/analyze/AnalyzeWorkbench";
 import { getModelProfile } from "@/lib/analyze/getModelProfile";
+import { getModelMetrics } from "@/lib/analyze/getModelMetrics";
 import {
   getLatestAnalysis,
   isAnalyzeDbConfigured,
@@ -23,6 +24,11 @@ export default async function AnalyzeModelPage({ params }: PageProps) {
 
   const profile = await getModelProfile(modelId);
   if (!profile) notFound();
+
+  // Fetch metrics server-side in parallel so the workbench can cross-
+  // reference them against the narrative for "Used in this answer"
+  // chips (T2-5). Empty list is fine — the chips simply don't show.
+  const metrics = await getModelMetrics(profile.id);
 
   // Fetch persisted latest analysis in parallel with the request — it's
   // a fast Postgres lookup, not worth a Suspense split.
@@ -53,6 +59,7 @@ export default async function AnalyzeModelPage({ params }: PageProps) {
         <AnalyzeWorkbench
           modelId={profile.id}
           modelApiName={profile.apiName}
+          metrics={metrics}
           latest={latest}
         />
       </AnalyzeWorkspace>

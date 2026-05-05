@@ -53,3 +53,26 @@ export type SemanticModelMetric = {
   label: string;
   description?: string;
 };
+
+/**
+ * Full metric definition from `get_semantic_model_metric`. Used by the
+ * governance drawer (T2-5) to show a banker-readable definition on
+ * demand, with a raw-JSON toggle for audit.
+ */
+export type SemanticModelMetricDefinition = {
+  apiName: string;
+  label: string;
+  description?: string;
+  /** e.g. "Average", "Sum", "Count" — how the measure is aggregated. */
+  aggregationType?: string;
+  /** Whether the metric is cumulative over time. */
+  isCumulative?: boolean;
+  /** Source table + field driving the measure, for banker display. */
+  sourceTable?: string;
+  sourceField?: string;
+  /** Time grains supported (MONTH, QUARTER, etc.). */
+  timeGrains?: string[];
+  lastModifiedDate?: string;
+  /** The raw blob from Tableau, exposed via "Show raw" toggle. */
+  raw: Record<string, unknown>;
+};

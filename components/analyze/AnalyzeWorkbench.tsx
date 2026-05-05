@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { AnalyzeBar, type AnalyzeBarRef } from "./AnalyzeBar";
 import { AnalyzeTable } from "./AnalyzeTable";
 import { ChartRenderer } from "./ChartRenderer";
+import { MetricChips } from "./MetricChips";
 import { StarterQuestions } from "./StarterQuestions";
 import { AskDataTrace } from "@/components/ask-data/AskDataTrace";
 import {
@@ -14,6 +15,8 @@ import {
 } from "@/lib/client/useAnalyzeStream";
 import type { ChartSpec } from "@/lib/analyze/chartTypes";
 import { isChartType } from "@/lib/analyze/chartTypes";
+import type { SemanticModelMetric } from "@/lib/analyze/types";
+import { referencedMetricsFromText } from "@/lib/analyze/referencedMetrics";
 
 type PersistedBlock = {
   type: string;
@@ -30,6 +33,8 @@ export type AnalyzeWorkbenchProps = {
   modelId: string;
   /** Stable apiName of the SDM — drives per-model starter questions. */
   modelApiName: string;
+  /** Named metrics on this SDM — used for T2-5 governance chips. */
+  metrics: readonly SemanticModelMetric[];
   /** Persisted last-analysis from the server — null for first-time visit. */
   latest: AnalyzeLatest | null;
 };
@@ -43,6 +48,7 @@ export type AnalyzeWorkbenchProps = {
 export function AnalyzeWorkbench({
   modelId,
   modelApiName,
+  metrics,
   latest,
 }: AnalyzeWorkbenchProps) {
   const barRef = useRef<AnalyzeBarRef | null>(null);
@@ -102,9 +108,20 @@ export function AnalyzeWorkbench({
     <>
       <section className="mt-10 flex flex-col gap-6">
         {hasLiveTurn ? (
-          <LiveTurn stream={stream} question={activeQuestion} />
+          <LiveTurn
+            stream={stream}
+            question={activeQuestion}
+            modelId={modelId}
+            metrics={metrics}
+          />
         ) : (
-          latest && <PersistedAnalysis latest={latest} />
+          latest && (
+            <PersistedAnalysis
+              latest={latest}
+              modelId={modelId}
+              metrics={metrics}
+            />
+          )
         )}
 
         <div ref={scrollAnchor} />
@@ -137,15 +154,28 @@ export function AnalyzeWorkbench({
 function LiveTurn({
   stream,
   question,
+  modelId,
+  metrics,
 }: {
   stream: ReturnType<typeof useAnalyzeStream>;
   question: string | null;
+  modelId: string;
+  metrics: readonly SemanticModelMetric[];
 }) {
   const isStreaming = stream.state === "streaming";
   const hasNarrative = stream.narrative.length > 0;
   const hasTrace = stream.trace.length > 0;
   const hasCharts = stream.charts.length > 0;
   const hasTables = stream.tables.length > 0;
+
+  // Cross-reference metrics against the live narrative. Chips only
+  // render once the stream has completed — during streaming the
+  // narrative is still being appended and the referenced list would
+  // flicker as new metric names land.
+  const referenced =
+    !isStreaming && hasNarrative
+      ? referencedMetricsFromText(stream.narrative, metrics)
+      : [];
 
   return (
     <>
@@ -183,6 +213,10 @@ function LiveTurn({
         : hasTables &&
           stream.tables.map((t, i) => <AnalyzeTable key={i} table={t} />)}
 
+      {referenced.length > 0 && (
+        <MetricChips modelId={modelId} metrics={referenced} />
+      )}
+
       {stream.state === "error" && stream.error && (
         <div className="rounded-lg border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger/90">
           {stream.error}
@@ -192,11 +226,22 @@ function LiveTurn({
   );
 }
 
-function PersistedAnalysis({ latest }: { latest: AnalyzeLatest }) {
+function PersistedAnalysis({
+  latest,
+  modelId,
+  metrics,
+}: {
+  latest: AnalyzeLatest;
+  modelId: string;
+  metrics: readonly SemanticModelMetric[];
+}) {
   const narrative = flattenText(latest.content);
   const trace = extractTrace(latest.content);
   const tables = extractTables(latest.content);
   const charts = extractCharts(latest.content);
+  const referenced = narrative
+    ? referencedMetricsFromText(narrative, metrics)
+    : [];
 
   if (
     !narrative &&
@@ -230,6 +275,10 @@ function PersistedAnalysis({ latest }: { latest: AnalyzeLatest }) {
       {charts.length > 0
         ? charts.map((c, i) => <ChartRenderer key={i} spec={c} />)
         : tables.map((t, i) => <AnalyzeTable key={i} table={t} />)}
+
+      {referenced.length > 0 && (
+        <MetricChips modelId={modelId} metrics={referenced} />
+      )}
     </div>
   );
 }

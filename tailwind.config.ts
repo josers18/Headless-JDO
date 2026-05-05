@@ -115,6 +115,11 @@ const config: Config = {
           "50%": { backgroundColor: "var(--hz-warn)" },
           "75%": { backgroundColor: "var(--hz-success)" },
         },
+        // T2-5: governance drawer slides in from the right.
+        "slide-in-right": {
+          "0%": { transform: "translateX(100%)" },
+          "100%": { transform: "translateX(0)" },
+        },
       },
       animation: {
         "fade-rise": "fade-rise 380ms cubic-bezier(0.16, 1, 0.3, 1) both",
@@ -126,6 +131,8 @@ const config: Config = {
           "accent-drift 12s cubic-bezier(0.4, 0, 0.6, 1) infinite",
         "theme-dot-cycle":
           "theme-dot-cycle 12s ease-in-out infinite",
+        "slide-in-right":
+          "slide-in-right 280ms cubic-bezier(0.16, 1, 0.3, 1) both",
       },
     },
   },
