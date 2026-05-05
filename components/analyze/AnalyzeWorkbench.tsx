@@ -45,6 +45,22 @@ export type AnalyzeWorkbenchProps = {
  * component is client-only because the stream hook needs to mount on
  * arrival.
  */
+/**
+ * A completed turn, held in local state so the transcript of the
+ * current session grows as the banker asks multiple questions.
+ * Persistence is still single-latest (Q-T2-3-b-detail = A); multi-turn
+ * is per-page-view (Q-fix-2 = C — conversation feel without a history
+ * schema).
+ */
+type FinishedTurn = {
+  id: string;
+  question: string;
+  narrative: string;
+  trace: AnalyzeTraceStep[];
+  tables: AnalyzeTableType[];
+  charts: ChartSpec[];
+};
+
 export function AnalyzeWorkbench({
   modelId,
   modelApiName,
@@ -55,29 +71,36 @@ export function AnalyzeWorkbench({
   const stream = useAnalyzeStream();
   const scrollAnchor = useRef<HTMLDivElement>(null);
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
+  const [finishedTurns, setFinishedTurns] = useState<FinishedTurn[]>([]);
 
   const isStreaming = stream.state === "streaming";
-
-  /*
-   * Rendering strategy: once the banker submits anything in this
-   * session, the LIVE stream becomes the authoritative source of truth
-   * and stays rendered until they navigate away. We never copy live
-   * state into a separate "latest" bucket — that double-source caused
-   * the reasoning trail to disappear a few seconds after streaming
-   * completed (the useEffect fired, React re-rendered with derived
-   * blocks, and per-frame boolean state made content flicker out).
-   *
-   * - Before any live turn (state === "idle" AND narrative empty):
-   *     render the persisted `latest` from the server.
-   * - Once a turn has begun (state transitions away from "idle"):
-   *     render live stream state until unmount.
-   */
   const hasLiveTurn =
     stream.state !== "idle" ||
     stream.narrative.length > 0 ||
     stream.trace.length > 0 ||
     stream.tables.length > 0 ||
     stream.charts.length > 0;
+
+  // When the current stream completes, snapshot it into finishedTurns
+  // so the next turn renders below instead of replacing it. Runs only
+  // on the state transition to "done" (or error with content) and
+  // resets the hook for the next turn.
+  useEffect(() => {
+    if (stream.state !== "done") return;
+    if (!activeQuestion) return;
+    const snapshot: FinishedTurn = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      question: activeQuestion,
+      narrative: stream.narrative,
+      trace: [...stream.trace],
+      tables: [...stream.tables],
+      charts: [...stream.charts],
+    };
+    setFinishedTurns((prev) => [...prev, snapshot]);
+    setActiveQuestion(null);
+    stream.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream.state]);
 
   useEffect(() => {
     scrollAnchor.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -86,6 +109,7 @@ export function AnalyzeWorkbench({
     stream.trace.length,
     stream.tables.length,
     stream.charts.length,
+    finishedTurns.length,
   ]);
 
   async function handleSubmit(question: string) {
@@ -97,31 +121,44 @@ export function AnalyzeWorkbench({
     stream.cancel();
   }
 
-  // Starter questions are always visible so the banker has concrete
-  // clickable entry points regardless of whether they've used this
-  // model before. Placed directly above the Ask bar so [suggestions]
-  // and [input] read as one composition element — the banker's eye
-  // always finds them together near the bottom of the main column.
-  // Disabled during an in-flight stream to prevent queued duplicate
-  // submits.
+  // Render strategy:
+  // - If the banker has never touched this model this session AND
+  //   there are no finished turns, show the persisted `latest` from
+  //   the server at the top (so refreshes/reloads still show history).
+  // - Once any finished turn exists, the persisted latest is hidden
+  //   (its content is already represented by the first finished turn
+  //   if it came from this session, or was superseded by a new turn).
+  // - Finished turns render above; live turn renders below if
+  //   streaming; Ask bar + starters anchor the bottom.
+  const showPersisted = finishedTurns.length === 0 && !hasLiveTurn && !!latest;
+
   return (
     <>
-      <section className="mt-10 flex flex-col gap-6">
-        {hasLiveTurn ? (
+      <section className="mt-10 flex flex-col gap-8">
+        {showPersisted && latest && (
+          <PersistedAnalysis
+            latest={latest}
+            modelId={modelId}
+            metrics={metrics}
+          />
+        )}
+
+        {finishedTurns.map((turn) => (
+          <FinishedTurnView
+            key={turn.id}
+            turn={turn}
+            modelId={modelId}
+            metrics={metrics}
+          />
+        ))}
+
+        {hasLiveTurn && (
           <LiveTurn
             stream={stream}
             question={activeQuestion}
             modelId={modelId}
             metrics={metrics}
           />
-        ) : (
-          latest && (
-            <PersistedAnalysis
-              latest={latest}
-              modelId={modelId}
-              metrics={metrics}
-            />
-          )
         )}
 
         <div ref={scrollAnchor} />
@@ -223,6 +260,51 @@ function LiveTurn({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * A previously-completed turn in this page session. Same shape as
+ * LiveTurn but without the streaming cursor or "Analyzing…" placeholder.
+ */
+function FinishedTurnView({
+  turn,
+  modelId,
+  metrics,
+}: {
+  turn: FinishedTurn;
+  modelId: string;
+  metrics: readonly SemanticModelMetric[];
+}) {
+  const referenced = turn.narrative
+    ? referencedMetricsFromText(turn.narrative, metrics)
+    : [];
+
+  return (
+    <div className="flex max-w-full flex-col gap-4">
+      <QuestionEcho question={turn.question} />
+
+      {turn.trace.length > 0 && (
+        <AskDataTrace
+          steps={turn.trace as AnalyzeTraceStep[]}
+          defaultOpen={false}
+        />
+      )}
+
+      {turn.narrative && (
+        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
+          {turn.narrative}
+        </div>
+      )}
+
+      {turn.charts.length > 0
+        ? turn.charts.map((c, i) => <ChartRenderer key={i} spec={c} />)
+        : turn.tables.map((t, i) => <AnalyzeTable key={i} table={t} />)}
+
+      {referenced.length > 0 && (
+        <MetricChips modelId={modelId} metrics={referenced} />
+      )}
+    </div>
   );
 }
 
