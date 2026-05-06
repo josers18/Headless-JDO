@@ -134,12 +134,18 @@ export function herokuModel(): string {
 const TRIP_ERROR_PATTERNS = [
   // Schema mismatches
   /invalid_argument/i,
+  /invalid_input/i,
   /unknown column/i,
   /unknown table/i,
   /does not exist/i,
   /no such column/i,
   /malformed_query/i,
   /unexpected token/i,
+  // Permissions — banker token may have narrower SDM/object access than
+  // the cache-refresh token. Retrying never helps; trip the breaker.
+  /don'?t have access/i,
+  /contact your.*admin/i,
+  /insufficient_access/i,
   // Wrong tool name — model invented or guessed at the tool rather than
   // copying from the tools list. Retrying with another guess always fails.
   /unknown tool/i,
