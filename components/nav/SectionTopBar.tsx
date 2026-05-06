@@ -24,7 +24,7 @@ export async function SectionTopBar({ title }: { title: string }) {
           <HorizonMark />
         </div>
         <div
-          className="font-display text-[11px] uppercase tracking-[0.22em] text-text-muted"
+          className="font-display text-[15px] font-medium tracking-tight text-text md:text-[17px]"
           aria-label={`Section: ${title}`}
         >
           {title}
