@@ -2,8 +2,11 @@
 
 [![CI](https://github.com/josers18/Headless-JDO/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/josers18/Headless-JDO/actions/workflows/ci.yml)
 [![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-18-61dafb?logo=react&logoColor=black)](https://react.dev/)
 [![Node](https://img.shields.io/badge/node-22.x-43853d?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-06b6d4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Deployed on Heroku](https://img.shields.io/badge/Heroku-deployed-430098?logo=heroku&logoColor=white)](https://headless-jdo-002d2a119b15.herokuapp.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 **Headless home page for the relationship banker** — one scrollable surface, no nav rails, MCP-backed agent. Built for the Salesforce / DAX *So You Think You Can AI?* Innovation Contest track (2026).
