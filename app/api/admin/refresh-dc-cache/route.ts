@@ -218,35 +218,63 @@ export async function GET(req: NextRequest) {
   if (url.searchParams.get("run") === "1") {
     return POST(req);
   }
-  const cached = await loadCachedDcMetadata();
-  if (!cached) {
+  const [cached, sdms] = await Promise.all([
+    loadCachedDcMetadata(),
+    loadCachedSdms(),
+  ]);
+  if (!cached && !sdms) {
     return NextResponse.json(
       {
         cached: false,
         message:
-          "No Data Cloud metadata cache found. Run `heroku run --app headless-jdo npm run refresh:dc-metadata` to populate.",
+          "No caches found. Run `?run=1&tool=both&force=1` from a logged-in browser tab, or `heroku run --app headless-jdo npm run refresh:dc-metadata` / `refresh:tableau-sdms` from the CLI.",
       },
       { status: 404 }
     );
   }
   const now = Date.now();
-  const generated = new Date(cached.generatedAt).getTime();
-  const ageMs = now - generated;
-  const ageHours = Math.floor(ageMs / (1000 * 60 * 60));
+  const dcAgeHours = cached
+    ? Math.floor(
+        (now - new Date(cached.generatedAt).getTime()) / (1000 * 60 * 60)
+      )
+    : null;
+  const sdmAgeHours = sdms
+    ? Math.floor(
+        (now - new Date(sdms.generatedAt).getTime()) / (1000 * 60 * 60)
+      )
+    : null;
   return NextResponse.json({
-    cached: true,
-    generatedAt: cached.generatedAt,
-    ageHours,
-    dataspace: cached.dataspace,
-    totalDmos: cached.totalDmos,
-    survivingDmos: cached.survivingDmos,
-    emptyDmos: cached.emptyDmos,
-    errorDmos: cached.errorDmos,
-    topByRowCount: cached.dmos.slice(0, 10).map((d) => ({
+    cached: Boolean(cached),
+    generatedAt: cached?.generatedAt,
+    ageHours: dcAgeHours,
+    dataspace: cached?.dataspace,
+    totalDmos: cached?.totalDmos,
+    survivingDmos: cached?.survivingDmos,
+    emptyDmos: cached?.emptyDmos,
+    errorDmos: cached?.errorDmos,
+    topByRowCount: cached?.dmos.slice(0, 10).map((d) => ({
       name: d.name,
       category: d.category,
       rowCount: d.rowCount,
       fieldCount: d.fields.length,
     })),
+    tableau: sdms
+      ? {
+          cached: true,
+          generatedAt: sdms.generatedAt,
+          ageHours: sdmAgeHours,
+          dataspace: sdms.dataspace,
+          totalSdms: sdms.totalSdms,
+          survivingSdms: sdms.survivingSdms,
+          excludedSdms: sdms.excludedSdms,
+          apiNames: sdms.sdms.map((s) => ({
+            apiName: s.apiName,
+            label: s.label,
+            dataspace: s.dataspace,
+            objects: s.dataObjects.length,
+            metrics: s.metrics.length,
+          })),
+        }
+      : { cached: false },
   });
 }
