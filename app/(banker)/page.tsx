@@ -33,9 +33,17 @@ export default async function HorizonHome() {
     <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56 xl:max-w-[1400px]">
       {!signedIn && (
         <>
-          <header className="flex items-center justify-between pt-12 animate-fade-rise md:pt-16">
-            <HorizonMark />
-            <div className="flex items-center gap-3">
+          <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 pt-12 animate-fade-rise md:pt-16">
+            <div className="flex min-w-0 items-center">
+              <HorizonMark />
+            </div>
+            <div
+              className="font-display text-[15px] font-bold tracking-tight text-text md:text-[17px]"
+              aria-label="Section: Today"
+            >
+              Today
+            </div>
+            <div className="flex items-center justify-end gap-3">
               <ThemeSwitcher />
               <HeaderClock />
             </div>
@@ -46,9 +54,17 @@ export default async function HorizonHome() {
 
       {signedIn && (
         <div className="sticky top-0 z-40 -mx-6 border-b border-border-soft/50 bg-bg/90 px-6 pb-4 pt-12 shadow-[0_12px_40px_-28px_rgba(0,0,0,0.55)] backdrop-blur-md supports-[backdrop-filter]:bg-bg/80 md:pt-16">
-          <header className="flex items-center justify-between animate-fade-rise">
-            <HorizonMark />
-            <div className="flex items-center gap-3">
+          <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 animate-fade-rise">
+            <div className="flex min-w-0 items-center">
+              <HorizonMark />
+            </div>
+            <div
+              className="font-display text-[15px] font-bold tracking-tight text-text md:text-[17px]"
+              aria-label="Section: Today"
+            >
+              Today
+            </div>
+            <div className="flex items-center justify-end gap-3">
               {bankerMenu && (
                 <UserMenu
                   bankerName={bankerMenu.name}
