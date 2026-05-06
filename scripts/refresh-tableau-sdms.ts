@@ -25,6 +25,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { MCP_URLS } from "../lib/mcp/urls";
 import { getRedis, redisSetOnce } from "../lib/redis";
 import { log } from "../lib/log";
+import { resolveSalesforceAccessToken } from "./lib/resolveSfToken";
 
 // --- config ---
 
@@ -93,9 +94,17 @@ async function main() {
   const start = Date.now();
   console.log(`[refresh-tableau-sdms] starting for dataspace=${DATASPACE}`);
 
-  const token = process.env.SF_ACCESS_TOKEN;
-  if (!token) {
-    console.error("SF_ACCESS_TOKEN missing");
+  let token: string;
+  try {
+    const resolved = await resolveSalesforceAccessToken();
+    token = resolved.access_token;
+    console.log(
+      `[refresh-tableau-sdms] sf token source: ${resolved.source}`
+    );
+  } catch (e) {
+    console.error(
+      `[refresh-tableau-sdms] sf token unavailable: ${e instanceof Error ? e.message : String(e)}`
+    );
     process.exit(1);
   }
 

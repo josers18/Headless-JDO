@@ -25,8 +25,8 @@
     "verify:p02": "tsx --env-file=.env scripts/verify-p02.ts",
     "mcp:check": "tsx --env-file=.env scripts/mcp-check.ts",
     "mcp:refresh": "bash scripts/mcp-refresh.sh",
-    "refresh:dc-metadata": "tsx --env-file=.env scripts/refresh-dc-metadata.ts",
-    "refresh:tableau-sdms": "tsx --env-file=.env scripts/refresh-tableau-sdms.ts",
+    "refresh:dc-metadata": "tsx --env-file-if-exists=.env scripts/refresh-dc-metadata.ts",
+    "refresh:tableau-sdms": "tsx --env-file-if-exists=.env scripts/refresh-tableau-sdms.ts",
     "test:signoff": "tsx scripts/test-signoff-policy.ts",
     "smoke:heroku-inference": "tsx --env-file=.env scripts/smoke-heroku-inference.ts",
     "seed:ask-data": "tsx --env-file=.env scripts/seed-ask-data.ts"

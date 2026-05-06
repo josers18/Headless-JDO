@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken } from "@/lib/salesforce/oauth";
 import { persistTokenFromOAuthResponse } from "@/lib/salesforce/token";
+import { upsertSchedulerCredentials } from "@/lib/db/schedulerCreds";
 import { cookies } from "next/headers";
 import { log } from "@/lib/log";
 
@@ -78,6 +79,25 @@ export async function GET(req: NextRequest) {
       codeVerifier: verifier,
     });
     await persistTokenFromOAuthResponse(token);
+
+    // Upsert "last-good banker" creds for Heroku Scheduler. Best-effort:
+    // a DB hiccup mustn't break login. Scheduler will use whatever the
+    // last successful login wrote here.
+    if (token.refresh_token) {
+      try {
+        await upsertSchedulerCredentials({
+          refresh_token: token.refresh_token,
+          instance_url: token.instance_url,
+          sf_user_id: token.id?.split("/").pop() ?? null,
+        });
+        log.info("sf.scheduler_creds.upserted");
+      } catch (e) {
+        log.warn("sf.scheduler_creds.upsert_failed", {
+          err: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
     log.info("sf.oauth.success", { scope: token.scope });
     return NextResponse.redirect(new URL("/", origin));
   } catch (e) {

@@ -33,6 +33,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { MCP_URLS } from "../lib/mcp/urls";
 import { getRedis, redisSetOnce } from "../lib/redis";
 import { log } from "../lib/log";
+import { resolveSalesforceAccessToken } from "./lib/resolveSfToken";
 import {
   classifyDcFieldKind,
   dcFieldKindToCompactTy,
@@ -111,10 +112,16 @@ async function main() {
     `[refresh-dc-metadata] starting for dataspace=${DATASPACE}`
   );
 
-  const token = process.env.SF_ACCESS_TOKEN;
-  if (!token) {
+  let token: string;
+  try {
+    const resolved = await resolveSalesforceAccessToken();
+    token = resolved.access_token;
+    console.log(
+      `[refresh-dc-metadata] sf token source: ${resolved.source}`
+    );
+  } catch (e) {
     console.error(
-      "SF_ACCESS_TOKEN missing — cannot refresh Data Cloud metadata"
+      `[refresh-dc-metadata] sf token unavailable: ${e instanceof Error ? e.message : String(e)}`
     );
     process.exit(1);
   }

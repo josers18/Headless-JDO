@@ -78,3 +78,21 @@ create table if not exists analyze_latest (
   updated_at     timestamptz not null default now(),
   primary key (user_id, model_id)
 );
+
+-- 2026-05-06: scheduler credentials. Singleton row (id = 1, enforced by
+-- check constraint) holding the refresh token of the LAST successful
+-- banker login. Heroku Scheduler refresh jobs (refresh-dc-metadata,
+-- refresh-tableau-sdms) read this row, exchange the refresh_token for
+-- a fresh access token at job start, and run with that. "Last-good"
+-- self-heals — if today's banker leaves, tomorrow's login takes over.
+-- For prod-grade rollout, swap to a designated service-account refresh
+-- token via SF_REFRESH_TOKEN config var (the scripts prefer env var
+-- when set).
+create table if not exists scheduler_credentials (
+  id             smallint primary key default 1,
+  refresh_token  text not null,
+  instance_url   text not null,
+  sf_user_id     text,
+  updated_at     timestamptz not null default now(),
+  constraint scheduler_credentials_singleton check (id = 1)
+);
