@@ -1,6 +1,6 @@
 // Base system prompt — shared by every Horizon feature.
 // Versioned alongside the code. If you change this, bump the version.
-export const SYSTEM_PROMPT_VERSION = "v1.5.9-sdm-catalog-authoritative-2026-05-01";
+export const SYSTEM_PROMPT_VERSION = "v1.6.0-no-owner-pivot-on-dc-2026-05-06";
 
 // IMPORTANT: Every field below this line has been informed by real failure
 // modes observed in the reasoning trail during demo runs. The "MCP HYGIENE"
@@ -45,8 +45,9 @@ A. data_360 SQL (this is where the model fails most often — follow this exactl
       d. If a column you want is not in the fields array verbatim, it does not exist. Either pick a different column from the array, or drop the SQL call for this turn. NEVER "normalize" a column name (e.g. submitting "name" when only "Name" or "ssot__Name__c" is listed, or dropping a "ssot__" prefix to "clean up" the query) — that is the exact failure mode the circuit breaker trips on.
    3. Common hallucinations to AVOID unless the metadata explicitly returns them — these are guessed variants the model reaches for when the real column name in the fields array feels awkward:
         - Bare/unqualified guesses: "name", "Name", "id", "Id", "ownerId", "OwnerId", "amount", "Amount", "date", "email"
-        - ssot_ variants: "ssot__Name__c", "ssot__FullName__c", "ssot__OwnerId__c", "ssot__Industry__c", "ssot__EmailAddress__c"
-        - CRM-mimic guesses on DMOs (recorded INVALID_ARGUMENT unknown column): "TransactionDate__c", "AccountID__c", "AccountId__c", "ContactId__c", "OwnerId__c", "OpportunityId__c", "Amount__c", "Health_Score__c", "LastActivityDate". SOQL uses \`AccountId\` / \`OwnerId\` without a trailing \`__c\`; Data Cloud is NOT SOQL — you cannot "custom-field-ify" a CRM Id name and expect it on a DMO. If the fields array does not list that exact string, do not SELECT or WHERE on it.
+        - ssot_ variants: "ssot__Name__c", "ssot__FullName__c", "ssot__OwnerId__c", "ssot__OwnerUserId__c", "ssot__OwnerUser__c", "ssot__Industry__c", "ssot__EmailAddress__c"
+        - CRM-mimic guesses on DMOs (recorded INVALID_ARGUMENT unknown column): "TransactionDate__c", "AccountID__c", "AccountId__c", "ContactId__c", "OwnerId__c", "OwnerUserId__c", "OpportunityId__c", "Amount__c", "Health_Score__c", "LastActivityDate". SOQL uses \`AccountId\` / \`OwnerId\` without a trailing \`__c\`; Data Cloud is NOT SOQL — you cannot "custom-field-ify" a CRM Id name and expect it on a DMO. If the fields array does not list that exact string, do not SELECT or WHERE on it.
+        - Owner / user pivots in particular: Data Cloud transaction and behavioral DMOs do NOT carry a banker-ownership column at the row level. Filter transaction-class DMOs by ACCOUNT ID (the actual account-id column from the catalog, e.g. \`accountid__c\`), NOT by an imagined owner column. The list of accounts the banker owns comes from salesforce_crm (Account.OwnerId in SOQL); pass those Ids into the DC SQL's WHERE accountid__c IN (...) clause. Never invent \`*OwnerUserId*\`, \`*OwnerUser*\`, or \`*BankerId*\` on a DC DMO.
       If any of these look right for your query but DON'T appear in the metadata response, they do not exist in this org. Use what's there or skip.
    4. DO NOT query information_schema, pg_catalog, or any Postgres-style introspection. Those do not exist in Data Cloud SQL. To enumerate objects, call the metadata tool instead.
    5. If a SQL call returns INVALID_ARGUMENT about a missing table or unknown column, do NOT immediately retry with another guess on the same DMO, and do NOT swap to a different DMO and make the same guess there. The runtime circuit breaker will block further data_360 calls for this turn — accept that Data Cloud didn't yield anything and say so in your final answer.
