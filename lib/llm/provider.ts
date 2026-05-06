@@ -141,6 +141,7 @@ export async function runAgentWithMcp(
       inferenceBackend: backend,
       preloadedDcSnapshot,
       preloadedTableauSdms: Boolean(cachedSdms),
+      preloadedSdmApiNames: cachedSdms?.sdms.map((s) => s.apiName),
     });
 
   try {

@@ -105,6 +105,15 @@ export interface AgentRunArgs {
    * context, so the model should call analyze_data directly.
    */
   preloadedTableauSdms?: boolean;
+  /**
+   * When the Tableau SDM cache is preloaded, pass the list of valid
+   * apiNames so the preflight can reject hallucinated model bindings
+   * (e.g. "Sales_Analytics") before they hit the network. Tableau
+   * surfaces those as "INVALID_INPUT — don't have access" which is
+   * misleading: the SDM doesn't exist, period. Catching it locally
+   * keeps the trail clean and saves a 504-class round-trip.
+   */
+  preloadedSdmApiNames?: readonly string[];
 }
 
 export interface AgentRunResult {
@@ -446,7 +455,8 @@ const TABLEAU_PLACEHOLDER_MODEL_ID = /^(sales|service|marketing|finance|operatio
 function preflightTableauAnalyze(
   server: string,
   tool: string,
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  ctx: { sdmApiNames?: readonly string[] }
 ): string | null {
   if (server !== "tableau_next") return null;
   if (!/(analyzeSemantic|^analyze_data$|^analyze$)/i.test(tool)) return null;
@@ -459,15 +469,42 @@ function preflightTableauAnalyze(
   ] as const;
   for (const k of keys) {
     const v = args[k];
-    if (typeof v === "string" && TABLEAU_PLACEHOLDER_MODEL_ID.test(v.trim())) {
+    if (typeof v !== "string") continue;
+    const trimmed = v.trim();
+    if (TABLEAU_PLACEHOLDER_MODEL_ID.test(trimmed)) {
       return JSON.stringify({
         rejected: true,
         server,
         tool,
-        reason: `Invalid semantic model binding: "${v.trim()}" is a category label from getSemanticModels, not a semantic model id. Re-call getSemanticModels, pick one row, and copy its id/apiName/semanticModelId verbatim into analyzeSemanticData.`,
+        reason: `Invalid semantic model binding: "${trimmed}" is a category label from getSemanticModels, not a semantic model id. Re-call getSemanticModels, pick one row, and copy its id/apiName/semanticModelId verbatim into analyzeSemanticData.`,
         instruction:
           "Do NOT retry analyzeSemanticData with the same placeholder. Call getSemanticModels in this turn, read the JSON rows, copy a real model identifier field from exactly one row, then call analyze once — or skip tableau_next for this turn.",
       });
+    }
+    // SDM-existence check (only when the cache is preloaded — without
+    // a catalog we can't tell hallucinations from real names). Tableau
+    // returns "INVALID_INPUT — don't have access" for unknown apiNames,
+    // which is misleading; catch it here and tell the model exactly
+    // which apiNames are real in this org.
+    const validApiNames = ctx.sdmApiNames;
+    if (validApiNames && validApiNames.length > 0) {
+      // 18-char Salesforce IDs (a-zA-Z0-9, optionally 15+3 checksum)
+      // are also legal here — bypass the existence check on those.
+      const looksLikeSfId =
+        /^[a-zA-Z0-9]{15}$|^[a-zA-Z0-9]{18}$/.test(trimmed);
+      if (looksLikeSfId) continue;
+      const found = validApiNames.some(
+        (n) => n.toLowerCase() === trimmed.toLowerCase()
+      );
+      if (!found) {
+        return JSON.stringify({
+          rejected: true,
+          server,
+          tool,
+          reason: `Semantic model apiName "${trimmed}" does not exist in this org. The TABLEAU NEXT SEMANTIC MODELS catalog block in your system prompt lists every real apiName; "${trimmed}" is not one of them, so it is a guess.`,
+          instruction: `Pick an apiName VERBATIM from the catalog. Real apiNames in this org: ${validApiNames.map((n) => `"${n}"`).join(", ")}. If none of those fit the question, skip tableau_next for this turn — do not invent a new apiName.`,
+        });
+      }
     }
   }
   return null;
@@ -505,12 +542,16 @@ function preflightRejection(
   server: string,
   tool: string,
   args: Record<string, unknown>,
-  ctx: { snapshot: DcSnapshot; availableTableauAnalyze: boolean }
+  ctx: {
+    snapshot: DcSnapshot;
+    availableTableauAnalyze: boolean;
+    sdmApiNames?: readonly string[];
+  }
 ): string | null {
   return (
     preflightSalesforceSoql(server, tool, args) ??
     preflightDataCloudSql(server, tool, args, ctx) ??
-    preflightTableauAnalyze(server, tool, args) ??
+    preflightTableauAnalyze(server, tool, args, ctx) ??
     preflightTableauListModels(server, tool, ctx)
   );
 }
@@ -554,6 +595,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     inferenceBackend = "heroku",
     preloadedDcSnapshot,
     preloadedTableauSdms = false,
+    preloadedSdmApiNames,
   } = args;
 
   const client = openAiClientFor(inferenceBackend);
@@ -912,6 +954,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         const rejection = preflightRejection(server, tool, argObj, {
           snapshot: dcSnapshot,
           availableTableauAnalyze,
+          sdmApiNames: preloadedSdmApiNames,
         });
         if (rejection) {
           onEvent({ type: "tool_use", server, tool, input: argObj });
