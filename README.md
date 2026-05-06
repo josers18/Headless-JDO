@@ -41,8 +41,9 @@
 - **Analyze** (`/analyze/[modelId]`) — governed analytics workbench over Tableau Next SDMs. 18 chart types with grounded MiniMax chart selection, per-model starter questions, multi-turn in-memory conversation, clickable metric chips, Business Preferences panel.
 - The LLM orchestrates three **Salesforce-hosted MCP** servers (CRM SObject, Data 360 SQL, Tableau Next) plus optional **Heroku toolkit** MCP. The UI streams tokens and a collapsible **reasoning trail** of tool calls (success + handled errors).
 - **LLM path:** Heroku Managed Inference (Claude 4.5 Sonnet for Today, Kimi K2 Thinking for Analyze + Ask My Data, MiniMax M2 for chart/followup tier). All via OpenAI-compatible `/v1/chat/completions`.
-- **Agent hardening:** turn-wide dedup cache, per-tool circuit breakers with synthetic-guard shielding, `<think>`-tag streaming stripper, tool-choice forcing on visualization follow-ups, `defaultExc` envelope unwrap at MCP wrapper boundary — all in `lib/inference/{analyzeAgent,askDataAgent}.ts` + `lib/llm/heroku.ts` + `lib/mcp/{client,firstPartyDataCloud}.ts`.
+- **Agent hardening:** turn-wide dedup cache, per-tool circuit breakers with synthetic-guard shielding, `<think>`-tag streaming stripper, tool-choice forcing on visualization follow-ups, `defaultExc` envelope unwrap at MCP wrapper boundary, **runtime preflight that rejects hallucinated DC tables/columns and Tableau SDM apiNames** before they hit the network — all in `lib/inference/{analyzeAgent,askDataAgent}.ts` + `lib/llm/heroku.ts` + `lib/mcp/{client,firstPartyDataCloud}.ts`.
 - **Prompt hygiene:** shared rules and version stamps live in `lib/prompts/system.ts` + per-feature prompt files (`*_PROMPT_VERSION`). See **[docs/LLM_PROMPT_GUIDE.md](docs/LLM_PROMPT_GUIDE.md)** before changing agent behavior.
+- **Unattended cache refresh:** Heroku Scheduler jobs use a "last-good banker" credential pattern — every banker login upserts their `refresh_token` into a Postgres singleton row, scheduler scripts exchange it for a fresh access token at job start (`scripts/lib/resolveSfToken.ts`). Self-heals on each new login. See [docs/OPERATIONS.md](docs/OPERATIONS.md#scheduled-jobs).
 
 ---
 
@@ -52,9 +53,9 @@
 | Layer  | Choice                                                                               |
 | ------ | ------------------------------------------------------------------------------------ |
 | App    | Next.js 15 (App Router), React 18, TypeScript strict, Tailwind, shadcn-style UI      |
-| Deploy | Single Heroku `web` dyno (`Procfile`: `npm start`)                                   |
-| Data   | Heroku Postgres (sessions / history), Redis (streaming, TTS cache, **DMO + SDM catalog caches** refreshed by Heroku Scheduler) |
-| Auth   | Salesforce OAuth 2.1 + PKCE (ECA, `mcp_api` + `cdp_api` scopes)                      |
+| Deploy | Heroku `web` dyno (`Procfile`: `npm start`) + `release` phase that applies `lib/db/schema.sql` |
+| Data   | Heroku Postgres (sessions, briefings, threads, **scheduler_credentials**), Redis (streaming, TTS cache, **DMO + SDM catalog caches** refreshed by Heroku Scheduler) |
+| Auth   | Salesforce OAuth 2.1 + PKCE (ECA, `mcp_api` + `cdp_api` + `refresh_token` scopes)    |
 | Voice  | Web Speech API (TTS / STT); optional ElevenLabs via `/api/tts` when configured       |
 
 
@@ -65,20 +66,27 @@
 
 | Path                       | Role                                                                                     |
 | -------------------------- | ---------------------------------------------------------------------------------------- |
-| `app/page.tsx`             | Home — primary surface                                                                   |
+| `app/(banker)/page.tsx`    | Home — primary surface (Today)                                                            |
+| `app/(banker)/{ask,analyze}/`     | Ask My Data + Analyze surfaces (banker route group)                                |
 | `app/api/`*                | SSE / JSON routes: `ask`, `brief`, `priority`, `pulse`, `drafts`, `signals`, OAuth, etc. |
-| `app/api/admin/refresh-dc-cache/` | Diagnostic GET + trigger POST — returns cache freshness, or with `?run=1&tool=dc\|tableau\|both&force=1` spawns the refresh script using the banker's live session token |
+| `app/api/admin/refresh-dc-cache/` | Diagnostic GET + trigger POST — returns DC + Tableau SDM cache freshness, or with `?run=1&tool=dc\|tableau\|both&force=1` spawns the refresh script using the banker's live session token |
 | `app/api/analyze-ask/`, `app/api/ask-data/` | SSE agent routes for Analyze + Ask My Data (separate loops in `lib/inference/`) |
-| `lib/llm/heroku.ts`        | Agent loop: model → tool calls → parallel MCP → repeat; tool-filter + hallucination-reject |
-| `lib/llm/provider.ts`      | `runAgentWithMcp` wrapper — loads both caches, injects catalogs into system prompt        |
+| `app/callback/route.ts`    | OAuth return leg — also upserts `scheduler_credentials` row for unattended refreshes      |
+| `lib/llm/heroku.ts`        | Today agent loop: model → tool calls → parallel MCP → repeat; tool-filter + hallucination-reject + DC/SDM preflight |
+| `lib/llm/provider.ts`      | `runAgentWithMcp` wrapper — loads both caches, injects catalogs + apiName allowlist        |
 | `lib/llm/dcMetadataCache.ts` | Reads DC DMO catalog from Redis, renders system-prompt block                           |
 | `lib/llm/tableauSemanticCache.ts` | Reads Tableau SDM catalog from Redis, renders system-prompt block                 |
 | `lib/mcp/client.ts`        | MCP SDK sessions to Salesforce + optional Heroku toolkit; per-tool timeouts              |
+| `lib/db/schedulerCreds.ts` | Singleton `scheduler_credentials` row helpers (last-good banker refresh token)            |
 | `lib/prompts/*`            | Versioned prompts (`SYSTEM_PROMPT_VERSION` + per-feature `*_PROMPT_VERSION`)             |
-| `components/horizon/*`     | UI sections                                                                              |
+| `components/horizon/*`     | Today UI sections                                                                         |
+| `components/{analyze,ask-data}/*` | Analyze + Ask My Data UI                                                          |
+| `components/nav/SectionTopBar.tsx` | Centered bold title chrome shared across `/`, `/ask`, `/analyze`                 |
 | `scripts/verify-mcp.ts`    | Smoke test all three Salesforce MCPs                                                     |
+| `scripts/lib/resolveSfToken.ts` | Token resolver for refresh scripts: env var → config var → `scheduler_credentials` row |
 | `scripts/refresh-dc-metadata.ts` | Heroku-Scheduler job — rebuilds DC DMO catalog into Redis every 12h (hourly with internal skip gate) |
 | `scripts/refresh-tableau-sdms.ts` | Heroku-Scheduler job — rebuilds Tableau SDM catalog into Redis daily               |
+| `scripts/apply-schema.cjs` | Heroku release-phase migration runner (idempotent `lib/db/schema.sql` apply)              |
 | `.github/workflows/ci.yml` | Lint, typecheck, build on `main` / PRs                                                   |
 
 

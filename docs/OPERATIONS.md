@@ -74,26 +74,59 @@ for why the caches exist.
 heroku addons:open scheduler --app headless-jdo
 ```
 
-Add both jobs in the dashboard. Dyno size **Basic** is plenty — DC refresh is ~75s, Tableau is ~10s.
+Add both jobs in the dashboard. Dyno size **Basic** is plenty — DC refresh is ~100s, Tableau is ~10s.
 
-**Manual bump (forces a refresh bypassing the skip gate):**
+### How the scheduler authenticates (last-good banker creds)
+
+Scheduler dynos can't sign in interactively, but Salesforce's MCP
+endpoints want a banker bearer token. Horizon uses a **last-good banker
+credentials** pattern:
+
+1. On every successful `/callback` OAuth exchange, the route upserts
+   the banker's `refresh_token` + `instance_url` + `sf_user_id` into
+   the **singleton `scheduler_credentials` row** in Postgres.
+2. Refresh scripts call `scripts/lib/resolveSfToken.ts` at job start
+   to resolve a fresh access token via this priority order:
+   1. `SF_ACCESS_TOKEN` env var (set by the admin route's child
+      process from the live banker session cookie, or by local dev).
+   2. `SF_REFRESH_TOKEN` config var (designated service principal
+      — for prod-grade rollout, set this and skip the DB row).
+   3. `scheduler_credentials.refresh_token` row → exchanged for a
+      fresh access token via OAuth refresh-token grant.
+3. The script proceeds with whichever access token resolved.
+
+**Self-heal:** every banker login replaces the row. As long as one
+human signs in within the refresh-token revocation window (Salesforce
+default: ~90 days idle), the scheduler stays alive without intervention.
+
+**Schema migration runs on every release** via `Procfile`'s release
+phase (`scripts/apply-schema.cjs`). Schema is idempotent (`create
+table if not exists`) — release fails (rollback) if the migration
+errors, so the slug never goes live with a missing schema.
+
+### Manual refresh (forces a refresh bypassing the skip gate)
+
+**On the Heroku dyno** (uses `scheduler_credentials` row exactly like
+the scheduled jobs):
 
 ```bash
-# Local (requires REDIS_URL + SF_ACCESS_TOKEN — the latter expires ~12h
-# after the last OAuth dance, so prefer the dev browser path below for
-# routine work):
+heroku run --app headless-jdo "DC_METADATA_FORCE=1 npm run refresh:dc-metadata"
+heroku run --app headless-jdo "TABLEAU_SDM_FORCE=1 npm run refresh:tableau-sdms"
+```
+
+**Local** — `--env-file-if-exists=.env` is on the npm scripts, so they
+work either with `.env` (dev) or with env vars exported by your shell:
+
+```bash
 set -a; source .env; set +a
 DC_METADATA_FORCE=1 npm run refresh:dc-metadata
 TABLEAU_SDM_FORCE=1 npm run refresh:tableau-sdms
-
-# On the Heroku dyno (uses the baked SF_ACCESS_TOKEN config var):
-heroku run --app headless-jdo npm run refresh:dc-metadata
-heroku run --app headless-jdo npm run refresh:tableau-sdms
 ```
 
-**Dev browser path (recommended for local iteration)** — avoids the
-`SF_ACCESS_TOKEN` expiry problem entirely by pulling a fresh token from
-the banker's logged-in session cookie:
+### Dev browser path (recommended for local iteration)
+
+Avoids the `SF_ACCESS_TOKEN` expiry problem entirely by pulling a
+fresh token from the banker's logged-in session cookie:
 
 ```
 http://localhost:3000/api/admin/refresh-dc-cache?run=1&tool=dc&force=1
@@ -101,19 +134,24 @@ http://localhost:3000/api/admin/refresh-dc-cache?run=1&tool=tableau&force=1
 http://localhost:3000/api/admin/refresh-dc-cache?run=1&tool=both&force=1
 ```
 
-The admin route spawns the refresh script as a child process, injects
-the live session token as `SF_ACCESS_TOKEN`, and returns the cache
-freshness JSON on completion. Tab hangs ~75s for DC, ~15s for Tableau.
+The admin route spawns the refresh script as a child process and
+injects the live session token as `SF_ACCESS_TOKEN`. Tab hangs ~100s
+for DC, ~15s for Tableau.
 
-**Diagnostic endpoint:**
+### Diagnostic endpoint
 
 ```bash
 curl https://<app-url>/api/admin/refresh-dc-cache
 ```
 
 Returns JSON with `cached`, `generatedAt`, `ageHours`, `survivingDmos`,
-and the top 10 DMOs by row count. Use to confirm a refresh landed after
-a manual bump.
+top 10 DMOs by row count, **and** the Tableau SDM slice (`tableau.cached`,
+`tableau.survivingSdms`, `tableau.apiNames` — the full list of valid
+SDM apiNames). Use to:
+- Confirm a refresh landed after a manual bump.
+- Verify which SDMs are visible to the model (when triaging
+  `INVALID_INPUT — don't have access` rejections that may actually be
+  hallucinated apiNames — see [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md)).
 
 **Connection-limit note:** the current Heroku Redis plan is **Mini**
 (25MB, 20-connection cap). Hammering the admin URL rapidly during local
@@ -131,12 +169,17 @@ When the UI shows yellow “schema mismatch / handled” or red failures:
 | Pattern in trail | Likely fix |
 |------------------|------------|
 | `unknown column` on `data_360.post_dc_query_sql` | Model guessed a column not present on that DMO. Verify the DC metadata cache is warm (`curl /api/admin/refresh-dc-cache`); if stale, force-refresh and redeploy. |
+| Owner / user pivot on a DC transaction DMO (`OwnerUserId__c`, `ssot__OwnerUserId__c`, etc.) | Model reaching for a CRM-style ownership filter that doesn't exist on Data Cloud row level. Caught by preflight; system prompt v1.6.0+ explicitly forbids the pattern and instructs filtering by `accountid__c` using the account list from CRM. |
+| `Semantic model apiName "X" does not exist in this org` | Preflight caught a hallucinated SDM apiName before it hit the network. Real apiNames are listed in the rejection's `instruction` field. Tableau itself returns `INVALID_INPUT — you don't have access` for unknown apiNames, which is misleading; the runtime catches it locally. |
+| `INVALID_INPUT — don't have access to the semantic model` (rare, post-preflight) | Real org permission gap. Post-preflight, this means the cache and the banker's token disagree on visibility. Most often the cache was refreshed by an admin and the banker doesn't have the SDM. Trips the breaker on first occurrence (no retry storm). |
 | `Unknown tool` rejection on a filtered tool (e.g. `list_semantic_models`, `get_dc_metadata`) | Model tried to call a tool that the cache-aware filter has stripped. Expected behavior when a prompt still references the filtered tool — search `lib/prompts/` for the directive and rewrite to point at the catalog in the system prompt. |
 | `MALFORMED_QUERY` / `unexpected token` on `salesforce_crm.soqlQuery` | Bad SOQL date literal (e.g. `NEXT_7_DAYS` instead of `NEXT_N_DAYS:7`, or quoted `ActivityDate`). See [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md). |
-| `504 Gateway Timeout — <server>.<tool> exceeded Nms` | Per-tool client-side timeout fired. Legitimate upstream slowness — check if a specific Tableau semantic model or DC DMO is consistently slow and consider narrowing the utterance or dropping the call. |
+| `504 Gateway Timeout — tableau_next.analyze_data exceeded 25000ms` | Today path's Tableau Q&A timeout (was 20s, bumped to 25s on 2026-05-06). Legitimate upstream slowness on heavy banker books. Analyze surface uses a separate 45s cap (`firstPartyTableauNext.ts`) since it runs analyze_data as a single-tool turn. |
+| `504 Gateway Timeout — <other server>.<tool> exceeded Nms` | Per-tool client-side timeout fired. Legitimate upstream slowness — check if a specific DC DMO is consistently slow and consider narrowing the utterance or dropping the call. |
 | `blocked by schema-mismatch breaker` | Expected after a bad Data Cloud or SOQL shape — prevents tool-slot burn; narrative should degrade gracefully. |
 | `Duplicate <tool> suppressed.` | Dispatcher-level duplicate suppression. Per-iteration (multiple calls to same tool in one LLM response) or turn-wide (budget-limited tools like `analyze_data` that already ran successfully). Expected when the model hedges; the narrative should still complete on a subsequent iteration. |
-| `Catalog already in system prompt.` | `get_dc_metadata` was called but the cache is warm and the tool has been hidden. Expected feedback to Kimi — should re-read the injected catalog block for schema. Not a bug. |
+| `Catalog already in system prompt.` | `get_dc_metadata` was called but the cache is warm and the tool has been hidden. Expected feedback to the model — should re-read the injected catalog block for schema. Not a bug. |
 | Agent returned but **no narrative rendered** | Every silent-exit path now emits a fallback `token` event (iteration cap, circuit trip, empty-tool-calls, stream exception). If the UI shows nothing, check the client hook for `token` parsing — not an agent-side issue. |
+| Scheduled refresh failed silently — cache went cold | Most common cause: nobody has signed in recently AND no `SF_REFRESH_TOKEN` config var is set, so `scheduler_credentials` row is missing or the refresh_token was revoked. Sign in once via `/callback` (or set `SF_REFRESH_TOKEN`), then re-run the job. See `scripts/lib/resolveSfToken.ts`. |
 
 After fixing prompt text, **bump** the relevant `*_PROMPT_VERSION` in `lib/prompts/` and redeploy.

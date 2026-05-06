@@ -227,3 +227,29 @@ errors on joins where two DMOs model the same concept with different
 column conventions. The prompt bans cross-DMO JOINs as a workaround;
 an AST-level SQL preflight (porting the Today flow's `preflightRejection`)
 is the structural fix if the prompt discipline doesn't hold.
+
+---
+
+## Post-T1 hardening, second wave (2026-05-06 PM, v163)
+
+The May 6 AM pass landed full agent hardening for Ask My Data. The PM
+pass focused on the surrounding infrastructure that keeps the catalog
+warm — the user-visible symptom on Today triggered the investigation,
+but the fix benefits Ask My Data identically because both surfaces
+read from the same Redis-backed catalog.
+
+- **Scheduler self-heals via last-good banker creds** — Heroku
+  Scheduler refresh jobs were failing silently (`tsx: not found` and
+  `SF_ACCESS_TOKEN missing`), leaving caches cold whenever no banker
+  manually refreshed. Fix: `tsx` moved to `dependencies`; new
+  `scheduler_credentials` singleton Postgres table holds the last
+  successful login's `refresh_token`; `scripts/lib/resolveSfToken.ts`
+  resolves a fresh access token at job start via env → config-var →
+  DB-row priority. Schema migration runs in Heroku release phase
+  (`scripts/apply-schema.cjs`). Self-heals on every banker login
+  — whoever signs in most recently keeps the cache alive.
+  Commits `ce0bf91`, `ed2ec54`.
+- **Section title chrome** — `components/nav/SectionTopBar.tsx`
+  bumped from 11px uppercase muted ("eyebrow") to 15/17px bold
+  centered. Applies to `/ask` and `/ask/[threadId]` (and `/analyze*`).
+  Commits `8999983`, `bdf78d1`.

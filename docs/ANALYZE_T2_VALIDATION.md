@@ -191,3 +191,31 @@ returns a prose "highlights only" (top-3 + bottom-3) instead of a full
 row set. Prompt Rule 4 nudges Kimi to phrase questions for completeness
 but upstream behavior still wins on some shapes — captured in the
 commit message for future attention.
+
+---
+
+## Post-T2 hardening, second wave (2026-05-06 PM, v161)
+
+Production triage uncovered that Today-side hallucinated `Sales_Analytics`
+as an SDM apiName because the Tableau cache was empty in production —
+not a model problem at all. The empty cache turned out to stem from
+scheduler dynos failing silently. Fixes (most apply to Today path but
+the SDM preflight benefits Analyze too):
+
+- **Tableau SDM apiName preflight** — `preflightTableauAnalyze` now
+  rejects `targetEntityIdOrApiName` values not in the cached SDM
+  apiName list before the network call. Tableau's `INVALID_INPUT —
+  don't have access` for unknown apiNames is misleading; runtime
+  rejection surfaces the real list of valid apiNames in the rejection's
+  `instruction` field for the model's next iteration. Bypasses on
+  bare 15/18-char Salesforce IDs (model is allowed to pass IDs from
+  a `get_semantic_model` response). Commit `151327a`.
+- **Diagnostic exposes SDM cache** — `GET /api/admin/refresh-dc-cache`
+  now includes a `tableau` slice with `cached`, `survivingSdms`,
+  `apiNames` (full list with labels + object/metric counts). Use to
+  triage SDM rejections: was the cache empty? Is the apiName the
+  model picked actually in there? Commit `43fd094`.
+- **Today-path Tableau timeout** — `TIMEOUT_TABLEAU_ANALYZE_MS` 20s
+  → 25s (`lib/mcp/client.ts`). Analyze surface stays at 45s
+  (`firstPartyTableauNext.ts`) since it runs analyze_data as a
+  single-tool turn and can afford the wider window. Commit `75c70a4`.

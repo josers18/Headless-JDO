@@ -4,7 +4,7 @@ What ships in this codebase (high level). Prompt versions change over time — b
 
 | Constant (export) | File | Current |
 |-------------------|------|---------|
-| `SYSTEM_PROMPT_VERSION` | `lib/prompts/system.ts` | v1.x |
+| `SYSTEM_PROMPT_VERSION` | `lib/prompts/system.ts` | **v1.6.0-no-owner-pivot-on-dc-2026-05-06** |
 | `MORNING_BRIEF_PROMPT_VERSION` | `lib/prompts/morning-brief.ts` | v1.x |
 | `PREP_PROMPT_VERSION` | `lib/prompts/prep.ts` | v1.x |
 | `ARC_PROMPT_VERSION` | `lib/prompts/arc.ts` | v1.x |
@@ -41,16 +41,22 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 | `npm run sf:login` | Refresh Salesforce tokens for local scripts |
 | `npm run mcp:check` | Quick MCP initialize probe |
 | `npm run mcp:refresh` | Wrapper around `sf:login` that also prints Cursor re-source reminders |
-| `npm run refresh:dc-metadata` | Scheduled job — rebuilds the DC DMO catalog cache in Redis (see [OPERATIONS.md](./OPERATIONS.md#scheduled-jobs)) |
-| `npm run refresh:tableau-sdms` | Scheduled job — rebuilds the Tableau Next SDM catalog cache in Redis |
+| `npm run refresh:dc-metadata` | Scheduled job — rebuilds the DC DMO catalog cache in Redis. Resolves SF token via `SF_ACCESS_TOKEN` env / `SF_REFRESH_TOKEN` config / `scheduler_credentials` row (`scripts/lib/resolveSfToken.ts`). See [OPERATIONS.md](./OPERATIONS.md#scheduled-jobs). |
+| `npm run refresh:tableau-sdms` | Scheduled job — rebuilds the Tableau Next SDM catalog cache in Redis. Same token-resolution path. |
 | `npm run seed:dc` | Populate synthetic Data Cloud seed records |
+
+**Note:** all `tsx`-driven npm scripts now use `--env-file-if-exists=.env` so they work both with a local `.env` and on Heroku where env vars are injected natively. `tsx` itself moved to `dependencies` (was `devDependencies`) so post-build slugs include it for scheduler dynos.
+
+## Release phase
+
+`Procfile`'s `release:` target runs `node scripts/apply-schema.cjs` on every Heroku release. That CJS script applies `lib/db/schema.sql` to `DATABASE_URL` (idempotent — every CREATE uses `if not exists`). Failure rolls back the release per Heroku contract; the new slug never goes live with a missing schema.
 
 ## Admin / diagnostic endpoints
 
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/health` | GET | Liveness probe — used by Heroku + smoke tests |
-| `/api/admin/refresh-dc-cache` | GET | Diagnostic: returns current DC cache freshness, surviving DMO count, top 10 DMOs by row count, and Tableau SDM cache state if populated. |
+| `/api/admin/refresh-dc-cache` | GET | Diagnostic: returns current DC cache freshness (`generatedAt`, `ageHours`, `survivingDmos`, top 10 DMOs by row count) **and** Tableau SDM slice (`tableau.cached`, `tableau.survivingSdms`, `tableau.apiNames` — full list of valid SDM apiNames). Use when triaging hallucinated SDM rejections. |
 | `/api/admin/refresh-dc-cache?run=1&tool=dc\|tableau\|both&force=1` | GET or POST | Dev trigger: spawns the refresh script as a child process using the banker's live session token. Auth-required (reads the session cookie to mint `SF_ACCESS_TOKEN`). |
 
 ## Reference documentation

@@ -68,7 +68,10 @@ All three share: per-iteration tool dedup, `<think>`-tag streaming stripper, cir
 1. The model receives flattened tool definitions (`salesforce_crm__*`, `data_360__*`, `tableau_next__*`, optional `heroku_toolkit__*`).
 2. **Tool-list filtering** — when the metadata caches are populated (see below), `get_dc_metadata` and `list_semantic_models` are filtered from the model's tool array. The model sees only the authoritative discovery data in the system prompt plus the tools that do real work (`post_dc_query_sql`, `analyze_data`, `soqlQuery`, etc.).
 3. The model emits `tool_calls`; the server dispatches them in parallel to the right MCP transport (Streamable HTTP for Salesforce-hosted servers).
-4. **Hallucination rejection** — if the model emits a tool name that isn't in the pre-approved visible set (e.g. `$MCP_SERVER_DATA_360__get_dc_metadata` or any other invented prefix), dispatch is rejected synthetically before any network call, the circuit breaker trips for that key, and the model sees a clear "Unknown tool" payload on its next iteration.
+4. **Hallucination rejection** — multi-layer:
+   - **Tool name** — if the model emits a tool name that isn't in the pre-approved visible set (e.g. `$MCP_SERVER_DATA_360__get_dc_metadata` or any other invented prefix), dispatch is rejected synthetically before any network call, the circuit breaker trips for that key, and the model sees a clear "Unknown tool" payload on its next iteration.
+   - **DC table + column** — `preflightDataCloudSql` checks every table and `__c`-suffixed column in the SQL against the cached DC snapshot. Unknown identifiers are rejected with the closest-matching real names quoted back to the model.
+   - **Tableau SDM apiName** — `preflightTableauAnalyze` rejects `targetEntityIdOrApiName` values that aren't in the cached SDM apiName list. Tableau itself returns `INVALID_INPUT — don't have access` for unknown apiNames (misleading); local rejection surfaces the real list of valid apiNames in the model's next iteration.
 5. **Duplicate suppression** — per-iteration (multiple calls to the same tool in one streamHeroku response collapse to one) AND turn-wide on budget-limited tools like `analyze_data` (same tool across iterations). Synthetic rejections carry `isSyntheticGuard: true` so they don't trip the MCP circuit breaker, which exists for infrastructure failures.
 6. **Tool-choice forcing** (Analyze) — visualization follow-ups detected by regex (pronouns / chart-shape verbs / drill-downs) set `tool_choice: {type: "function", function: {name: "analyze_data"}}` on iteration 1 so Kimi can't answer "it's already rendered" in prose.
 7. Tool results are returned as `role: tool` messages; the loop repeats until the model finishes or iteration limits are hit.
@@ -91,21 +94,30 @@ flowchart LR
     CRON2["daily → refresh-tableau-sdms.ts"]
   end
   subgraph Refresh["one-off dyno"]
+    RESOLVE[["scripts/lib/resolveSfToken.ts\n1. SF_ACCESS_TOKEN env\n2. SF_REFRESH_TOKEN config\n3. scheduler_credentials row\n→ exchange refresh_token\n  for fresh access_token"]]
     SCRIPT1[["refresh-dc-metadata.ts\n• get_dc_metadata\n• SELECT COUNT(*) per DMO\n• drop empty / errored\n• sort by rowCount"]]
     SCRIPT2[["refresh-tableau-sdms.ts\n• list_semantic_models\n• filter internal SDMs\n• get_semantic_model enrich"]]
+  end
+  subgraph Postgres["Heroku Postgres"]
+    SC["scheduler_credentials\n(singleton row)"]
   end
   subgraph Redis["Heroku Redis"]
     K1["dc:metadata:v1:default\n25h TTL"]
     K2["tableau:sdms:v1:default\n26h TTL"]
   end
   subgraph Web["Next.js web dyno"]
+    OAUTH["/callback\nupserts refresh_token\non every banker login"]
     Provider["lib/llm/provider.ts\nrunAgentWithMcp"]
     Cache1["lib/llm/dcMetadataCache.ts"]
     Cache2["lib/llm/tableauSemanticCache.ts"]
     Agent2["lib/llm/heroku.ts\nrunAgent"]
   end
-  CRON1 --> SCRIPT1
-  CRON2 --> SCRIPT2
+  OAUTH --> SC
+  CRON1 --> RESOLVE
+  CRON2 --> RESOLVE
+  RESOLVE --> SC
+  RESOLVE --> SCRIPT1
+  RESOLVE --> SCRIPT2
   SCRIPT1 --> K1
   SCRIPT2 --> K2
   Provider --> Cache1
@@ -113,7 +125,7 @@ flowchart LR
   Cache1 --> K1
   Cache2 --> K2
   Cache1 -->|catalog block + DcSnapshot| Agent2
-  Cache2 -->|catalog block + preloaded flag| Agent2
+  Cache2 -->|catalog block + apiName list| Agent2
 ```
 
 **What the cache does on every turn (Today):**
@@ -133,7 +145,15 @@ Same pattern, wired separately through `/api/ask-data/route.ts`. The formatter u
 
 **Internal skip gate** — the DC refresh script fires hourly (Heroku Scheduler's smallest interval) but early-exits 11 of 12 runs via `DC_METADATA_MIN_AGE_HOURS` (default 12), so real work happens ~twice a day while the cache stays fresh.
 
-**Dev refresh path** — local dev can't run the refresh script directly (the `SF_ACCESS_TOKEN` env var expires and refreshing it is a manual OAuth dance). Instead, `GET /api/admin/refresh-dc-cache?run=1&tool=dc|tableau|both&force=1` from an authenticated browser tab spawns the refresh script as a child process, injecting the live banker session token as `SF_ACCESS_TOKEN`. `redisSetOnce` opens a short-lived TLS connection for the final write, avoiding the "idle TLS socket severed" failure mode on Heroku Mini Redis.
+**Scheduler authentication (`scripts/lib/resolveSfToken.ts`)** — the scheduler dyno can't sign in interactively, so refresh scripts resolve a fresh access token via this priority order:
+
+1. `SF_ACCESS_TOKEN` env var (admin-route child process, or local dev with `.env`).
+2. `SF_REFRESH_TOKEN` config var (designated service principal — set this for prod-grade rollout).
+3. **`scheduler_credentials` singleton row** in Postgres (last-good banker login). Every successful `/callback` upserts the banker's `refresh_token` into this row; refresh scripts exchange it for a fresh access token via OAuth refresh-token grant. Self-heals on every banker login.
+
+The schema migration that creates this table runs on every Heroku release (see `Procfile`'s `release: node scripts/apply-schema.cjs`). Migration is idempotent (`create table if not exists`) — release fails (rollback) if it errors.
+
+**Dev refresh path** — local dev can avoid the `SF_ACCESS_TOKEN` env-var dance entirely by hitting `GET /api/admin/refresh-dc-cache?run=1&tool=dc|tableau|both&force=1` from an authenticated browser tab. The route spawns the refresh script as a child process, injecting the live banker session token. `redisSetOnce` opens a short-lived TLS connection for the final write, avoiding the "idle TLS socket severed" failure mode on Heroku Mini Redis.
 
 See [OPERATIONS.md](./OPERATIONS.md#scheduled-jobs) for the Scheduler wiring and [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md#catalog-first-prompt-discipline) for the prompt-side contract.
 
@@ -151,11 +171,16 @@ See [OPERATIONS.md](./OPERATIONS.md#scheduled-jobs) for the Scheduler wiring and
 | Versioned prompts | `lib/prompts/*.ts` — each exports `*_PROMPT_VERSION` |
 | Metadata caches (read side) | `lib/llm/dcMetadataCache.ts`, `lib/llm/tableauSemanticCache.ts` |
 | Chart types + palette + sort helpers | `lib/analyze/{chartTypes,chartSelector,sortByDate,sanitize}.ts` |
-| Surfaces | `app/page.tsx` (Today), `app/(banker)/analyze/[modelId]/page.tsx` (Analyze), `app/ask-data/[threadId]/page.tsx` (Ask My Data) |
+| Surfaces | `app/(banker)/page.tsx` (Today), `app/(banker)/analyze/[modelId]/page.tsx` (Analyze), `app/(banker)/ask/[threadId]/page.tsx` (Ask My Data) |
+| Section title chrome | `components/nav/SectionTopBar.tsx` (Ask My Data + Analyze) |
 | SSE client hooks | `lib/client/{useAgentStream,useAnalyzeStream,useAskDataStream}.ts` |
+| Scheduler auth | `scripts/lib/resolveSfToken.ts` (resolver) + `lib/db/schedulerCreds.ts` (Postgres helpers) |
+| Release-phase migration | `scripts/apply-schema.cjs` (Procfile `release:` target) |
 
 ## Salesforce auth
 
-OAuth 2.1 + PKCE obtains a token with the `mcp_api` scope. That bearer token is passed into MCP sessions. Session cookies gate which API routes run with a live token (see `lib/salesforce/token.ts` and `/api/auth/*` patterns).
+OAuth 2.1 + PKCE obtains a token with the `mcp_api cdp_api refresh_token` scopes. That bearer token is passed into MCP sessions. Session cookies gate which API routes run with a live token (see `lib/salesforce/token.ts` and `/api/auth/*` patterns).
+
+**Scheduler / unattended use** — refresh tokens issued during banker login are upserted into the `scheduler_credentials` singleton row in Postgres on every successful `/callback`. Refresh scripts exchange the stored refresh token for a fresh access token via OAuth refresh-token grant; see [OPERATIONS.md#scheduled-jobs](./OPERATIONS.md#scheduled-jobs) and `scripts/lib/resolveSfToken.ts`.
 
 For deeper product constraints (no navigation rails, reasoning trail as a feature), refer to your team’s **Horizon build spec** if you maintain one locally (this repo’s `.gitignore` may exclude it). **Prompt and MCP hygiene** for engineering are summarized in [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md).

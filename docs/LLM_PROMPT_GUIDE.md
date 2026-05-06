@@ -31,6 +31,7 @@ These patterns **actually appeared** in demo runs; `system.ts` §MCP HYGIENE enc
 | Symptom | Cause | Mitigation |
 |---------|--------|------------|
 | `unknown column 'AccountId__c'` | Treating DMO SQL like SOQL: inventing `*Id__c` columns. | Only columns **verbatim** in **this turn’s** `getDcMetadata` response for that DMO. Never assume CRM `AccountId` → `AccountId__c` on lakehouse. |
+| `unknown column 'ssot__OwnerUserId__c'` (or any owner / banker pivot on a transaction DMO) | Reaching for a CRM-style ownership filter that DC transaction DMOs don't carry at row level. | System prompt v1.6.0+ explicitly forbids `*OwnerUserId*`, `*BankerId*`, etc. on DMOs and instructs filtering by `accountid__c` using the account list returned from `salesforce_crm` (`Account WHERE OwnerId = :user`). Preflight catches the pattern in code regardless. |
 | `table … does not exist` / guessed `*__dll` | Inventing DMO developerNames from CRM object names (e.g. `PersonLifeEvent_*__dll`). | `getDcMetadata` first; use exact developerName from response. |
 | Second SQL “blocked by schema-mismatch breaker” | Retrying or repeating bad column/table guesses. | One correction path; then accept limitation in narrative. |
 
@@ -46,8 +47,9 @@ These patterns **actually appeared** in demo runs; `system.ts` §MCP HYGIENE enc
 
 | Symptom | Cause | Mitigation |
 |---------|--------|------------|
-| `no access to the semantic model` | Passing a human concept name (`"Opportunities"`) or category label (`"Sales"`) as model id. | Pick an `apiName` **verbatim** from the TABLEAU NEXT SEMANTIC MODELS catalog injected into the system prompt (the catalog includes the human `label` alongside the apiName — Kimi uses the label to match intent and passes the apiName verbatim). Never improvise. If you see this error, the Tableau SDM cache is probably empty — refresh via `/api/admin/refresh-dc-cache?run=1&tool=tableau&force=1`. |
-| `analyze_data exceeded 20000ms` | Utterance is too long or multi-clause; Tableau's LLM Q&A takes >20s. | Keep utterances under 15 words and single-facet (one metric, one filter window). Break compound questions into separate analyze calls — the Tableau side times out faster on simple questions. |
+| `Semantic model apiName "X" does not exist in this org` (preflight) | Model invented an apiName (e.g. `Sales_Analytics`, `Service_Pipeline`). | New on 2026-05-06: `preflightTableauAnalyze` rejects unknown apiNames before the network call when the SDM cache is preloaded, with the real list of valid apiNames in the rejection's `instruction` field. Catches the most common SDM hallucination at zero round-trip cost. |
+| `INVALID_INPUT — don't have access to the semantic model` (post-preflight) | Either (a) the SDM cache is empty so the preflight didn't run, or (b) the cache was refreshed by an admin token but the banker has narrower visibility. | Confirm cache state via `GET /api/admin/refresh-dc-cache` → look at `tableau.cached` and `tableau.apiNames`. If `cached: false`, refresh via `?run=1&tool=tableau&force=1`. Real permission gaps trip the breaker on first occurrence (see `INVALID_INPUT` / "don't have access" in `TRIP_ERROR_PATTERNS`). |
+| `analyze_data exceeded 25000ms` (Today path) | Utterance is too long or multi-clause; Tableau's LLM Q&A takes >25s on heavy banker books. | Today's cap was bumped 20s → 25s on 2026-05-06. Analyze surface uses a separate 45s cap (`firstPartyTableauNext.ts`) since it's a single-tool turn. Keep utterances under 15 words and single-facet to stay well under either ceiling. |
 | `Unknown tool "tableau_next__list_semantic_models"` | Model called a tool the cache-aware filter strips. | Expected rejection — means a prompt still directs the model to a filtered tool. Rewrite that prompt to point at the injected catalog. |
 
 ### Analyze (Kimi + Tableau Next)
