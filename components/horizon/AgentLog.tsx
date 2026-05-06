@@ -35,7 +35,7 @@ export function AgentLog() {
   return (
     <section
       aria-labelledby="agent-log-h"
-      className="mt-10 rounded-xl border border-border-soft/40 bg-surface/15 px-4 py-3"
+      className="mt-10 rounded-xl border border-border-soft bg-surface px-4 py-3"
     >
       <button
         type="button"

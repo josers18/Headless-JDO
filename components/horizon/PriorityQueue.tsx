@@ -331,13 +331,13 @@ function PriorityGroup({
     .map((c) => c.name)
     .slice(0, 6);
   return (
-    <section aria-labelledby={`pq-${id}-h`} className="rounded-xl border border-border-soft/40 bg-surface/20">
+    <section aria-labelledby={`pq-${id}-h`} className="rounded-xl border border-border-soft bg-surface">
       <div className="flex items-stretch justify-between gap-2">
         <button
           type="button"
           id={`pq-${id}-h`}
           onClick={onToggle}
-          className="flex flex-1 min-h-[44px] items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface/40"
+          className="flex flex-1 min-h-[44px] items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface2"
         >
           <span className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-text-muted">
             {open ? (
@@ -458,7 +458,7 @@ function PriorityGroup({
                     overflow={overflow}
                   >
                     <div className="grid grid-cols-[56px_1fr_auto] items-center gap-5">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border-soft bg-surface2 text-[12px] font-mono tabular-nums text-text-muted group-hover:border-accent/40 group-hover:text-accent">
                         {String(idx + 1).padStart(2, "0")}
                       </div>
                       <div className="min-w-0">

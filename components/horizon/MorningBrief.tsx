@@ -339,7 +339,7 @@ export function MorningBrief() {
 
       {heroItem && cta && (
         <section
-          className="relative mt-10 animate-fade-rise rounded-2xl border border-border-soft/80 bg-surface2/50 p-6 shadow-[0_24px_60px_-40px_rgba(0,0,0,0.55)] md:p-8"
+          className="relative mt-10 animate-fade-rise rounded-2xl border border-border-soft bg-surface p-6 shadow-[0_24px_60px_-40px_rgba(0,0,0,0.55)] md:p-8"
           aria-labelledby="right-now-heading"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -503,7 +503,7 @@ export function MorningBrief() {
 
       {isComplete && brief && (
         <section
-          className="relative mt-10 animate-fade-rise rounded-2xl border border-border-soft/70 bg-surface/35 px-5 py-5 md:px-6 md:py-6"
+          className="relative mt-10 animate-fade-rise rounded-2xl border border-border-soft bg-surface px-5 py-5 md:px-6 md:py-6"
           aria-labelledby="recent-life-events-heading"
         >
           <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.22em] text-text-muted">
@@ -582,11 +582,11 @@ export function MorningBrief() {
       )}
 
       {brief?.older_backlog && brief.older_backlog.task_count > 0 && (
-        <div className="relative mt-8 rounded-xl border border-border-soft/60 bg-surface/40">
+        <div className="relative mt-8 rounded-xl border border-border-soft bg-surface">
           <button
             type="button"
             onClick={() => setBacklogOpen((o) => !o)}
-            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface2/40"
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-surface2"
             aria-expanded={backlogOpen}
           >
             <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-text-muted">

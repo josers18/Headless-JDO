@@ -146,7 +146,7 @@ export function SectionInsight({
   return (
     <div
       className={cn(
-        "flex items-start gap-3 rounded-lg border border-border-soft/40 bg-surface/20 px-4 py-2.5 text-[12px] leading-snug sm:items-center",
+        "flex items-start gap-3 rounded-lg border border-border-soft bg-surface px-4 py-2.5 text-[12px] leading-snug sm:items-center",
         className
       )}
       role="note"

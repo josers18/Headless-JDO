@@ -446,7 +446,7 @@ export function TodaysArc() {
           windows (if any) render below, matching the normal layout. */}
       {arc && nowMs && endMs && isWrappingUp && (
         <div className="mt-6 animate-fade-rise">
-          <div className="rounded-xl border border-border-soft/70 bg-gradient-to-b from-surface/50 to-black/20 px-5 py-4 shadow-inner">
+          <div className="rounded-xl border border-border-soft bg-surface px-5 py-4 shadow-inner">
             <div className="flex items-baseline justify-between gap-3">
               <p className="font-display text-[18px] leading-tight tracking-tight text-text">
                 Wrapping up today.

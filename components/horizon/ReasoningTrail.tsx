@@ -67,7 +67,7 @@ export function ReasoningTrail({
   if (steps.length === 0) return null;
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-border-soft bg-surface/60">
+    <div className="relative overflow-hidden rounded-xl border border-border-soft bg-surface">
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center gap-2 px-4 py-3 text-left text-[11px] uppercase tracking-[0.18em] text-text-muted transition hover:text-text"
