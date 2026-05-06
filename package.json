@@ -50,7 +50,8 @@
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
-    "tailwind-merge": "^2.5.4"
+    "tailwind-merge": "^2.5.4",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
     "@types/node": "^22.8.7",
@@ -62,7 +63,6 @@
     "eslint-config-next": "^15.5.15",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
-    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
 }
