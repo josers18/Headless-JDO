@@ -319,7 +319,7 @@ export function TodaysArc() {
       )}
 
       {arc && nowMs && endMs && !isWrappingUp && (
-        <div className="mt-6 animate-fade-rise">
+        <div className="mt-6 animate-fade-rise rounded-xl border border-border-soft bg-surface px-5 py-5">
           <div className="overflow-x-auto overscroll-x-contain pb-2 [-webkit-overflow-scrolling:touch] snap-x snap-mandatory md:snap-none md:overflow-visible">
             <div className="relative min-w-[min(100%,520px)] snap-center md:min-w-0">
               <ArcTimeline
@@ -378,7 +378,7 @@ export function TodaysArc() {
                 (() => {
                   const scid = arcRowClientId(selected);
                   return (
-                    <div className="mt-4 rounded-lg border border-border-soft bg-surface2/50 px-4 py-3 text-[13px] leading-relaxed animate-fade-in">
+                    <div className="mt-4 rounded-lg border border-border-soft bg-surface2 px-4 py-3 text-[13px] leading-relaxed animate-fade-in">
                       <div className="font-medium text-text">
                         <BriefRichText
                           text={selected.title}
@@ -411,7 +411,7 @@ export function TodaysArc() {
                   {arc.recommended_windows.map((w, i) => (
                     <li
                       key={`${w.start}-${i}`}
-                      className="rounded-md border border-border-soft/60 bg-black/15 px-3 py-2 text-[12px] text-text-muted"
+                      className="rounded-md border border-border-soft bg-surface2 px-3 py-2 text-[12px] text-text-muted"
                     >
                       <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent/90">
                         Suggested focus
@@ -506,7 +506,7 @@ export function TodaysArc() {
               {arc.recommended_windows.map((w, i) => (
                 <li
                   key={`${w.start}-${i}`}
-                  className="rounded-md border border-border-soft/60 bg-black/15 px-3 py-2 text-[12px] text-text-muted"
+                  className="rounded-md border border-border-soft bg-surface2 px-3 py-2 text-[12px] text-text-muted"
                 >
                   <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent/90">
                     Suggested focus
