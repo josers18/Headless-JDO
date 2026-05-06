@@ -136,3 +136,94 @@ After the first-party MCP swap, the full agent path exercises real data:
 - Segments / Identity Resolution / Activation operational tools — out
   of scope on first-party MCP. Would require a separate Tier-3 task to
   reintroduce via a dedicated MCP or direct REST layer.
+
+---
+
+## Post-T1 hardening addendum (2026-05-06, commit `998def7`)
+
+Live-testing pass on top of T1. The headline fix closes a latent bug
+present since Path C landed on 2026-04-30, plus a cluster of agent-loop
+discipline improvements that surfaced during the session.
+
+Protocol-level:
+
+- **`defaultExc` envelope unwrap** — `lib/mcp/firstPartyDataCloud.ts`
+  (and `lib/mcp/client.ts` for the Today flow) now parse the outer
+  `{"defaultExc": "<stringified JSON>", ...}` envelope Data Cloud wraps
+  around successful `post_dc_query_sql` results, extract the inner
+  JSON, and emit the clean `{data, metadata, responseCode}` shape to
+  the agent. Without this, Kimi saw only the metadata slice and
+  interpreted real data as "empty" — the silent root cause of almost
+  every "no results found" complaint in the session.
+
+Agent runtime (`lib/inference/askDataAgent.ts`):
+
+- **Turn-wide result cache** — the per-`(name, argsJson)` dedup cache
+  was declared inside the iteration loop and reset every turn. Lifted
+  to the turn level so identical-args retries across iterations serve
+  from memory instead of re-hitting the MCP.
+- **`<think>` tag streaming stripper** — Kimi's chain-of-thought
+  occasionally leaked into the narrative; same tag-spanning-chunks
+  strip used on Analyze now applies here. `stripThinkTagsSync` also
+  scrubs persisted threads written before this landed.
+- **Circuit breaker shield** — synthetic guard rejections
+  (`isSyntheticGuard: true` on "unknown tool" returns) no longer feed
+  the MCP error counter. Threshold tightened from 3 → 2 consecutive
+  real errors before tripping.
+- **Fallback narratives on every silent-exit path** — iteration cap,
+  empty-tool-calls, stream exception, circuit trip all now emit a
+  `token` event before `turn_complete` so the UI never renders a blank
+  assistant response.
+- **Preloaded DC catalog** — `/api/ask-data/route.ts` loads the Redis
+  DMO cache at turn start, injects the catalog into the system prompt
+  (with wider field caps than Today: `fullFieldsTopCount: 40`,
+  `tailFieldsPerDmo: 30`), and passes `preloadedDcMetadata: true` to
+  hide `get_dc_metadata` from Kimi's tool list. "Tool hidden" now
+  returns a specific "catalog already in system prompt" message
+  instead of a generic "unknown tool" error.
+
+Prompt (`lib/prompts/ask-data.ts` → **v0.5.0**):
+
+- NUMBERED FOLLOW-UPS — single-digit replies ("1", "2") resolve
+  against the prior assistant message's numbered list, not in
+  isolation.
+- GROUND SQL IN THE CATALOG — step-by-step algorithm with explicit
+  `+N more` truncation-marker handling so Kimi doesn't invent columns
+  when a DMO's field list was truncated.
+- ONE SQL FIX, THEN STOP — with runtime backstop; catches iterative
+  column-guessing cascades.
+- AVOID CROSS-DMO JOINS — explicit guidance and bad/good example,
+  addresses the `ssot__Individual__dlm` vs `DC_UnifiedssotIndividualIr1__dll`
+  mis-attribution class where Kimi mixed column conventions.
+- NO SQL IN PROSE / NO RAW FIELD NAMES / NO TUTORIALS — with forbidden
+  phrases enumerated. Stops Kimi from drifting into playbook mode when
+  a query returns no rows.
+- Widen-before-giving-up — if a time-scoped query returns empty, retry
+  once with a wider window before reporting "no data."
+
+UX:
+
+- **MarkdownView rendering** — `components/ask-data/Conversation.tsx`
+  now uses the shared `MarkdownView` for persisted + live narrative
+  (tables, bold, bullets). Previously rendered as `whitespace-pre-wrap`
+  plain text, which made structured responses illegible.
+
+Cache + ops:
+
+- **Pinned inclusion list** in `lib/llm/dcMetadataCache.ts` — DMOs
+  like `ssot__PersonLifeEvent__dlm` (112 rows) would otherwise fall
+  outside the top-60-banker-relevant cutoff. Pinned matchers force
+  them into the catalog regardless of rowCount.
+- **`GET /api/admin/refresh-dc-cache?run=1&tool=dc|tableau|both&force=1`** —
+  dev-only trigger that spawns the refresh script as a child process
+  using the live banker session token; avoids the expired-`SF_ACCESS_TOKEN`
+  problem when running the scripts locally.
+- **`redisSetOnce` short-lived write helper** in `lib/redis.ts` —
+  avoids the idle-TLS-socket-severed failure mode on Heroku Mini Redis
+  for long-running refresh scripts.
+
+Known remaining gap: Analytics Agent / `post_dc_query_sql` sometimes
+errors on joins where two DMOs model the same concept with different
+column conventions. The prompt bans cross-DMO JOINs as a workaround;
+an AST-level SQL preflight (porting the Today flow's `preflightRejection`)
+is the structural fix if the prompt discipline doesn't hold.

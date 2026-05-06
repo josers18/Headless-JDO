@@ -25,10 +25,16 @@ Never commit `.env`, API keys, OAuth secrets, or inference keys. Use placeholder
 
 Prompts live in `lib/prompts/` — treat edits like code review.
 
-1. Read [**docs/LLM_PROMPT_GUIDE.md**](docs/LLM_PROMPT_GUIDE.md) first.
-2. Prefer extending **`lib/prompts/system.ts`** for rules that must apply to *every* agent route (SOQL hygiene, Data Cloud metadata gate, Tableau binding).
-3. Bump the **version export** in every file you change (`SYSTEM_PROMPT_VERSION`, `MORNING_BRIEF_PROMPT_VERSION`, `PREP_PROMPT_VERSION`, etc.).
+1. Read [**docs/LLM_PROMPT_GUIDE.md**](docs/LLM_PROMPT_GUIDE.md) first. It catalogs known failure modes per agent (Today / Analyze / Ask My Data) with their mitigations.
+2. Pick the right file for the scope of your change:
+   - **All agents**: extend `lib/prompts/system.ts` (SOQL hygiene, DC metadata gate, Tableau binding).
+   - **Today only**: feature-specific files under `lib/prompts/` (`morning-brief.ts`, `prep.ts`, `arc.ts`, `priority-queue.ts`, etc.).
+   - **Analyze surface**: `lib/prompts/analyze.ts` (Kimi + Tableau Next). Currently v0.5.0.
+   - **Ask My Data surface**: `lib/prompts/ask-data.ts` (Kimi + Data 360). Currently v0.5.0.
+   - **Follow-up pills**: `lib/prompts/ask-data-followups.ts` (MiniMax, JSON-object output). Currently v0.3.0.
+3. Bump the **version export** in every file you change (`SYSTEM_PROMPT_VERSION`, `ANALYZE_PROMPT_VERSION`, `ASK_DATA_PROMPT_VERSION`, etc.). Version history is the first thing we check when a reasoning-trail regression surfaces in prod.
 4. Run `npm run build` before opening a PR.
+5. When a change affects multiple agents, test all affected surfaces — the three agent loops (`lib/llm/heroku.ts`, `lib/inference/analyzeAgent.ts`, `lib/inference/askDataAgent.ts`) share patterns but not code.
 
 ## Style
 

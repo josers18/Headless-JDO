@@ -138,3 +138,56 @@ The spec called for single-shot-per-model persistence (Q-T2-3-b-detail
 - /api/analyze-followups smoke: 3 grounded next-step questions in
   JSON-object form
 - Today (`/`) and Ask My Data (`/ask`) unaffected across all Tier 2 work
+
+---
+
+## Post-T2 hardening addendum (2026-05-06, commit `998def7`)
+
+A live-testing pass uncovered regressions once the full Analyze
+experience was exercised against real org data. Landed as a unified
+commit on top of Tier 2; the same scope also addressed Ask My Data
+(see the matching addendum in `ASK_MY_DATA_T1_VALIDATION.md`).
+
+Analyze-specific changes:
+
+- **Multi-turn context retention** — `priorTurns` now threads client →
+  route → agent so follow-ups like "can you show it as a bar chart"
+  resolve pronouns against the prior answer. Previously each turn was
+  evaluated in isolation and Kimi had no memory of what "it" referred
+  to.
+- **Turn-wide `analyze_data` budget** — Kimi could hedge by calling
+  the tool 4+ times in one turn with slightly rephrased args. Runtime
+  now enforces one successful call per turn; subsequent attempts
+  return a synthetic "duplicate suppressed" result (that doesn't trip
+  the MCP circuit breaker).
+- **Forced tool_choice on visualization follow-ups** — regex in
+  `/api/analyze-ask/route.ts` detects pronouns + chart-shape verbs +
+  drill-downs; when matched on a turn with at least one prior turn,
+  iteration 1 sets `tool_choice: {type:"function", function:{name:"analyze_data"}}`
+  so Kimi can't answer "the chart is already rendered" in prose (a
+  real failure mode the prompt alone couldn't eliminate).
+- **Prose row ordering** — new `lib/analyze/sortByDate.ts` stable-sorts
+  rows chronologically when a date-like column is detected (name-hint
+  ranked; values parseable as dates ≥70% of the time). Fixes
+  out-of-order time-series plots that MiniMax produced from "highlights
+  first" narrative extraction.
+- **Unified chart palette** — replaced the 42-theme `color-mix`
+  derivation (which collapsed to monochrome on hue-biased themes like
+  Amber / Chamois) with two curated 8-slot palettes (dark + light),
+  same hue ladder in both so the ordinal role of each slot is stable
+  across themes.
+- **Suspense-streamed page shell** — `/analyze/[modelId]` paints the
+  shell immediately and streams profile / metrics / workbench in
+  nested Suspense boundaries instead of a 4s blocking await.
+- **Business preferences panel** — now collapsed by default; the SDM
+  author's hint string no longer dominates the model header.
+- **Prompt bumped to v0.5.0** — adds "HOW THE RUNTIME WORKS" preamble,
+  CALL BUDGET block, forbidden-phrases list ("the system automatically
+  renders", "already available from your previous query"), complete-
+  dataset phrasing rules, cross-DMO JOIN avoidance example.
+
+Known remaining gap (not fixed in this pass): Analytics Agent sometimes
+returns a prose "highlights only" (top-3 + bottom-3) instead of a full
+row set. Prompt Rule 4 nudges Kimi to phrase questions for completeness
+but upstream behavior still wins on some shapes — captured in the
+commit message for future attention.
