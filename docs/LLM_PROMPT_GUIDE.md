@@ -6,10 +6,13 @@ This document is for **humans and coding agents** who change how Horizon talks t
 
 | File | Role |
 |------|------|
-| [`lib/prompts/system.ts`](../lib/prompts/system.ts) | Shared **MCP HYGIENE** block: Data Cloud metadata gate, SOQL rules, Tableau semantic binding, universal tone rules. Export: `SYSTEM_PROMPT`, `SYSTEM_PROMPT_VERSION`. |
-| [`lib/prompts/ask-anything.ts`](../lib/prompts/ask-anything.ts) | Ask bar: schema discipline, org field allow-lists, output JSON contracts. |
+| [`lib/prompts/system.ts`](../lib/prompts/system.ts) | Shared **MCP HYGIENE** block for Today: Data Cloud metadata gate, SOQL rules, Tableau semantic binding, universal tone rules. Export: `SYSTEM_PROMPT`, `SYSTEM_PROMPT_VERSION`. |
+| [`lib/prompts/ask-anything.ts`](../lib/prompts/ask-anything.ts) | Ask bar (Today): schema discipline, org field allow-lists, output JSON contracts. |
 | [`lib/prompts/morning-brief.ts`](../lib/prompts/morning-brief.ts) | Morning brief structure, CRM + Data 360 + Tableau expectations. |
-| Other `lib/prompts/*.ts` | Feature-specific instructions (`prep`, `arc`, `priority-queue`, `signals`, etc.). |
+| [`lib/prompts/analyze.ts`](../lib/prompts/analyze.ts) | **Analyze surface** (Kimi + Tableau Next). Current: `ANALYZE_PROMPT_VERSION = v0.5.0`. Call budget (one `analyze_data` per turn), forbidden phrase list, visualization-complete phrasing rules, follow-up mandate. |
+| [`lib/prompts/ask-data.ts`](../lib/prompts/ask-data.ts) | **Ask My Data surface** (Kimi + Data 360). Current: `ASK_DATA_PROMPT_VERSION = v0.5.0`. Numbered-option resolution, catalog grounding, no-SQL-in-prose, no-raw-field-names, one-SQL-fix-then-stop, no cross-DMO JOINs, no tutorials. |
+| [`lib/prompts/ask-data-followups.ts`](../lib/prompts/ask-data-followups.ts) | MiniMax follow-up pills. Current: `ASK_DATA_FOLLOWUPS_PROMPT_VERSION = v0.3.0`. Returns `{"suggestions":[...]}` to match `response_format: json_object`. |
+| Other `lib/prompts/*.ts` | Feature-specific instructions (`prep`, `arc`, `priority-queue`, `signals`, `action-drafting`, etc.). |
 
 **Rule:** Any change to agent behavior that must apply everywhere → extend `system.ts` and **bump `SYSTEM_PROMPT_VERSION`**. Feature-only rules go in the feature prompt and bump that file’s `*_PROMPT_VERSION` constant.
 
@@ -43,9 +46,29 @@ These patterns **actually appeared** in demo runs; `system.ts` §MCP HYGIENE enc
 
 | Symptom | Cause | Mitigation |
 |---------|--------|------------|
-| `no access to the semantic model` | Passing category label (`"Sales"`) as model id. | Pick an `apiName` **verbatim** from the TABLEAU NEXT SEMANTIC MODELS catalog injected into the system prompt. Never improvise a model id. |
+| `no access to the semantic model` | Passing a human concept name (`"Opportunities"`) or category label (`"Sales"`) as model id. | Pick an `apiName` **verbatim** from the TABLEAU NEXT SEMANTIC MODELS catalog injected into the system prompt (the catalog includes the human `label` alongside the apiName — Kimi uses the label to match intent and passes the apiName verbatim). Never improvise. If you see this error, the Tableau SDM cache is probably empty — refresh via `/api/admin/refresh-dc-cache?run=1&tool=tableau&force=1`. |
 | `analyze_data exceeded 20000ms` | Utterance is too long or multi-clause; Tableau's LLM Q&A takes >20s. | Keep utterances under 15 words and single-facet (one metric, one filter window). Break compound questions into separate analyze calls — the Tableau side times out faster on simple questions. |
 | `Unknown tool "tableau_next__list_semantic_models"` | Model called a tool the cache-aware filter strips. | Expected rejection — means a prompt still directs the model to a filtered tool. Rewrite that prompt to point at the injected catalog. |
+
+### Analyze (Kimi + Tableau Next)
+
+| Symptom | Cause | Mitigation |
+|---------|--------|------------|
+| Kimi says "the data will automatically render as a bar chart below" without calling a tool | Visualization follow-up ("show it as a bar chart") not routed to a fresh `analyze_data` call. | `app/api/analyze-ask/route.ts` detects follow-up intent via regex (pronouns / chart-shape verbs / drill-downs) and sets `forceAnalyzeDataFirstIteration: true` → the agent forces `tool_choice: {type: "function", function: {name: "analyze_data"}}` on iteration 1. Prompt v0.5.0 also lists the "automatic re-render" phrase in the forbidden-phrases block. |
+| 5× `analyze_data` calls for one banker question | Kimi sequentially hedges by rephrasing the same question iteration after iteration. | Turn-wide budget in `analyzeAgent.ts`: `turnWideOnceTools = Set(["analyze_data"])`. Once `analyze_data` has run successfully, later iterations' calls return a synthetic "duplicate suppressed" and the model must respond without retrying. |
+| Chart x-axis out of chronological order when dates are plotted | MiniMax prose extractor preserves narrative order ("highlights first"). | `lib/analyze/sortByDate.ts` detects a date-like column by name hints + value parseability (≥70% threshold) and stable-sorts rows chronologically before the chart selector runs. |
+| Chart shows only 6 points when Analytics Agent's prose mentions "24 months" | Analytics Agent returned a prose highlight reel instead of a complete row set. | Prompt Rule 4 instructs Kimi to phrase `analyze_data` as "List [metric] for each [dimension], one row per [dimension]" and avoid "top", "best", "highest", "notable" unless the banker asked for a ranking. Residual issue on some question shapes — upstream Analytics Agent behavior. |
+
+### Ask My Data (Kimi + Data 360)
+
+| Symptom | Cause | Mitigation |
+|---------|--------|------------|
+| Query returns empty even though data exists | `post_dc_query_sql` wraps successful results in `{"defaultExc": "<stringified JSON>", ...}` — the MCP wrapper now unwraps this at the boundary. | Both `lib/mcp/client.ts` and `lib/mcp/firstPartyDataCloud.ts` parse the outer envelope, extract `defaultExc`, re-parse the inner JSON, and emit the clean `{data, metadata, responseCode}` shape. Latent bug since Path C landed (fixed 2026-05-06). |
+| Kimi writes SQL code blocks into the banker-facing response | Default helpful-LLM drift: when data is sparse, fall back to explaining how to query. | Prompt v0.5.0 Rule 5: "NEVER EMIT SQL IN YOUR RESPONSE." Rule 6: "NEVER EMIT RAW FIELD NAMES." Forbidden phrases include any `__c`, `__dlm`, `ssot__` in final prose. |
+| Kimi answers "option 1" incorrectly when banker replies with a single digit | Model sees "1" in isolation without the anchor to its own prior numbered list. | Prompt v0.5.0 Rule 1 (NUMBERED FOLLOW-UPS): re-read your prior assistant message, find the numbered list, pick that option. Never guess. |
+| Kimi iteratively tweaks failing SQL 4+ times with unknown-column errors | Without a hard retry cap, Kimi treats each error as "try a different spelling" rather than "give up". | Prompt v0.5.0 Rule 4: "ONE SQL FIX, THEN STOP." Runtime enforces via `ERROR_CIRCUIT_THRESHOLD = 2` (tightened from 3) — breaker trips on strike 2 with an actionable banker fallback narrative. |
+| Cross-DMO JOINs fail with "unknown column `i.personname__c`" | Two DMOs with similar concepts but different naming conventions (`ssot__Individual__dlm` uses `ssot__PersonName__c`, `DC_UnifiedssotIndividualIr1__dll` uses `personname__c`); Kimi mixes them up when JOINing. | Prompt v0.5.0 Rule 4a: "AVOID CROSS-DMO JOINS." Explicit guidance to run one query per DMO sequentially and summarize in prose rather than attempt a JOIN across objects with different column conventions. |
+| "No life event signals found" when the DMO clearly has data | DMO is outside the top 60 banker-relevant by rowCount (e.g. `ssot__PersonLifeEvent__dlm` at 112 rows sits at position ~347/596). | `dcMetadataCache.ts` has a pinned inclusion list (`pinnedMatchers`) that forces specific DMOs into the top of the catalog regardless of rowCount. Extend the list when adding new semantic-but-low-volume DMOs. |
 
 ## Catalog-first prompt discipline
 

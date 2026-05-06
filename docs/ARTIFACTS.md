@@ -2,13 +2,16 @@
 
 What ships in this codebase (high level). Prompt versions change over time — bump the constant in the file you edit.
 
-| Constant (export) | File |
-|-------------------|------|
-| `SYSTEM_PROMPT_VERSION` | `lib/prompts/system.ts` |
-| `MORNING_BRIEF_PROMPT_VERSION` | `lib/prompts/morning-brief.ts` |
-| `PREP_PROMPT_VERSION` | `lib/prompts/prep.ts` |
-| `ARC_PROMPT_VERSION` | `lib/prompts/arc.ts` |
-| … | Other `lib/prompts/*.ts` |
+| Constant (export) | File | Current |
+|-------------------|------|---------|
+| `SYSTEM_PROMPT_VERSION` | `lib/prompts/system.ts` | v1.x |
+| `MORNING_BRIEF_PROMPT_VERSION` | `lib/prompts/morning-brief.ts` | v1.x |
+| `PREP_PROMPT_VERSION` | `lib/prompts/prep.ts` | v1.x |
+| `ARC_PROMPT_VERSION` | `lib/prompts/arc.ts` | v1.x |
+| `ANALYZE_PROMPT_VERSION` | `lib/prompts/analyze.ts` | **v0.5.0** |
+| `ASK_DATA_PROMPT_VERSION` | `lib/prompts/ask-data.ts` | **v0.5.0** |
+| `ASK_DATA_FOLLOWUPS_PROMPT_VERSION` | `lib/prompts/ask-data-followups.ts` | **v0.3.0** |
+| … | Other `lib/prompts/*.ts` | — |
 
 See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a failure-mode catalog.
 
@@ -26,6 +29,8 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 | Ask bar | `components/horizon/AskBar.tsx` | `POST /api/ask` (SSE); **Prep me** uses `POST /api/prep` (SSE) from embedded prep flow |
 | Client 360 sheet | `components/horizon/ClientDetailSheet.tsx` | `GET /api/client/[id]` (SSE) |
 | Section insights | `components/horizon/SectionInsight.tsx` + `InsightsBatchProvider` | `POST /api/insights` (SSE) |
+| **Ask My Data** (`/ask-data`) | `components/ask-data/Conversation.tsx` | `POST /api/ask-data` (SSE); threads via `GET/POST/DELETE /api/ask-threads`; follow-ups via `POST /api/analyze-followups` |
+| **Analyze** (`/analyze/[modelId]`) | `components/analyze/AnalyzeWorkbench.tsx` | `POST /api/analyze-ask` (SSE); model list via `GET /api/analyze-models`; follow-ups via `POST /api/analyze-followups` |
 
 ## Scripts (developer)
 
@@ -45,7 +50,8 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/health` | GET | Liveness probe — used by Heroku + smoke tests |
-| `/api/admin/refresh-dc-cache` | GET | Returns current DC metadata cache freshness, surviving DMO count, and top 10 DMOs by row count. Does NOT trigger a refresh — that runs out-of-band via the scheduler. |
+| `/api/admin/refresh-dc-cache` | GET | Diagnostic: returns current DC cache freshness, surviving DMO count, top 10 DMOs by row count, and Tableau SDM cache state if populated. |
+| `/api/admin/refresh-dc-cache?run=1&tool=dc\|tableau\|both&force=1` | GET or POST | Dev trigger: spawns the refresh script as a child process using the banker's live session token. Auth-required (reads the session cookie to mint `SF_ACCESS_TOKEN`). |
 
 ## Reference documentation
 

@@ -33,10 +33,13 @@
 
 ## What it does
 
-- **Morning brief** (life-event hierarchy + “Recent life events”), **priority queue**, **today’s arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **section insight** banners, **Ask** bar (typed + voice + drafted actions), **Prep me** (per-client briefing via `/api/prep`) — all on `/`.
+- **Home (Today)** (`/`) — **Morning brief** (life-event hierarchy + "Recent life events"), **priority queue**, **today's arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **section insight** banners, **Ask** bar (typed + voice + drafted actions), **Prep me** (per-client briefing via `/api/prep`).
+- **Ask My Data** (`/ask-data`) — multi-turn exploratory SQL agent over Data Cloud. Markdown-rendered responses, persisted thread history, reasoning trail, follow-up pill suggestions.
+- **Analyze** (`/analyze/[modelId]`) — governed analytics workbench over Tableau Next SDMs. 18 chart types with grounded MiniMax chart selection, per-model starter questions, multi-turn in-memory conversation, clickable metric chips, Business Preferences panel.
 - The LLM orchestrates three **Salesforce-hosted MCP** servers (CRM SObject, Data 360 SQL, Tableau Next) plus optional **Heroku toolkit** MCP. The UI streams tokens and a collapsible **reasoning trail** of tool calls (success + handled errors).
-- **LLM path:** Heroku Managed Inference (Claude 4.5 Sonnet, OpenAI-compatible API) with an MCP tool loop in `lib/llm/heroku.ts`. Optional Kimi-on-Onyx fallback when `HEROKU_INFERENCE_ONYX_*` is configured.
-- **Prompt hygiene:** shared rules and version stamps live in `lib/prompts/system.ts` (`SYSTEM_PROMPT_VERSION`). See **[docs/LLM_PROMPT_GUIDE.md](docs/LLM_PROMPT_GUIDE.md)** before changing agent behavior.
+- **LLM path:** Heroku Managed Inference (Claude 4.5 Sonnet for Today, Kimi K2 Thinking for Analyze + Ask My Data, MiniMax M2 for chart/followup tier). All via OpenAI-compatible `/v1/chat/completions`.
+- **Agent hardening:** turn-wide dedup cache, per-tool circuit breakers with synthetic-guard shielding, `<think>`-tag streaming stripper, tool-choice forcing on visualization follow-ups, `defaultExc` envelope unwrap at MCP wrapper boundary — all in `lib/inference/{analyzeAgent,askDataAgent}.ts` + `lib/llm/heroku.ts` + `lib/mcp/{client,firstPartyDataCloud}.ts`.
+- **Prompt hygiene:** shared rules and version stamps live in `lib/prompts/system.ts` + per-feature prompt files (`*_PROMPT_VERSION`). See **[docs/LLM_PROMPT_GUIDE.md](docs/LLM_PROMPT_GUIDE.md)** before changing agent behavior.
 
 ---
 
@@ -61,7 +64,8 @@
 | -------------------------- | ---------------------------------------------------------------------------------------- |
 | `app/page.tsx`             | Home — primary surface                                                                   |
 | `app/api/`*                | SSE / JSON routes: `ask`, `brief`, `priority`, `pulse`, `drafts`, `signals`, OAuth, etc. |
-| `app/api/admin/refresh-dc-cache/` | Diagnostic GET — returns DC metadata cache freshness + top DMOs by row count   |
+| `app/api/admin/refresh-dc-cache/` | Diagnostic GET + trigger POST — returns cache freshness, or with `?run=1&tool=dc\|tableau\|both&force=1` spawns the refresh script using the banker's live session token |
+| `app/api/analyze-ask/`, `app/api/ask-data/` | SSE agent routes for Analyze + Ask My Data (separate loops in `lib/inference/`) |
 | `lib/llm/heroku.ts`        | Agent loop: model → tool calls → parallel MCP → repeat; tool-filter + hallucination-reject |
 | `lib/llm/provider.ts`      | `runAgentWithMcp` wrapper — loads both caches, injects catalogs into system prompt        |
 | `lib/llm/dcMetadataCache.ts` | Reads DC DMO catalog from Redis, renders system-prompt block                           |
@@ -107,8 +111,8 @@ Sign in via Salesforce from the app; the callback URL must match your External C
 | `npm run sf:login`                   | PKCE login; refreshes tokens for scripts |
 | `npm run smoke:api`                  | Hit deployed API health / smoke paths    |
 | `npm run mcp:check`                  | Fast MCP `initialize` probe              |
-| `npm run refresh:dc-metadata`        | Rebuild DC DMO catalog cache in Redis (Heroku Scheduler job) |
-| `npm run refresh:tableau-sdms`       | Rebuild Tableau Next SDM catalog cache in Redis (Heroku Scheduler job) |
+| `npm run refresh:dc-metadata`        | Rebuild DC DMO catalog cache in Redis (Heroku Scheduler job). In dev, prefer `GET /api/admin/refresh-dc-cache?run=1&force=1` from an authenticated browser tab — no `SF_ACCESS_TOKEN` plumbing needed. |
+| `npm run refresh:tableau-sdms`       | Rebuild Tableau Next SDM catalog cache in Redis (Heroku Scheduler job). Dev path: `?run=1&tool=tableau&force=1` on the admin route. |
 
 
 ---

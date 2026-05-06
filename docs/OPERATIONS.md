@@ -79,13 +79,31 @@ Add both jobs in the dashboard. Dyno size **Basic** is plenty — DC refresh is 
 **Manual bump (forces a refresh bypassing the skip gate):**
 
 ```bash
-# Local (requires REDIS_URL from Heroku config):
-REDIS_URL=$(heroku config:get REDIS_URL) DC_METADATA_FORCE=1 npm run refresh:dc-metadata
+# Local (requires REDIS_URL + SF_ACCESS_TOKEN — the latter expires ~12h
+# after the last OAuth dance, so prefer the dev browser path below for
+# routine work):
+set -a; source .env; set +a
+DC_METADATA_FORCE=1 npm run refresh:dc-metadata
 TABLEAU_SDM_FORCE=1 npm run refresh:tableau-sdms
 
-# On the Heroku dyno:
+# On the Heroku dyno (uses the baked SF_ACCESS_TOKEN config var):
 heroku run --app headless-jdo npm run refresh:dc-metadata
+heroku run --app headless-jdo npm run refresh:tableau-sdms
 ```
+
+**Dev browser path (recommended for local iteration)** — avoids the
+`SF_ACCESS_TOKEN` expiry problem entirely by pulling a fresh token from
+the banker's logged-in session cookie:
+
+```
+http://localhost:3000/api/admin/refresh-dc-cache?run=1&tool=dc&force=1
+http://localhost:3000/api/admin/refresh-dc-cache?run=1&tool=tableau&force=1
+http://localhost:3000/api/admin/refresh-dc-cache?run=1&tool=both&force=1
+```
+
+The admin route spawns the refresh script as a child process, injects
+the live session token as `SF_ACCESS_TOKEN`, and returns the cache
+freshness JSON on completion. Tab hangs ~75s for DC, ~15s for Tableau.
 
 **Diagnostic endpoint:**
 
@@ -93,7 +111,18 @@ heroku run --app headless-jdo npm run refresh:dc-metadata
 curl https://<app-url>/api/admin/refresh-dc-cache
 ```
 
-Returns JSON with `cached`, `generatedAt`, `ageHours`, `survivingDmos`, and the top 10 DMOs by row count. Use to confirm a refresh landed after a manual bump.
+Returns JSON with `cached`, `generatedAt`, `ageHours`, `survivingDmos`,
+and the top 10 DMOs by row count. Use to confirm a refresh landed after
+a manual bump.
+
+**Connection-limit note:** the current Heroku Redis plan is **Mini**
+(25MB, 20-connection cap). Hammering the admin URL rapidly during local
+iteration can stack orphaned connections and cause TLS-handshake-terminated
+errors that look like credential rotation but clear after restart of
+the dev server or ~5 minutes of idle. Plan upgrade to Premium-0 (40+
+connections, eviction enabled) is recommended before broader rollout.
+The refresh scripts use `redisSetOnce` (short-lived TLS connection)
+for the final write to avoid idle-socket-severed failures.
 
 ## Reasoning trail: triage cheatsheet
 
@@ -106,5 +135,8 @@ When the UI shows yellow “schema mismatch / handled” or red failures:
 | `MALFORMED_QUERY` / `unexpected token` on `salesforce_crm.soqlQuery` | Bad SOQL date literal (e.g. `NEXT_7_DAYS` instead of `NEXT_N_DAYS:7`, or quoted `ActivityDate`). See [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md). |
 | `504 Gateway Timeout — <server>.<tool> exceeded Nms` | Per-tool client-side timeout fired. Legitimate upstream slowness — check if a specific Tableau semantic model or DC DMO is consistently slow and consider narrowing the utterance or dropping the call. |
 | `blocked by schema-mismatch breaker` | Expected after a bad Data Cloud or SOQL shape — prevents tool-slot burn; narrative should degrade gracefully. |
+| `Duplicate <tool> suppressed.` | Dispatcher-level duplicate suppression. Per-iteration (multiple calls to same tool in one LLM response) or turn-wide (budget-limited tools like `analyze_data` that already ran successfully). Expected when the model hedges; the narrative should still complete on a subsequent iteration. |
+| `Catalog already in system prompt.` | `get_dc_metadata` was called but the cache is warm and the tool has been hidden. Expected feedback to Kimi — should re-read the injected catalog block for schema. Not a bug. |
+| Agent returned but **no narrative rendered** | Every silent-exit path now emits a fallback `token` event (iteration cap, circuit trip, empty-tool-calls, stream exception). If the UI shows nothing, check the client hook for `token` parsing — not an agent-side issue. |
 
 After fixing prompt text, **bump** the relevant `*_PROMPT_VERSION` in `lib/prompts/` and redeploy.
