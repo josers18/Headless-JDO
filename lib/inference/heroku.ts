@@ -22,6 +22,7 @@ import OpenAI from "openai";
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
+  ChatCompletionToolChoiceOption,
 } from "openai/resources/chat/completions";
 
 export type HerokuInferenceTier = "reasoning" | "short";
@@ -53,7 +54,7 @@ export type HerokuInferenceParams = {
   system?: string;
   messages: ChatCompletionMessageParam[];
   tools?: ChatCompletionTool[];
-  toolChoice?: "auto" | "none" | "required";
+  toolChoice?: ChatCompletionToolChoiceOption;
   /**
    * When set, the underlying request asks for JSON mode. Keep the prompt
    * disciplined — OpenAI-compatible JSON mode still expects the model to

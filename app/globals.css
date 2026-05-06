@@ -30,35 +30,73 @@
   --hz-surface-raised: color-mix(in srgb, var(--hz-surface) 93%, var(--hz-text) 7%);
 
   /*
-   * Chart palette. Eight tokens per theme derived from the theme's own
-   * --hz-accent / --hz-accent-2 / --hz-accent-warm and semantic colors.
-   * Zero per-theme overrides needed — `color-mix()` cascades from each
-   * theme's existing tokens so every one of the 42 themes gets a bespoke
-   * chart palette automatically. If a future theme defines a fourth
-   * accent or specific chart overrides, those can land in themes.css.
+   * Chart palette — UNIFIED across all 42 themes.
    *
-   * Design: chart-1 + chart-2 are hand-authored as the theme's two
-   * most prominent accents (first two data series land here, matching
-   * the theme's identity); chart-3..chart-8 are derived via color-mix
-   * rotation so multi-series charts stay visually coherent even when
-   * the series count exceeds two.
+   * Previously derived per-theme via color-mix() from the theme's
+   * accents. That produced unreadable categorical charts on hue-biased
+   * themes (e.g. the golden "Amber" theme collapsed 8 series to a
+   * single tawny ramp — indistinguishable wedges on a pie).
+   *
+   * New design: two hand-curated palettes — one tuned for dark
+   * backgrounds, one for light. Both rotate through a distinct hue
+   * ladder (blue → violet → green → amber → pink → sky → gold → indigo)
+   * so any slot lands a visually separated color, regardless of theme.
+   *
+   * The dark palette is declared here (used by :root and all dark
+   * themes by default). The light-scheme override below flips to the
+   * light palette wherever `color-scheme: light` is set.
    */
-  --hz-chart-1: var(--hz-accent);
-  --hz-chart-2: var(--hz-accent-2);
-  --hz-chart-3: color-mix(in oklch, var(--hz-accent) 60%, var(--hz-accent-warm) 40%);
-  --hz-chart-4: var(--hz-accent-warm);
-  --hz-chart-5: color-mix(in oklch, var(--hz-accent-2) 55%, var(--hz-success) 45%);
-  --hz-chart-6: color-mix(in oklch, var(--hz-accent-warm) 60%, var(--hz-warn) 40%);
-  --hz-chart-7: color-mix(in oklch, var(--hz-accent) 40%, var(--hz-danger) 60%);
-  --hz-chart-8: color-mix(in oklch, var(--hz-accent-2) 70%, var(--hz-text-muted) 30%);
+  --hz-chart-1: #5b8def;  /* periwinkle blue */
+  --hz-chart-2: #a78bfa;  /* violet         */
+  --hz-chart-3: #34d399;  /* mint / teal    */
+  --hz-chart-4: #f0b37a;  /* warm amber     */
+  --hz-chart-5: #f472b6;  /* rose           */
+  --hz-chart-6: #60a5fa;  /* sky            */
+  --hz-chart-7: #fbbf24;  /* gold           */
+  --hz-chart-8: #818cf8;  /* indigo         */
 
   /* Heatmap intensity scale (low → high). */
-  --hz-chart-heat-low: color-mix(in oklch, var(--hz-surface2) 85%, var(--hz-accent) 15%);
-  --hz-chart-heat-high: var(--hz-accent);
+  --hz-chart-heat-low: color-mix(in oklch, var(--hz-surface2) 85%, var(--hz-chart-1) 15%);
+  --hz-chart-heat-high: var(--hz-chart-1);
 
   /* Chart chrome. */
   --hz-chart-grid: color-mix(in srgb, var(--hz-border-soft) 50%, transparent);
   --hz-chart-axis: var(--hz-text-muted);
+}
+
+/*
+ * Light-scheme chart palette. Deeper saturations than the dark set so
+ * series stay legible on near-white surfaces without washing out.
+ * Same hue ladder (blue → violet → green → amber → pink → sky → gold
+ * → indigo) so the ordinal role of each slot is consistent whether the
+ * banker is on a light or dark theme.
+ *
+ * Sourced from the 13 themes that declare `color-scheme: light` in
+ * themes.css. If a new light theme lands there, add it here too.
+ */
+:where(
+  html[data-theme="ivory"],
+  html[data-theme="parchment"],
+  html[data-theme="fog"],
+  html[data-theme="sage"],
+  html[data-theme="verdant"],
+  html[data-theme="arctic"],
+  html[data-theme="glacier"],
+  html[data-theme="birch"],
+  html[data-theme="mist"],
+  html[data-theme="cashew"],
+  html[data-theme="mineral"],
+  html[data-theme="blush"],
+  html[data-theme="chamois"]
+) {
+  --hz-chart-1: #2563eb;  /* blue    */
+  --hz-chart-2: #7c3aed;  /* violet  */
+  --hz-chart-3: #059669;  /* emerald */
+  --hz-chart-4: #d97706;  /* amber   */
+  --hz-chart-5: #db2777;  /* rose    */
+  --hz-chart-6: #0284c7;  /* sky     */
+  --hz-chart-7: #ca8a04;  /* gold    */
+  --hz-chart-8: #4f46e5;  /* indigo  */
 }
 
 :root:not([data-theme]),

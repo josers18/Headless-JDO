@@ -23,6 +23,8 @@ import { selectChartSpec } from "@/lib/analyze/chartSelector";
 import type { ChartSpec } from "@/lib/analyze/chartTypes";
 import { stripThinkTags } from "@/lib/analyze/sanitize";
 import { extractStructuredFromProse } from "@/lib/analyze/proseToData";
+import { sortRowsByDateLikeColumn } from "@/lib/analyze/sortByDate";
+import { log } from "@/lib/log";
 
 /**
  * Tools Kimi is allowed to see on the Analyze surface. Doc-grounded
@@ -96,12 +98,28 @@ export interface AnalyzeAgentOptions {
    * grounded in what the banker actually asked.
    */
   bankerQuestion: string;
+  /**
+   * When true, iteration 1 will force `tool_choice` to
+   * `{type: "function", function: {name: "analyze_data"}}` instead of
+   * "auto". Used by the route to correct Kimi's tendency to answer
+   * visualization / drill-down follow-ups in prose instead of
+   * calling the tool. Applies ONLY to iteration 1; after the tool
+   * result comes back, subsequent iterations revert to "auto" so
+   * the model can respond naturally.
+   */
+  forceAnalyzeDataFirstIteration?: boolean;
 }
 
 export async function* runAnalyzeAgent(
   options: AnalyzeAgentOptions
 ): AsyncGenerator<AnalyzeAgentEvent, void, unknown> {
-  const { system, mcp, signal, bankerQuestion } = options;
+  const {
+    system,
+    mcp,
+    signal,
+    bankerQuestion,
+    forceAnalyzeDataFirstIteration,
+  } = options;
 
   // Intersect the live tool list with our curated set — if Salesforce
   // removes or renames tools, we surface what's actually available.
@@ -116,9 +134,40 @@ export async function* runAnalyzeAgent(
   let consecutiveErrors = 0;
   let iteration = 0;
 
+  /**
+   * Turn-wide budget: names of tools that have already run
+   * SUCCESSFULLY at least once in this turn. Once a tool appears
+   * here, any later iteration that calls it again gets the
+   * "duplicate suppressed" synthetic response.
+   *
+   * Rationale: Kimi otherwise "hedges" by calling analyze_data on
+   * iteration 1, seeing the result, then calling it again with
+   * rephrased args on iteration 2/3/4/5 — producing N charts for
+   * one banker question. The per-iteration dedup below catches
+   * parallel calls WITHIN one turn's streamHeroku response; this
+   * set catches SEQUENTIAL calls across iterations.
+   *
+   * Scoped to idempotent-looking tools that produce charts
+   * (analyze_data). Other tools (list_*, get_*) are allowed to
+   * repeat — they're cheap metadata fetches.
+   */
+  const turnWideOnceTools: Set<string> = new Set(["analyze_data"]);
+  const consumedTools = new Set<string>();
+
   // <think> stripper carries state across token chunks because tags can
   // span chunk boundaries. Returns the sanitized slice for this chunk.
   const thinkStripper = stripThinkTags();
+
+  // Turn-wide (name, argsJson) dedup cache. Previously declared inside
+  // the iteration loop, which meant it was cleared on every iteration
+  // and Kimi could call e.g. `analyze_data({question: X})` on
+  // iterations 1..5 and hit Tableau five times for identical args.
+  // Lifting to turn scope means identical-args repeats are served
+  // from memory.
+  const toolResultCache = new Map<
+    string,
+    { modelText: string; isError: boolean }
+  >();
 
   while (iteration < MAX_ITERATIONS) {
     iteration += 1;
@@ -126,12 +175,6 @@ export async function* runAnalyzeAgent(
       yield { type: "error", message: "Request cancelled." };
       return;
     }
-
-    // Per-turn dedup cache — same pattern as askDataAgent.
-    const toolResultCache = new Map<
-      string,
-      { modelText: string; isError: boolean }
-    >();
 
     const inflightCalls = new Map<
       number,
@@ -141,12 +184,42 @@ export async function* runAnalyzeAgent(
     let stopReason: string | null = null;
 
     try {
+      // Iteration 1 may FORCE analyze_data when the route detected a
+      // visualization / drill-down follow-up. Kimi has been observed
+      // to answer those in prose ("the data is already available...")
+      // instead of re-calling the tool — which produces a narrative
+      // with no chart. Forcing the tool call bypasses that failure
+      // mode entirely on the one iteration where it matters; later
+      // iterations revert to "auto" so the model can respond
+      // naturally with ≤ 2 sentences of banker commentary after the
+      // tool result lands.
+      const shouldForce =
+        iteration === 1 &&
+        !!forceAnalyzeDataFirstIteration &&
+        visibleNames.has("analyze_data");
+      const toolChoice =
+        toolDefs.length === 0
+          ? undefined
+          : shouldForce
+          ? ({
+              type: "function" as const,
+              function: { name: "analyze_data" },
+            } as const)
+          : ("auto" as const);
+
+      if (shouldForce) {
+        log.info("analyze_agent.forcing_tool", {
+          tool: "analyze_data",
+          question: bankerQuestion.slice(0, 120),
+        });
+      }
+
       for await (const ev of streamHeroku({
         tier: "reasoning",
         system,
         messages,
         tools: toolDefs.length > 0 ? toolDefs : undefined,
-        toolChoice: toolDefs.length > 0 ? "auto" : undefined,
+        toolChoice,
         maxTokens: 4000,
         signal,
       })) {
@@ -244,8 +317,56 @@ export async function* runAnalyzeAgent(
       })),
     });
 
+    // Two-layer duplicate guard:
+    //
+    //   (a) PER-ITERATION — if Kimi emits multiple calls to the same
+    //       tool in one streamHeroku response, keep only the first.
+    //       Catches parallel hedging: "call analyze_data 4 times with
+    //       different phrasings at once".
+    //
+    //   (b) TURN-WIDE (turnWideOnceTools) — once a budget-limited
+    //       tool has run successfully in ANY prior iteration of this
+    //       turn, subsequent iterations can't call it again. Catches
+    //       sequential hedging: "call analyze_data, see the result,
+    //       call it again with a different phrasing next iteration".
+    //
+    // Both produce the same synthetic "duplicate suppressed" result
+    // so Kimi learns to stop. Different-named tool calls (e.g.
+    // get_semantic_model + analyze_data) are unaffected.
+    const seenNames = new Set<string>();
+    const duplicateCallIds = new Set<string>();
+    for (const c of calls) {
+      const alreadyThisIter = seenNames.has(c.name);
+      const alreadyThisTurn =
+        turnWideOnceTools.has(c.name) && consumedTools.has(c.name);
+      if (alreadyThisIter || alreadyThisTurn) {
+        duplicateCallIds.add(c.id);
+      } else {
+        seenNames.add(c.name);
+      }
+    }
+
     // Dispatch all tool calls in parallel.
     const dispatches = calls.map(async (c) => {
+      if (duplicateCallIds.has(c.id)) {
+        const body = {
+          error: "duplicate suppressed",
+          message:
+            `You already issued a \`${c.name}\` call in this turn — ` +
+            `only one is honored. Wait for that result, then respond ` +
+            `with a ≤ 2-sentence banker insight. Do NOT call ${c.name} again this turn.`,
+        };
+        return {
+          callId: c.id,
+          name: c.name,
+          isError: true,
+          isSyntheticGuard: true,
+          modelText: JSON.stringify(body),
+          preview: `Duplicate ${c.name} suppressed.`,
+          tableFallback: null as TableFallback | null,
+          analyzeAnswer: null as string | null,
+        };
+      }
       if (!visibleNames.has(c.name)) {
         const body = {
           error: "unknown tool",
@@ -255,6 +376,7 @@ export async function* runAnalyzeAgent(
           callId: c.id,
           name: c.name,
           isError: true,
+          isSyntheticGuard: true,
           modelText: JSON.stringify(body),
           preview: `Unknown tool: ${c.name}`,
           tableFallback: null as TableFallback | null,
@@ -324,6 +446,16 @@ export async function* runAnalyzeAgent(
     }
     const results = await Promise.all(dispatches);
 
+    // Mark any successfully-executed budget-limited tool as consumed
+    // for the remainder of this turn. Errors don't burn the budget —
+    // Kimi should be allowed to retry a genuinely failed call on the
+    // next iteration.
+    for (const r of results) {
+      if (!r.isError && turnWideOnceTools.has(r.name)) {
+        consumedTools.add(r.name);
+      }
+    }
+
     // Emit tool_call result events + push raw blocks + feed the model
     // message. Answer emission + chart extraction are deferred so we
     // can dedupe across multiple analyze_data calls in the same turn.
@@ -347,8 +479,15 @@ export async function* runAnalyzeAgent(
         content: r.modelText,
       });
 
-      if (r.isError) consecutiveErrors += 1;
-      else consecutiveErrors = 0;
+      // Only real MCP failures feed the circuit breaker. Synthetic
+      // guard rejections (duplicate suppressed, unknown tool name)
+      // are model-behavior corrections, not infrastructure failures —
+      // counting them would trip the breaker against a threat we
+      // invented, killing the turn with no banker-visible answer.
+      const isSynthetic = (r as { isSyntheticGuard?: boolean }).isSyntheticGuard === true;
+      if (r.isError && !isSynthetic) consecutiveErrors += 1;
+      else if (!r.isError) consecutiveErrors = 0;
+      // Synthetic errors leave the counter unchanged.
     }
 
     // Dedupe narrative emission across multiple analyze_data calls
@@ -386,9 +525,17 @@ export async function* runAnalyzeAgent(
             prose: text,
           });
           if (extracted && extracted.rows.length > 0) {
+            // MiniMax preserves narrative order (typically
+            // "highlights first"), which plots out of sequence when
+            // the x-axis is a date. Sort chronologically when a date-
+            // like column exists; pass through unchanged otherwise.
+            const { sorted } = sortRowsByDateLikeColumn(
+              extracted.columns,
+              extracted.rows
+            );
             dominant.tableFallback = {
               columns: extracted.columns,
-              rows: extracted.rows,
+              rows: sorted,
             };
           }
         } catch {

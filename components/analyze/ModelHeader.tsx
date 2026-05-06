@@ -1,4 +1,5 @@
 import type { SemanticModelProfile } from "@/lib/analyze/types";
+import { BusinessPreferencesPanel } from "./BusinessPreferencesPanel";
 
 /**
  * Server-rendered model profile block. Sits at the top of
@@ -49,14 +50,7 @@ export function ModelHeader({ profile }: { profile: SemanticModelProfile }) {
       </div>
 
       {profile.businessPreferences && (
-        <div className="mt-4 max-w-2xl rounded-lg border border-border-soft/60 bg-surface/40 px-4 py-3">
-          <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.18em] text-text-muted">
-            Business preferences
-          </div>
-          <pre className="whitespace-pre-wrap text-[12px] leading-relaxed text-text-muted/90">
-            {profile.businessPreferences}
-          </pre>
-        </div>
+        <BusinessPreferencesPanel value={profile.businessPreferences} />
       )}
     </section>
   );

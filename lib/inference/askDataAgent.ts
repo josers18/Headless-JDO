@@ -27,6 +27,7 @@ import type {
   FirstPartyDcSession,
   FirstPartyDcToolDef,
 } from "@/lib/mcp/firstPartyDataCloud";
+import { stripThinkTags } from "@/lib/analyze/sanitize";
 
 // Soft budget: if the agent hasn't answered after N tool-call iterations
 // we bail. Heroku router already stalls long requests — this keeps us well
@@ -35,7 +36,11 @@ const MAX_ITERATIONS = 6;
 
 // If the same error surfaces this many times in a row we stop dispatching
 // to prevent runaway loops against a broken MCP.
-const ERROR_CIRCUIT_THRESHOLD = 3;
+// Trip on strike 2. Two consecutive MCP errors almost always mean the
+// model is guessing column names (the usual failure mode on Data Cloud
+// SQL). Tripping early keeps the reasoning trail clean for the banker
+// and avoids the 3+ retry cascades we saw during v0.3 prompt testing.
+const ERROR_CIRCUIT_THRESHOLD = 2;
 
 /**
  * Content block stored on ask_my_data_messages.content — always has a
@@ -82,6 +87,16 @@ export interface AskDataAgentOptions {
   mcp: FirstPartyDcSession;
   /** Abort when the client disconnects. */
   signal?: AbortSignal;
+  /**
+   * When true, the DMO catalog was already appended to the system
+   * prompt by the route. In that case we HIDE `get_dc_metadata` from
+   * the model's tool list so it can't burn iterations re-discovering
+   * what's already in context. This mirrors the Today flow's
+   * `preloadedDcSnapshot` pattern in lib/llm/heroku.ts — same
+   * invariant, same user benefit (1 SQL call instead of N metadata +
+   * 1 SQL).
+   */
+  preloadedDcMetadata?: boolean;
 }
 
 /**
@@ -91,13 +106,20 @@ export interface AskDataAgentOptions {
 export async function* runAskDataAgent(
   options: AskDataAgentOptions
 ): AsyncGenerator<AskDataAgentEvent, void, unknown> {
-  const { system, mcp, signal } = options;
+  const { system, mcp, signal, preloadedDcMetadata = false } = options;
 
   // Build visible tool list once per session. MCP schemas come back as
   // JSON Schema; we wrap them in OpenAI's `function` tool envelope.
-  // The first-party Data 360 MCP exposes 2 read-only tools so no filter
-  // is required (nothing to drop).
-  const visibleTools = await mcp.listTools();
+  //
+  // When the route preloaded the DMO catalog into the system prompt,
+  // hide `get_dc_metadata` — the model already has everything that
+  // tool would return, and keeping the tool visible tempts Kimi to
+  // "double-check" the catalog (4+ iterations we saw in screenshot
+  // 16 before cache preload landed).
+  const allTools = await mcp.listTools();
+  const visibleTools = preloadedDcMetadata
+    ? allTools.filter((t) => !/^get_dc_metadata$/i.test(t.name))
+    : allTools;
   const toolDefs: ChatCompletionTool[] = visibleTools.map((t) =>
     toOpenAiTool(t)
   );
@@ -111,17 +133,38 @@ export async function* runAskDataAgent(
   let consecutiveErrors = 0;
   let iteration = 0;
 
+  // No turn-wide budget on Ask My Data tools: unlike Analyze's
+  // `analyze_data` (same question → same answer, so repeat calls are
+  // hedging), both `get_dc_metadata` and `post_dc_query_sql` take
+  // filter args — different args = different slices of the catalog
+  // or different SQL queries, which are legitimate exploration. The
+  // existing per-(name, argsJson) dedup in toolResultCache already
+  // collapses exact-duplicate calls.
+
+  // `<think>` stripper runs across token-stream chunks because tags
+  // can span chunk boundaries. Without this, Kimi's internal
+  // reasoning monologue ("<think> let me look for ...</think>")
+  // rendered verbatim in the banker-facing UI.
+  const thinkStripper = stripThinkTags();
+
+  // Turn-wide tool result cache: dedup by (name, JSON-of-args) ACROSS
+  // iterations, not just within one. Previously this lived inside the
+  // loop and got cleared every iteration, which meant Kimi could call
+  // `get_dc_metadata()` with identical args on iterations 1, 2, 3, 4
+  // and hit the MCP four times. Moving the cache out of the loop
+  // means identical-args repeats are served from memory — the MCP
+  // runs once per (name, args) pair for the whole turn.
+  const toolResultCache = new Map<
+    string,
+    { modelText: string; isError: boolean }
+  >();
+
   while (iteration < MAX_ITERATIONS) {
     iteration += 1;
     if (signal?.aborted) {
       yield { type: "error", message: "Request cancelled." };
       return;
     }
-
-    // Dedup tool calls within this turn: if the model asks for the same
-    // (name, JSON-of-args) twice, we return the cached result instead of
-    // re-dispatching. Mirrors the pattern from lib/llm/heroku.ts.
-    const toolResultCache = new Map<string, { modelText: string; isError: boolean }>();
 
     // Stream one model turn, accumulating content + tool calls.
     const inflightCalls = new Map<
@@ -144,9 +187,10 @@ export async function* runAskDataAgent(
         signal,
       })) {
         if (ev.type === "token") {
-          turnText += ev.text;
-          accumulatedText += ev.text;
-          yield { type: "token", text: ev.text };
+          const sanitized = thinkStripper.push(ev.text);
+          turnText += sanitized;
+          accumulatedText += sanitized;
+          if (sanitized) yield { type: "token", text: sanitized };
         } else if (ev.type === "tool_call") {
           const prev = inflightCalls.get(ev.index) ?? {
             id: "",
@@ -170,6 +214,23 @@ export async function* runAskDataAgent(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       yield { type: "error", message };
+      // If we haven't emitted any narrative yet, surface a banker-
+      // facing fallback so the UI renders something and follow-ups
+      // still fire with non-empty context. Without this, Kimi
+      // upstream errors (timeout, 429, bad gateway) produce a
+      // silent empty response.
+      if (!accumulatedText.trim()) {
+        const fallback =
+          "The data engine had trouble with that question. Try rephrasing, narrowing the scope, or asking again in a moment.";
+        accumulatedText = fallback;
+        yield { type: "token", text: fallback };
+        contentBlocks.push({ type: "text", text: fallback });
+        yield {
+          type: "turn_complete",
+          text: fallback,
+          contentBlocks,
+        };
+      }
       return;
     }
 
@@ -185,8 +246,19 @@ export async function* runAskDataAgent(
     }
 
     if (calls.length === 0) {
-      // Model finished without tools — this is the final turn.
-      const finalText = turnText.trim() || accumulatedText.trim();
+      // Model finished without tools — this is the final turn. If
+      // Kimi emitted no prose either (e.g. exhausted iterations or
+      // was stumped by empty/error tool results), yield a banker-
+      // facing fallback so the UI doesn't render a silent empty
+      // response. Matches the analyze agent's fallback pattern.
+      let finalText = turnText.trim() || accumulatedText.trim();
+      if (!finalText) {
+        finalText =
+          "I couldn't find an answer in Data Cloud for that question. The data or metric you asked about may not exist in the available objects — try rephrasing, narrowing the scope, or asking about something more specific.";
+        accumulatedText = finalText;
+        yield { type: "token", text: finalText };
+        contentBlocks.push({ type: "text", text: finalText });
+      }
       yield {
         type: "turn_complete",
         text: finalText,
@@ -214,21 +286,45 @@ export async function* runAskDataAgent(
       })),
     });
 
-    // Dispatch all tool calls in parallel.
+    // Dispatch all tool calls in parallel. Exact-duplicate calls
+    // (same name + same argsJson) are deduped via toolResultCache
+    // below. Different args on the same tool are legitimate
+    // exploration (e.g. get_dc_metadata with {entityCategory:
+    // "Profile"} then {entityType: "DataModelObject"} — narrowing
+    // the catalog search) and proceed normally.
     const dispatches = calls.map(async (c) => {
       // Reject hallucinated names synthetically — mirror the Today-side
       // defense without trusting that the SDK would catch it for us.
       if (!visibleNames.has(c.name)) {
-        const body = {
-          error: "unknown tool",
-          message: `Tool "${c.name}" is not available. Use one of: ${[...visibleNames].join(", ")}.`,
-        };
+        // Special case: `get_dc_metadata` is intentionally hidden when
+        // the catalog is preloaded in the system prompt. Without this
+        // branch, the model sees "unknown tool — use one of:
+        // post_dc_query_sql" and is stuck — it genuinely wanted to
+        // explore schema. Tell it to read the catalog block instead.
+        const isHiddenMetadataTool =
+          preloadedDcMetadata && /^get_dc_metadata$/i.test(c.name);
+        const body = isHiddenMetadataTool
+          ? {
+              error: "catalog already preloaded",
+              message:
+                "The Data Cloud catalog (all DMOs + their fields) is " +
+                "already in your system prompt. Reference it directly " +
+                "to find tables and columns — no metadata tool call is " +
+                "needed. Use post_dc_query_sql for the actual query.",
+            }
+          : {
+              error: "unknown tool",
+              message: `Tool "${c.name}" is not available. Use one of: ${[...visibleNames].join(", ")}.`,
+            };
         return {
           callId: c.id,
           name: c.name,
           isError: true,
+          isSyntheticGuard: true,
           modelText: JSON.stringify(body),
-          preview: `Unknown tool: ${c.name}`,
+          preview: isHiddenMetadataTool
+            ? "Catalog already in system prompt."
+            : `Unknown tool: ${c.name}`,
         };
       }
 
@@ -306,16 +402,32 @@ export async function* runAskDataAgent(
         content: r.modelText,
       });
 
-      if (r.isError) consecutiveErrors += 1;
-      else consecutiveErrors = 0;
+      // Only real MCP failures feed the circuit breaker. Synthetic
+      // guard rejections (unknown tool name) are model-behavior
+      // corrections, not infrastructure failures — counting them
+      // would trip the breaker against a threat we invented, killing
+      // the turn with no banker-visible answer.
+      const isSynthetic = (r as { isSyntheticGuard?: boolean }).isSyntheticGuard === true;
+      if (r.isError && !isSynthetic) consecutiveErrors += 1;
+      else if (!r.isError) consecutiveErrors = 0;
+      // Synthetic errors leave the counter unchanged.
     }
 
     if (consecutiveErrors >= ERROR_CIRCUIT_THRESHOLD) {
       const msg = `MCP dispatch failed ${consecutiveErrors} times in a row. Stopping to avoid a runaway loop.`;
       yield { type: "error", message: msg };
-      const finalText =
-        accumulatedText.trim() ||
-        "I hit repeated errors trying to reach Data Cloud and couldn't complete this question.";
+      let finalText = accumulatedText.trim();
+      if (!finalText) {
+        // Banker-actionable fallback. The previous "I hit repeated
+        // errors" wording left the banker with nothing to do; this
+        // version names the likely root cause (schema mismatch) and
+        // invites a narrower reframe.
+        finalText =
+          "I wasn't able to assemble the right query for that — the fields I expected don't line up across the relevant objects. Try narrowing the question (e.g. just the voice calls, or just the mortgage browsers) and I'll pull each piece cleanly.";
+        accumulatedText = finalText;
+        yield { type: "token", text: finalText };
+        contentBlocks.push({ type: "text", text: finalText });
+      }
       yield {
         type: "turn_complete",
         text: finalText,
@@ -335,10 +447,18 @@ export async function* runAskDataAgent(
     }
   }
 
-  // Hit iteration cap without a clean finish.
-  const finalText =
-    accumulatedText.trim() ||
-    "I ran out of steps before finishing this question — try a narrower ask.";
+  // Hit iteration cap without a clean finish. Emit a token event
+  // before turn_complete so the narrative actually renders — the
+  // useAskDataStream hook builds the banker-visible narrative from
+  // `token` events; `turn_complete` alone is a no-op for display.
+  let finalText = accumulatedText.trim();
+  if (!finalText) {
+    finalText =
+      "I ran out of steps before finishing this question — try a narrower ask.";
+    accumulatedText = finalText;
+    yield { type: "token", text: finalText };
+    contentBlocks.push({ type: "text", text: finalText });
+  }
   yield {
     type: "turn_complete",
     text: finalText,

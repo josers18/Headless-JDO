@@ -134,7 +134,17 @@ export async function openFirstPartyDataCloud(options: {
           { timeout, signal: controller.signal }
         );
         const isError = Boolean(raw.isError);
-        const modelText = extractText(raw.content).slice(0, 8_000);
+        // Unwrap the `{defaultExc: "..."}` envelope Data Cloud returns
+        // on successful post_dc_query_sql. Without this, the model sees
+        // only the column-metadata slice and interprets results as
+        // "empty" — the actual `data: [[...]]` array lives INSIDE the
+        // stringified defaultExc. The refresh-dc-metadata script has
+        // known about this quirk since day one; the agent never did.
+        const rawText = extractText(raw.content);
+        const modelText = unwrapDefaultExc(rawText, name, isError).slice(
+          0,
+          8_000
+        );
         const textPreview = modelText.slice(0, 2_000);
         return { isError, content: raw.content, modelText, textPreview };
       } catch (err) {
@@ -171,4 +181,45 @@ function extractText(content: unknown): string {
     }
   }
   return parts.join("\n");
+}
+
+/**
+ * Unwrap the `{"defaultExc": "..."}` envelope Data Cloud wraps around
+ * successful query results. The inner string is itself JSON with the
+ * actual `{data, metadata, responseCode}` payload. If the unwrap fails
+ * for any reason, return the original text — we'd rather show the raw
+ * envelope than lose error context.
+ *
+ * Only applied on non-error results. Errors are already plain arrays
+ * like `[{"errorCode": "BAD_REQUEST", ...}]` and don't need unwrapping.
+ *
+ * Only applied to `post_dc_query_sql` — `get_dc_metadata` returns a
+ * different top-level shape (`{metadata: [...]}`) that the agent reads
+ * directly.
+ */
+function unwrapDefaultExc(
+  text: string,
+  toolName: string,
+  isError: boolean
+): string {
+  if (isError) return text;
+  if (!/^post_dc_query_sql$/i.test(toolName)) return text;
+  try {
+    const outer = JSON.parse(text) as { defaultExc?: unknown };
+    if (typeof outer?.defaultExc !== "string") return text;
+    try {
+      const inner = JSON.parse(outer.defaultExc);
+      if (inner && typeof inner === "object") {
+        // Re-serialize the unwrapped shape so the agent sees a clean
+        // `{data, metadata, responseCode}` JSON string it can reason
+        // about. Pretty-printing aids Kimi's row-counting.
+        return JSON.stringify(inner);
+      }
+    } catch {
+      /* fall through */
+    }
+  } catch {
+    /* fall through */
+  }
+  return text;
 }

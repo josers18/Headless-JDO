@@ -5,57 +5,122 @@
  */
 
 import { inferHeroku } from "@/lib/inference/heroku";
+import { log } from "@/lib/log";
 
-export const ASK_DATA_FOLLOWUPS_PROMPT_VERSION = "v0.1.0";
+export const ASK_DATA_FOLLOWUPS_PROMPT_VERSION = "v0.3.0";
 
+/**
+ * v0.3.0 — return a JSON OBJECT (not a bare array). The inference call
+ * passes `response_format: { type: "json_object" }` which constrains
+ * MiniMax to produce a top-level object. Previous versions instructed
+ * the model to return a raw array, which contradicted the response
+ * format and caused silent empty returns.
+ */
 const FOLLOWUP_SYSTEM_PROMPT = `
 You write follow-up questions for a banker exploring their book of
-business. Given the latest banker question and the assistant's answer,
-produce 2–3 concrete next questions the banker might want to ask. Each
-follow-up must:
+business. You're given (optionally) the recent conversation history
+plus the latest banker question and the assistant's answer. Produce
+2–3 concrete next questions the banker might want to ask to continue
+their analytical thread. Each follow-up must:
 
   • Be phrased as a question the banker would type, not a topic.
-  • Drill deeper OR pivot laterally — not rephrase the original.
-  • Be ≤ 12 words.
-  • Be specific to the data just returned (reference entities/segments
-    from the answer when useful).
+  • Build on the conversation so far — drill deeper into something
+    just mentioned, pivot laterally to a related angle, or compare
+    against something asked earlier. NOT a rephrase of any prior
+    question.
+  • Be ≤ 14 words.
+  • Be specific — reference concrete entities, metrics, or numbers
+    from the latest answer when useful.
   • Never start with "Would you like" / "Do you want" / "Can I".
 
-Respond with ONLY a JSON array of strings. Example:
-  ["Which of these accounts have met this month?",
-   "Show me the top five by held-away assets"]
-No prose, no trailing commentary.
+Respond with ONLY a JSON object in this exact shape:
+
+  {"suggestions": ["first question?", "second question?", "third question?"]}
+
+No prose, no trailing commentary, no markdown fencing.
 `.trim();
+
+export type PriorTurn = {
+  userQuestion: string;
+  assistantText: string;
+};
 
 export async function generateFollowUps(input: {
   userQuestion: string;
   assistantText: string;
+  /**
+   * Earlier (user, assistant) pairs in chronological order. Most-recent
+   * turn is NOT in this array — pass it separately as userQuestion /
+   * assistantText. Cap enforced inside the function.
+   */
+  priorTurns?: PriorTurn[];
 }): Promise<string[]> {
   try {
+    const historyBlock = buildHistoryBlock(input.priorTurns);
+    const userContent = [
+      historyBlock,
+      `LATEST BANKER QUESTION:\n${input.userQuestion.slice(0, 800)}`,
+      `\nLATEST AGENT ANSWER:\n${input.assistantText.slice(0, 2_000)}`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
     const res = await inferHeroku({
       tier: "short",
       system: FOLLOWUP_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: `BANKER ASKED:\n${input.userQuestion.slice(0, 800)}\n\nAGENT ANSWERED:\n${input.assistantText.slice(0, 2_000)}`,
-        },
-      ],
+      messages: [{ role: "user", content: userContent }],
       maxTokens: 400,
       temperature: 0.5,
       responseFormat: { type: "json_object" },
     });
     const parsed = safeParse(res.text);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) {
+      log.warn("followups.parse_empty", {
+        rawLen: res.text?.length ?? 0,
+        rawPreview: (res.text ?? "").slice(0, 240),
+        parsedKind: parsed === null ? "null" : typeof parsed,
+      });
+      return [];
+    }
     const clean = parsed
       .filter((p): p is string => typeof p === "string")
       .map((s) => s.trim())
       .filter((s) => s.length > 0 && s.length <= 140)
       .slice(0, 3);
+    if (clean.length === 0) {
+      log.warn("followups.clean_empty", {
+        parsedLen: parsed.length,
+        parsedPreview: JSON.stringify(parsed).slice(0, 240),
+      });
+    } else {
+      log.info("followups.ok", { count: clean.length });
+    }
     return clean;
-  } catch {
+  } catch (err) {
+    log.error("followups.threw", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return [];
   }
+}
+
+/**
+ * Serialize up to the last 3 prior turns as a compact transcript block.
+ * Keeps each turn's quotes short so the prompt stays well under
+ * MiniMax's context window even with 3 prior turns of rich prose.
+ */
+function buildHistoryBlock(prior?: PriorTurn[]): string {
+  if (!prior || prior.length === 0) return "";
+  const recent = prior.slice(-3);
+  const lines = recent.map((t, i) => {
+    const idx = recent.length - i;
+    return [
+      `--- ${idx} TURNS AGO ---`,
+      `Banker: ${t.userQuestion.slice(0, 240)}`,
+      `Agent: ${t.assistantText.slice(0, 600)}`,
+    ].join("\n");
+  });
+  return ["CONVERSATION HISTORY (oldest first):", ...lines].join("\n\n");
 }
 
 function safeParse(text: string): unknown {

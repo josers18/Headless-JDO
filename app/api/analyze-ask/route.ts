@@ -23,13 +23,21 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/analyze-ask
  *
- *   body: { modelId: string; question: string }
+ *   body: {
+ *     modelId: string;
+ *     question: string;
+ *     priorTurns?: Array<{ userQuestion: string; assistantText: string }>;
+ *   }
  *
- * Streams a single-turn analyze over SSE. Persists the completed turn
- * via upsertLatestAnalysis (Q-T2-3-b-detail = A: per-user, per-model
- * latest only). If the DB isn't configured, the stream still runs —
- * we just skip the persist step and emit `persisted: false`-ish via
- * skipping the event.
+ * Streams an analyze turn over SSE. When `priorTurns` is present, each
+ * entry is expanded into an alternating (user, assistant) pair before
+ * the new user question — giving Kimi the conversation so follow-ups
+ * like "make it a bar chart" can resolve against the previous answer.
+ * Server caps to the last 3 turns for context-window safety.
+ *
+ * Persists the completed turn via upsertLatestAnalysis (Q-T2-3-b-detail
+ * = A: per-user, per-model latest only). If the DB isn't configured,
+ * the stream still runs — we just skip the persist step.
  */
 export async function POST(req: NextRequest) {
   const userId = await currentBankerUserId();
@@ -39,7 +47,11 @@ export async function POST(req: NextRequest) {
     return jsonError("salesforce session expired", 401);
   }
 
-  let body: { modelId?: unknown; question?: unknown };
+  let body: {
+    modelId?: unknown;
+    question?: unknown;
+    priorTurns?: unknown;
+  };
   try {
     body = (await req.json()) as typeof body;
   } catch {
@@ -54,6 +66,8 @@ export async function POST(req: NextRequest) {
   if (question.length > 4_000) {
     return jsonError("question too long (max 4000 chars)", 400);
   }
+
+  const priorTurns = parsePriorTurns(body.priorTurns);
 
   const profile = await getModelProfile(modelId);
   if (!profile) return jsonError("model not found", 404);
@@ -74,9 +88,19 @@ export async function POST(req: NextRequest) {
       signal: req.signal,
     });
 
-    const chatMessages: ChatCompletionMessageParam[] = [
-      { role: "user", content: question },
-    ];
+    const chatMessages: ChatCompletionMessageParam[] = [];
+    for (const t of priorTurns) {
+      chatMessages.push({ role: "user", content: t.userQuestion });
+      chatMessages.push({ role: "assistant", content: t.assistantText });
+    }
+    chatMessages.push({ role: "user", content: question });
+
+    // Detect visualization / drill-down follow-ups so the agent loop
+    // forces `analyze_data` on iteration 1. Only fires when prior
+    // turns exist (a "follow-up" with no prior turn is just a fresh
+    // ask — let `auto` handle it).
+    const forceAnalyzeData =
+      priorTurns.length > 0 && isVisualizationFollowUp(question);
 
     let finalAssistantText = "";
     let assistantContent: AnalyzeContentBlock[] | null = null;
@@ -88,6 +112,7 @@ export async function POST(req: NextRequest) {
         mcp,
         signal: req.signal,
         bankerQuestion: question,
+        forceAnalyzeDataFirstIteration: forceAnalyzeData,
       })) {
         if (ev.type === "token") {
           send({ type: "token", text: ev.text });
@@ -160,4 +185,66 @@ function jsonError(message: string, status: number): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+/**
+ * Heuristic: does this question look like a visualization change or
+ * drill-down of prior data? If so, the agent loop will force Kimi to
+ * call `analyze_data` on iteration 1 instead of letting it bluff in
+ * prose.
+ *
+ * Deliberately conservative — false negatives (treating a genuine
+ * follow-up as fresh) just mean the prompt rules have to carry the
+ * load, which is the pre-change behavior. False positives (forcing
+ * the tool on a true fresh question) would waste a tool call, so the
+ * patterns here require either a pronoun / deictic reference OR an
+ * unambiguous chart-shape verb.
+ */
+const FOLLOWUP_PATTERNS: RegExp[] = [
+  // Pronouns + deictics
+  /\b(it|that|this|them|these|those)\b/i,
+  // View changes
+  /\b(bar|pie|line|area|column|scatter|donut|treemap|heatmap|funnel|waterfall)\s*chart\b/i,
+  /\bas\s+(a|an)\s+(bar|pie|line|area|column|scatter|donut|treemap|heatmap|funnel|waterfall)\b/i,
+  /\b(show|make|render|turn|display|chart|plot|graph|visualize)\s+(it|that|this|these|those)\b/i,
+  // Drill-downs / pivots
+  /\bbreak\s+(it\s+)?down\b/i,
+  /\bdrill\s+(in|into|down)\b/i,
+  /\b(by|per|group(ed)?\s+by)\s+\w+/i,
+  /\bsame\s+(but|except|for|thing)\b/i,
+  // Comparative slicing
+  /\bvs\.?\s+\w+/i,
+  /\bcompared?\s+(to|with)\b/i,
+];
+
+function isVisualizationFollowUp(question: string): boolean {
+  const q = question.trim();
+  if (!q || q.length > 500) return false; // very long questions are usually fresh
+  return FOLLOWUP_PATTERNS.some((re) => re.test(q));
+}
+
+type PriorTurnInput = { userQuestion: string; assistantText: string };
+
+/**
+ * Validate + normalize prior-turn history from the request body.
+ * Drops entries that aren't non-empty strings on both sides, truncates
+ * each side to prevent runaway prompt growth, and caps the array to the
+ * last 3 turns (matches the follow-up generator's cap — same rationale:
+ * keep context window predictable even after a long session).
+ */
+function parsePriorTurns(raw: unknown): PriorTurnInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PriorTurnInput[] = [];
+  for (const t of raw as Array<Record<string, unknown>>) {
+    if (!t || typeof t !== "object") continue;
+    const uq = typeof t.userQuestion === "string" ? t.userQuestion.trim() : "";
+    const at =
+      typeof t.assistantText === "string" ? t.assistantText.trim() : "";
+    if (!uq || !at) continue;
+    out.push({
+      userQuestion: uq.slice(0, 2_000),
+      assistantText: at.slice(0, 4_000),
+    });
+  }
+  return out.slice(-3);
 }

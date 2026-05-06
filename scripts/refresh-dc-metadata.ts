@@ -31,7 +31,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MCP_URLS } from "../lib/mcp/urls";
-import { getRedis } from "../lib/redis";
+import { getRedis, redisSetOnce } from "../lib/redis";
 import { log } from "../lib/log";
 import {
   classifyDcFieldKind,
@@ -256,7 +256,19 @@ async function main() {
       dmos: survived,
     };
     const serialized = JSON.stringify(envelope);
-    await redis.set(REDIS_KEY, serialized, "EX", TTL_SECONDS);
+    // Short-lived connection for the write — the long-held `redis`
+    // client has been idle through ~75s of COUNT probes and its TLS
+    // socket has typically been severed by middle boxes.
+    const writeResult = await redisSetOnce(
+      REDIS_KEY,
+      serialized,
+      TTL_SECONDS
+    );
+    if (!writeResult.ok) {
+      throw new Error(
+        `Redis SET failed: ${writeResult.err ?? "unknown"}`
+      );
+    }
     console.log(
       `[refresh-dc-metadata] wrote ${(serialized.length / 1024).toFixed(1)}KB to ${REDIS_KEY} (ttl ${TTL_SECONDS}s)`
     );

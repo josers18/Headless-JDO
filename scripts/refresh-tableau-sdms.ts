@@ -23,7 +23,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MCP_URLS } from "../lib/mcp/urls";
-import { getRedis } from "../lib/redis";
+import { getRedis, redisSetOnce } from "../lib/redis";
 import { log } from "../lib/log";
 
 // --- config ---
@@ -197,7 +197,20 @@ async function main() {
       sdms,
     };
     const serialized = JSON.stringify(envelope);
-    await redis.set(REDIS_KEY, serialized, "EX", TTL_SECONDS);
+    // Use a short-lived connection for the write — the long-held
+    // `redis` client from getRedis() has been idle during the 15s of
+    // MCP work and its TLS socket has likely been severed, causing
+    // MaxRetriesPerRequest failures. redisSetOnce opens fresh.
+    const writeResult = await redisSetOnce(
+      REDIS_KEY,
+      serialized,
+      TTL_SECONDS
+    );
+    if (!writeResult.ok) {
+      throw new Error(
+        `Redis SET failed: ${writeResult.err ?? "unknown"}`
+      );
+    }
     console.log(
       `[refresh-tableau-sdms] wrote ${(serialized.length / 1024).toFixed(1)}KB to ${REDIS_KEY} (ttl ${TTL_SECONDS}s)`
     );

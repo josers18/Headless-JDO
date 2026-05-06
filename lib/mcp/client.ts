@@ -528,7 +528,10 @@ function projectForModel(
   tool: string,
   content: unknown
 ): unknown {
-  if (!(server === "data_360" && /^(getDcMetadata|get_dc_metadata)/i.test(tool))) return content;
+  if (server !== "data_360") return content;
+  const isMetadata = /^(getDcMetadata|get_dc_metadata)/i.test(tool);
+  const isQuery = /^(postDcQuerySql|post_dc_query_sql)/i.test(tool);
+  if (!isMetadata && !isQuery) return content;
   if (!Array.isArray(content)) return content;
   const out: unknown[] = [];
   for (const part of content) {
@@ -537,9 +540,38 @@ function projectForModel(
       out.push(part);
       continue;
     }
-    out.push({ type: "text", text: compactDcMetadataText(p.text) });
+    const text = isMetadata
+      ? compactDcMetadataText(p.text)
+      : unwrapPostDcQuerySql(p.text);
+    out.push({ type: "text", text });
   }
   return out;
+}
+
+/**
+ * Unwrap the `{"defaultExc": "..."}` envelope that Data Cloud wraps
+ * around post_dc_query_sql results. The inner string is JSON with the
+ * real `{data, metadata, responseCode}` payload — without this, the
+ * model sees only the envelope + metadata slice and reports "no
+ * results" even when rows exist. Parse failures fall back to the
+ * original text so we never hide data from the model.
+ */
+function unwrapPostDcQuerySql(rawText: string): string {
+  try {
+    const outer = JSON.parse(rawText) as { defaultExc?: unknown };
+    if (typeof outer?.defaultExc !== "string") return rawText;
+    try {
+      const inner = JSON.parse(outer.defaultExc);
+      if (inner && typeof inner === "object") {
+        return JSON.stringify(inner);
+      }
+    } catch {
+      /* fall through */
+    }
+  } catch {
+    /* fall through */
+  }
+  return rawText;
 }
 
 /**

@@ -13,6 +13,7 @@
  */
 
 import { inferHeroku } from "@/lib/inference/heroku";
+import { log } from "@/lib/log";
 
 export type ProseExtractedTable = {
   columns: string[];
@@ -69,7 +70,13 @@ export async function extractStructuredFromProse(input: {
       responseFormat: { type: "json_object" },
     });
     const parsed = parseLoose(res.text);
-    if (!parsed || typeof parsed !== "object") return null;
+    if (!parsed || typeof parsed !== "object") {
+      log.warn("prose_extract.parse_empty", {
+        rawLen: res.text?.length ?? 0,
+        rawPreview: (res.text ?? "").slice(0, 240),
+      });
+      return null;
+    }
     const obj = parsed as Record<string, unknown>;
     const columns = Array.isArray(obj.columns)
       ? (obj.columns as unknown[]).filter(
@@ -82,9 +89,24 @@ export async function extractStructuredFromProse(input: {
             r !== null && typeof r === "object"
         )
       : [];
-    if (columns.length === 0 || rows.length < MIN_ROWS_FOR_CHART) return null;
+    if (columns.length === 0 || rows.length < MIN_ROWS_FOR_CHART) {
+      log.warn("prose_extract.no_rows", {
+        proseLen: prose.length,
+        proseHead: prose.slice(0, 120),
+        columns: columns.length,
+        rows: rows.length,
+      });
+      return null;
+    }
+    log.info("prose_extract.ok", {
+      columns: columns.length,
+      rows: rows.length,
+    });
     return { columns, rows };
-  } catch {
+  } catch (err) {
+    log.error("prose_extract.threw", {
+      err: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

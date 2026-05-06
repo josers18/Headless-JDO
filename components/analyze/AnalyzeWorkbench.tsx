@@ -135,7 +135,15 @@ export function AnalyzeWorkbench({
 
   async function handleSubmit(question: string) {
     setActiveQuestion(question);
-    await stream.submit(modelId, question);
+    // Send prior turns so Kimi can resolve pronouns / follow-ups like
+    // "make it into a bar chart". The server caps to last 3 for
+    // context-window safety. Without this, the agent is stateless and
+    // every question is evaluated in isolation.
+    const priorTurns = finishedTurns.map((t) => ({
+      userQuestion: t.question,
+      assistantText: t.narrative,
+    }));
+    await stream.submit(modelId, question, priorTurns);
   }
 
   function handleCancel() {
@@ -204,6 +212,10 @@ export function AnalyzeWorkbench({
           key={finishedTurns[finishedTurns.length - 1]!.id}
           question={finishedTurns[finishedTurns.length - 1]!.question}
           assistantText={finishedTurns[finishedTurns.length - 1]!.narrative}
+          priorTurns={finishedTurns.slice(0, -1).map((t) => ({
+            userQuestion: t.question,
+            assistantText: t.narrative,
+          }))}
           onPick={(q) => barRef.current?.setValue(q)}
           disabled={isStreaming}
         />

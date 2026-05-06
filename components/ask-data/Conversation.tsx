@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { AskDataBar, type AskDataBarRef } from "./AskDataBar";
 import { AskDataTrace } from "./AskDataTrace";
+import { MarkdownView } from "@/components/horizon/MarkdownView";
+import { stripThinkTagsSync } from "@/lib/analyze/sanitize";
 import {
   useAskDataStream,
   type AskDataTraceStep,
@@ -219,11 +221,16 @@ function MessageRow({ message }: { message: PersistedMessage }) {
     (b) => b.type === "tool_use" || b.type === "tool_result"
   );
 
+  // Strip any persisted `<think>…</think>` blocks from older threads
+  // written before the streaming sanitizer landed. Tags from a live
+  // turn are already stripped server-side.
+  const cleanText = stripThinkTagsSync(text);
+
   return (
     <div className="max-w-full">
-      {text && (
-        <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
-          {text}
+      {cleanText && (
+        <div className="max-w-full text-[14px] leading-relaxed text-text">
+          <MarkdownView source={cleanText} />
         </div>
       )}
       {toolBlocks.length > 0 && (
@@ -252,8 +259,8 @@ function LiveAssistantTurn({
           <AskDataTrace steps={trace} defaultOpen={false} />
         </div>
       )}
-      <div className="whitespace-pre-wrap text-[14px] leading-relaxed text-text">
-        {narrative}
+      <div className="max-w-full text-[14px] leading-relaxed text-text">
+        <MarkdownView source={narrative} />
         <span
           className={cn(
             "ml-0.5 inline-block h-[14px] w-[2px] translate-y-[2px] animate-pulse bg-accent"

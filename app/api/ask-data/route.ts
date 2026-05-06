@@ -24,6 +24,11 @@ import {
 } from "@/lib/sse/askData";
 import { openFirstPartyDataCloud } from "@/lib/mcp/firstPartyDataCloud";
 import { ensureFreshToken } from "@/lib/salesforce/token";
+import {
+  loadCachedDcMetadata,
+  toSystemPromptSection as toDcCatalogSection,
+} from "@/lib/llm/dcMetadataCache";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,16 +112,62 @@ export async function POST(req: NextRequest) {
       { role: "user", content: question },
     ];
 
+    // Preload the Data Cloud metadata catalog from Redis (refreshed
+    // hourly by Heroku Scheduler, per CLAUDE.md §15). When the cache
+    // is warm we:
+    //   (a) append a compact DMO + fields catalog to the system prompt
+    //       so Kimi already knows what objects exist and can jump
+    //       straight to SQL without 4 exploratory get_dc_metadata
+    //       round-trips, and
+    //   (b) hide `get_dc_metadata` from the model's tool list so it
+    //       can't burn iterations re-discovering what's already in
+    //       context.
+    // Cache miss: both signals are off and the agent falls back to
+    // live discovery (pre-cache behavior).
+    const cachedDcMetadata = await loadCachedDcMetadata();
+    // Ask My Data runs multi-turn exploratory sessions. Kimi has been
+    // observed inventing column names when the tail field list is
+    // short (default 12). We widen the catalog here:
+    //   - fullFieldsTopCount 40 (vs default 20) — more DMOs get FULL
+    //     field lists, which is where exact column names live.
+    //   - tailFieldsPerDmo 30 (vs default 12) — even truncated DMOs
+    //     show enough columns that Kimi can usually find what it needs
+    //     without guessing. The `+N more` marker still signals when
+    //     truncation is in effect.
+    // Total prompt size grows ~20KB vs default but Kimi handles it
+    // fine and the alternative is hallucinated columns + retries.
+    const dcCatalogSection = toDcCatalogSection(cachedDcMetadata, {
+      fullFieldsTopCount: 40,
+      tailFieldsPerDmo: 30,
+    });
+    const systemWithCatalog = dcCatalogSection
+      ? `${ASK_DATA_SYSTEM_PROMPT}\n\n${dcCatalogSection}`
+      : ASK_DATA_SYSTEM_PROMPT;
+    if (cachedDcMetadata) {
+      log.info("ask_data.dc_metadata.cache_hit", {
+        dmos: cachedDcMetadata.survivingDmos,
+        generatedAt: cachedDcMetadata.generatedAt,
+        promptChars: dcCatalogSection.length,
+      });
+    } else {
+      log.warn("ask_data.dc_metadata.cache_miss", {
+        note:
+          "REDIS_URL unset or cache empty — falling back to live " +
+          "get_dc_metadata discovery. Expect multi-step reasoning trails.",
+      });
+    }
+
     let finalAssistantText = "";
     let assistantContent: AskMessageContentBlock[] | null = null;
     let sawError: string | null = null;
 
     try {
       for await (const ev of runAskDataAgent({
-        system: ASK_DATA_SYSTEM_PROMPT,
+        system: systemWithCatalog,
         messages: chatMessages,
         mcp,
         signal: req.signal,
+        preloadedDcMetadata: Boolean(cachedDcMetadata),
       })) {
         if (ev.type === "token") {
           send({ type: "token", text: ev.text });

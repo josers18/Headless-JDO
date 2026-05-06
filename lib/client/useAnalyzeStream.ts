@@ -20,6 +20,11 @@ export type AnalyzeTable = {
   caption?: string;
 };
 
+export type AnalyzePriorTurn = {
+  userQuestion: string;
+  assistantText: string;
+};
+
 export interface AnalyzeStream {
   state: AnalyzeState;
   error: string | null;
@@ -28,7 +33,11 @@ export interface AnalyzeStream {
   tables: AnalyzeTable[];
   charts: ChartSpec[];
   persisted: boolean;
-  submit: (modelId: string, question: string) => Promise<void>;
+  submit: (
+    modelId: string,
+    question: string,
+    priorTurns?: AnalyzePriorTurn[]
+  ) => Promise<void>;
   reset: () => void;
   cancel: () => void;
 }
@@ -58,7 +67,11 @@ export function useAnalyzeStream(): AnalyzeStream {
   }, []);
 
   const submit = useCallback(
-    async (modelId: string, question: string) => {
+    async (
+      modelId: string,
+      question: string,
+      priorTurns?: AnalyzePriorTurn[]
+    ) => {
       reset();
       setState("streaming");
 
@@ -70,7 +83,11 @@ export function useAnalyzeStream(): AnalyzeStream {
         const res = await fetch("/api/analyze-ask", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ modelId, question }),
+          body: JSON.stringify({
+            modelId,
+            question,
+            priorTurns: priorTurns ?? [],
+          }),
           signal: controller.signal,
         });
         if (!res.ok || !res.body) {

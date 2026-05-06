@@ -183,10 +183,34 @@ export function toSystemPromptSection(
   const tailFieldsPerDmo = opts.tailFieldsPerDmo ?? 12;
 
   // Envelope.dmos is already sorted by rowCount desc from the refresh job.
-  const bankerRelevant = envelope.dmos
-    .filter((d) => isBankerRelevant(d.name, d.category))
-    .slice(0, bankerCap);
+  //
+  // Pinned DMOs: some tables matter semantically even with low row counts
+  // (life events, e.g., are rare by design — one "home purchase" row is
+  // worth more than 10,000 routine transactions). Pin these by name
+  // pattern so they ALWAYS appear in the catalog regardless of ranking.
+  // These land at the top of the banker-relevant bucket so Kimi sees them
+  // first.
+  const pinnedMatchers: RegExp[] = [
+    /^ssot__PersonLifeEvent__dlm$/i,
+    /^PersonLifeEvent_Home__dll$/i,
+    /person.*life.*event/i,
+  ];
+  const pinned = envelope.dmos.filter((d) =>
+    pinnedMatchers.some((re) => re.test(d.name))
+  );
+  const pinnedSet = new Set(pinned.map((d) => d.name));
+
+  // Banker-relevant bucket, excluding pinned (they're prepended).
+  const bankerRelevantRest = envelope.dmos
+    .filter(
+      (d) =>
+        !pinnedSet.has(d.name) &&
+        isBankerRelevant(d.name, d.category)
+    )
+    .slice(0, Math.max(0, bankerCap - pinned.length));
+  const bankerRelevant = [...pinned, ...bankerRelevantRest];
   const bankerSet = new Set(bankerRelevant.map((d) => d.name));
+
   const overflow = envelope.dmos
     .filter((d) => !bankerSet.has(d.name))
     .slice(0, overflowCap);
