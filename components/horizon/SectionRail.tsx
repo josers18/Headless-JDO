@@ -116,8 +116,14 @@ export function SectionRail() {
       // so its labels don't get truncated by the sheet's left edge —
       // the sheet is the focused interaction at that moment, the rail
       // would just be visual noise.
+      // The app's primary LeftRail (components/nav/LeftRail.tsx) is 64px
+      // wide and fixed to the viewport's left edge at z-50, so we sit
+      // just to the right of it (left-20 = 80px) and at z-[60] so we
+      // render *above* its backdrop-blur background instead of behind
+      // it. Hidden while a modal sheet is open (overlayOpen) so labels
+      // can't get truncated by the sheet's left edge.
       className={cn(
-        "pointer-events-none fixed left-6 top-1/2 z-30 hidden -translate-y-1/2 transition-opacity duration-med xl:block",
+        "pointer-events-none fixed left-20 top-1/2 z-[60] hidden -translate-y-1/2 transition-opacity duration-med xl:block",
         overlayOpen && "pointer-events-none opacity-0"
       )}
     >
