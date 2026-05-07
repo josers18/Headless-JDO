@@ -43,10 +43,12 @@ export async function GET(
         },
       ],
       salesforceToken: token.access_token,
-      // 4 SOQL calls fan out in parallel on iteration 1; iteration 2 is
-      // the JSON synthesis. 3 is plenty of headroom for retry-after-error
-      // without bloating the budget.
-      maxIterations: 3,
+      // 6 tool calls (4 SOQL + 1 DC SQL + 1 Tableau analyze) fan out in
+      // parallel on iteration 1; iteration 2 is the JSON synthesis. The
+      // browser-side session cache (sessionStorage) makes the first open
+      // a one-time cost — every reopen is instant — so we can afford the
+      // wider call budget for depth.
+      maxIterations: 4,
       forceFirstToolCall: true,
       routeHint: "client-detail",
       onEvent: (e) => {

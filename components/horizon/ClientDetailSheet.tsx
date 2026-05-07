@@ -6,6 +6,10 @@ import { dispatchAction } from "@/lib/client/actions/registry";
 import { ArrowDownRight, ArrowUpRight, Check, Loader2, Minus, X } from "lucide-react";
 import { useAgentStream } from "@/lib/client/useAgentStream";
 import { tryParseJson } from "@/lib/client/jsonStream";
+import {
+  readCachedClientDetail,
+  writeCachedClientDetail,
+} from "@/lib/client/clientDetailCache";
 import { cn, plainText } from "@/lib/utils";
 import { InferenceModelBadge } from "./InferenceModelBadge";
 import { ReasoningTrail } from "./ReasoningTrail";
@@ -292,15 +296,77 @@ export function ClientDetailSheet({
     base && inferSalesforceObjectFromId(clientId)
       ? lightningRecordViewUrl(base, clientId)
       : null;
-  const { narrative, steps, state, error, inferenceMeta, start } =
-    useAgentStream();
+  const {
+    narrative: liveNarrative,
+    steps: liveSteps,
+    state: liveState,
+    error,
+    inferenceMeta: liveInferenceMeta,
+    start,
+  } = useAgentStream();
+
+  // Cache-aware data layer. On open, check sessionStorage first — if we
+  // already streamed this client this session, render from cache and
+  // skip the network round-trip entirely. Otherwise stream live, then
+  // snapshot on completion so the next open is instant. The cache is
+  // session-scoped (cleared on tab close / sign-out).
+  const [cached, setCached] = useState(() => readCachedClientDetail(clientId));
+  // Re-check when clientId changes (sheet remounted for a different client).
+  useEffect(() => {
+    setCached(readCachedClientDetail(clientId));
+  }, [clientId]);
 
   useEffect(() => {
+    if (cached) return; // cache hit — skip the stream
     const url = clientName
       ? `/api/client/${encodeURIComponent(clientId)}?name=${encodeURIComponent(clientName)}`
       : `/api/client/${encodeURIComponent(clientId)}`;
     start(url, undefined, { method: "GET" }).catch(() => {});
-  }, [clientId, clientName, start]);
+  }, [clientId, clientName, start, cached]);
+
+  // Snapshot to cache when the live stream completes successfully and we
+  // have parseable JSON. We require successful parse because a half-baked
+  // narrative would render broken on the next open. Also persist the
+  // reasoning trail steps so the demo's trust-layer beat still works on
+  // cache hits.
+  useEffect(() => {
+    if (cached) return;
+    if (liveState !== "done") return;
+    const parsed = tryParseJson<ClientDetail>(liveNarrative);
+    if (!parsed) return;
+    writeCachedClientDetail({
+      clientId,
+      narrative: liveNarrative,
+      steps: liveSteps,
+      inferenceMeta: liveInferenceMeta,
+      cachedAt: new Date().toISOString(),
+    });
+    // Update local state so subsequent renders read from the cache path
+    // — keeps the source of truth single after completion.
+    setCached({
+      clientId,
+      narrative: liveNarrative,
+      steps: liveSteps,
+      inferenceMeta: liveInferenceMeta,
+      cachedAt: new Date().toISOString(),
+    });
+  }, [
+    cached,
+    liveState,
+    liveNarrative,
+    liveSteps,
+    liveInferenceMeta,
+    clientId,
+  ]);
+
+  // Effective view-model: if cached, render from cache; otherwise from
+  // the live stream. The rest of the component reads only these values.
+  const narrative = cached?.narrative ?? liveNarrative;
+  const steps = cached ? cached.steps : liveSteps;
+  const state = cached ? ("done" as const) : liveState;
+  const inferenceMeta = cached
+    ? cached.inferenceMeta
+    : liveInferenceMeta;
 
   useEffect(() => {
     dispatchHorizonFocusClient({

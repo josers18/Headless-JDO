@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { HORIZON_SIGN_OUT } from "@/lib/client/horizonEvents";
 import { ASK_THREAD_STORAGE_KEY } from "@/types/ask-thread";
+import { clearClientDetailCache } from "@/lib/client/clientDetailCache";
 
 function firstInitial(name: string): string {
   const t = name.trim();
@@ -65,6 +66,7 @@ export function UserMenu({
     window.dispatchEvent(new CustomEvent(HORIZON_SIGN_OUT));
     try {
       sessionStorage.removeItem(ASK_THREAD_STORAGE_KEY);
+      clearClientDetailCache();
     } catch {
       /* private mode / quota */
     }
