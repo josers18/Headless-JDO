@@ -19,14 +19,19 @@ Efficient plan — one pass, no retries on errors, do not guess custom fields:
 2. salesforce_crm (structured records): SELECT SUM(Amount) wonLast30 FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsWon = true AND CloseDate = LAST_N_DAYS:30
 3. salesforce_crm (structured records): SELECT COUNT(Id) recentActivity FROM Task WHERE OwnerId = '${a.bankerUserId}' AND CreatedDate = LAST_N_DAYS:7
 
-4. tableau_next (REQUIRED — always attempt). Tableau-sourced KPIs are the core differentiator of the pulse: CRM counts alone cannot compute period-over-period ratios or governed win-rate. At LEAST ONE KPI tile must come from tableau_next in a normal (non-degraded) pulse.
+4. tableau_next (REQUIRED — always attempt). Tableau-sourced KPIs are the core differentiator of the pulse: CRM counts alone cannot compute governed period-over-period or AUM ratios.
 
-   EXECUTION (one pass, no retries):
-   a) Pick an apiName VERBATIM from the TABLEAU NEXT SEMANTIC MODELS catalog block in the system prompt — e.g. "Transactions", "Financial_Accounts", "Trades", "Case_Model_1", "Campaigns". DO NOT call any models-list tool — it has been filtered out of your tools this turn and will return "Unknown tool". If the catalog block is absent (cache unavailable), skip the analyze call entirely and note "Governed comparisons unavailable this session."
-   b) NEVER pass "Sales"/"Service" as the targetEntityIdOrApiName — those are category labels, not model ids.
-   c) One analyze call asking ONE concrete metric question tied to this banker's book (pipeline change last 7d, win rate, AUM trend, etc.).
-   d) Tag the resulting tile with a tableau_next source.
-   e) If the analyze call errors: do NOT retry.
+   EXECUTION — emit this analyze_data call VERBATIM. Do NOT modify the apiName or the question.
+
+   targetEntityType: "sdm"
+   targetEntityIdOrApiName: "Financial_Accounts"
+   question: "Total Current_Balance across Deposits"
+
+   The question is intentionally short and single-facet — the Tableau Q&A engine times out on long compound questions. "Current_Balance" and "Deposits" are real measure/object names on the Financial_Accounts SDM (verified against the cached catalog). Map the result into a single KPI tile labeled "Deposits balance" with the analyze response's top number.
+
+   If the analyze call errors or times out: do NOT retry. Skip the Tableau tile and proceed to step 5 — the breaker handles it.
+
+   If the TABLEAU NEXT SEMANTIC MODELS catalog block is absent from the system prompt (cache miss), skip step 4 entirely and note "Governed comparisons unavailable this session." in the narrative.
 
 5. data_360 (REQUIRED unless step 4 already produced 3 strong tiles). This surfaces unified transaction flow that neither CRM nor Tableau can compute — the banker's most-asked-about number: "how much money is moving through my book right now?"
 
