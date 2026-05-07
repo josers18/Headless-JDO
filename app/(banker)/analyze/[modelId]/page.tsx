@@ -4,17 +4,9 @@ import { SectionTopBar } from "@/components/nav/SectionTopBar";
 import { AnalyzeWorkspace } from "@/components/analyze/AnalyzeWorkspace";
 import { ModelHeader } from "@/components/analyze/ModelHeader";
 import { ModelMetricsPills } from "@/components/analyze/ModelMetricsPills";
-import {
-  AnalyzeWorkbench,
-  type AnalyzeLatest,
-} from "@/components/analyze/AnalyzeWorkbench";
+import { AnalyzeWorkbench } from "@/components/analyze/AnalyzeWorkbench";
 import { getModelProfile } from "@/lib/analyze/getModelProfile";
 import { getModelMetrics } from "@/lib/analyze/getModelMetrics";
-import {
-  getLatestAnalysis,
-  isAnalyzeDbConfigured,
-} from "@/lib/db/analyzeSessions";
-import { currentBankerUserId } from "@/lib/ask/currentUser";
 
 export const dynamic = "force-dynamic";
 
@@ -82,39 +74,20 @@ async function WorkbenchSection({
   modelId: string;
   modelApiName: string;
 }) {
-  // These two awaits run inside a lower boundary so they don't block
-  // ModelHeader + metrics pills painting.
-  const [metrics, latest] = await Promise.all([
-    getModelMetrics(modelId),
-    fetchLatestAnalysis(modelId),
-  ]);
+  // We intentionally do NOT pre-load the last persisted analysis here —
+  // each new page visit starts on a clean StarterQuestions surface.
+  // The DB write path is still active (audit trail), we just don't
+  // render the prior turn back into the workbench.
+  const metrics = await getModelMetrics(modelId);
 
   return (
     <AnalyzeWorkbench
       modelId={modelId}
       modelApiName={modelApiName}
       metrics={metrics}
-      latest={latest}
+      latest={null}
     />
   );
-}
-
-async function fetchLatestAnalysis(
-  modelId: string
-): Promise<AnalyzeLatest | null> {
-  const userId = await currentBankerUserId();
-  if (!userId || !isAnalyzeDbConfigured()) return null;
-  try {
-    const row = await getLatestAnalysis({ userId, modelId });
-    if (!row) return null;
-    return {
-      question: row.question,
-      content: row.content,
-      updatedAt: row.updated_at,
-    };
-  } catch {
-    return null;
-  }
 }
 
 function ModelSectionSkeleton() {
