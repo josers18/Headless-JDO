@@ -260,7 +260,7 @@ export function MorningBrief() {
       />
 
       <div className="relative flex items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.22em] text-text">
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-accent",

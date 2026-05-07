@@ -130,7 +130,7 @@ export function SignalFeed() {
   return (
     <div data-horizon-section="signals">
       <div className="flex items-center justify-between">
-        <h2 className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-text-muted">
+        <h2 className="flex flex-wrap items-center gap-2 text-[13px] font-semibold uppercase tracking-[0.22em] text-text">
           <span
             className={cn(
               "inline-block h-[6px] w-[6px] rounded-full bg-emerald-400/80",
