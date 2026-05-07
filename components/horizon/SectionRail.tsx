@@ -167,16 +167,17 @@ export function SectionRail() {
                   )}
                 />
               </button>
-              {/* Label sits to the right of the dot and fades in when
-                  the section is active or the rail is hovered. We use
-                  group-hover on the <li> so labels light up
-                  individually rather than all-at-once. */}
+              {/* Label appears as a floating popover only on hover of
+                  this dot. Absolute positioning keeps it out of the
+                  page flow entirely so it never reserves space and
+                  never clips against content — the page's main
+                  content column is unaffected by the rail. */}
               <span
                 className={cn(
-                  "pointer-events-none ml-3 whitespace-nowrap text-[11px] font-medium uppercase tracking-[0.18em] transition-opacity duration-med",
+                  "pointer-events-none absolute left-[24px] top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border-soft/70 bg-surface/95 px-2.5 py-1 text-[11px] font-medium uppercase tracking-[0.18em] shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)] backdrop-blur-md transition-opacity duration-med",
                   isActive
-                    ? "text-text opacity-100"
-                    : "text-text-muted opacity-0 group-hover:opacity-80"
+                    ? "text-text opacity-0 group-hover:opacity-100"
+                    : "text-text-muted opacity-0 group-hover:opacity-95"
                 )}
               >
                 {s.label}
