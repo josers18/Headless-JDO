@@ -23,21 +23,17 @@ Efficient plan — ONE pass, read-only tools only, do NOT write:
 1. salesforce_crm.soqlQuery: SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY LastActivityDate ASC NULLS FIRST LIMIT 15
 2. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY LIMIT 15
 3. salesforce_crm.soqlQuery: SELECT Id, Name, LastActivityDate, AnnualRevenue FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
-4. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). The best drafts have a CONCRETE hook — a specific event or behavior the banker can reference. DC surfaces those hooks (a recent wire, a login gap, an engagement drop) that CRM activity fields won't show.
+4. data_360 — call when steps 1–3 didn't surface ${n} strong concrete hooks. The best drafts reference a SPECIFIC recent transaction; DC surfaces those (recent wires, large amounts) that CRM activity fields won't show.
 
-   CALL data_360 IF ANY OF:
-   - Step 1 returned stalled Opportunities (LastActivityDate > 30d) — check for digital-engagement drops; a "we noticed you haven't logged in — anything we can help with?" email is far stronger than a generic "checking in".
-   - Step 2 returned no overdue tasks (no obvious hook from CRM) — check recent behavioral life-event inference (address change, employer change, dependent added) to seed a warm-touch outreach draft.
-   - Step 3 returned stale accounts (>30d no activity) — check for external wire/ACH anomalies on those accounts; a wire-triggered draft outranks a generic "we haven't talked lately" note.
+   EXECUTION — emit this SQL VERBATIM via the data_360 SQL tool. Do NOT modify the table or column names. Do NOT call a metadata tool — it's filtered out of your tool list this turn and returns "Unknown tool".
 
-   SKIP data_360 ONLY IF: the DATA CLOUD CATALOG block is absent from the system prompt, OR no DMOs match any criterion, or steps 1–3 already gave you enough concrete hooks for ${n} strong drafts.
+   sql: SELECT "accountid__c", "amount__c", "transactiondate__c", "transaction_type__c", "description__c" FROM "Financial_Transactions_Snow_XL__dll" WHERE "transactiondate__c" >= TIMESTAMP '2024-06-01 00:00:00 UTC' ORDER BY "amount__c" DESC LIMIT 20
 
-   EXECUTION (one pass, no retries):
-   a) Pick a DMO VERBATIM from the DATA CLOUD CATALOG block in the system prompt — do NOT call any metadata tool, it has been filtered out of your tools this turn and returns "Unknown tool". If the catalog is absent, skip DC entirely.
-   b) Pick ONE DMO matching the triggered criterion.
-   c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
-   d) One narrow call on the data_360 SQL tool (LIMIT 20, filter by account ids from steps 1–3 where possible).
-   e) If columns don't match, skip SQL and draft from CRM-only hooks — the breaker blocks retries anyway.
+   The cutoff is anchored to the most recent month of transaction data available in this org — do NOT use CURRENT_DATE; the demo-org transaction stream ends 2024-06-30 and a relative window returns zero rows. Do NOT add an \`accountid__c IN (...)\` clause — the DC \`accountid__c\` namespace does not match Salesforce \`Account.Id\`, so a CRM-id IN clause returns zero rows.
+
+   Use rows from this result to seed drafts: a large recent transaction is a strong hook ("noticed a $2,799 charge in <description> on <date> — want to review?"). \`accountid__c\` from the result is the Data Cloud account id (NOT a Salesforce record id) — use it as the draft \`rationale\` evidence, and pick \`target_object\` / \`target_id\` from a real CRM record returned by step 1 or 3.
+
+   SKIP data_360 ONLY IF: the DATA CLOUD CATALOG block is absent from the system prompt (cache miss), OR steps 1–3 already gave you ${n} strong CRM-grounded hooks. If the call errors, do NOT retry — draft from CRM-only hooks.
 
 Hard rules for the drafts:
 - DRAFT ONLY. Do NOT call any tool that writes, creates, updates, or sends.

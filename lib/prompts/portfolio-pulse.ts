@@ -28,22 +28,22 @@ Efficient plan — one pass, no retries on errors, do not guess custom fields:
    d) Tag the resulting tile with a tableau_next source.
    e) If the analyze call errors: do NOT retry.
 
-5. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). This surfaces unified AUM, held-aways, and cross-source engagement that neither CRM nor Tableau can compute. Skipping when a criterion applies means the pulse misses the banker's most-asked-about number: "how much wealth do my clients hold outside our platform?"
+5. data_360 (REQUIRED unless step 4 already produced 3 strong tiles). This surfaces unified transaction flow that neither CRM nor Tableau can compute — the banker's most-asked-about number: "how much money is moving through my book right now?"
 
-   CALL data_360 IF ANY OF:
-   - The banker's book has HNW / affluent accounts — surface held-away AUM delta as a KPI tile (this is the highest-signal tile for HNW bankers).
-   - Step 2 returned zero wins — surface unified pipeline-plus-held-aways as a forward-looking tile that reframes the zero.
-   - It is a Monday OR the start of a month — surface weekly/monthly unified engagement score (tile: "Book health").
-   - Tableau (step 4) was skipped or errored AND CRM-only KPIs would be thin — fill the gap with a DC-sourced tile rather than a single-source pulse.
+   EXECUTION — emit this SQL VERBATIM via the data_360 SQL tool. Do NOT modify the table or column names. Do NOT call a metadata tool — it's filtered out of your tool list this turn and returns "Unknown tool".
 
-   SKIP data_360 ONLY IF: the DATA CLOUD CATALOG block is absent from the system prompt, OR no DMOs match any criterion, or you already have 3 strong KPI tiles from steps 1–4.
+   sql: SELECT SUM("amount__c") AS totalflow, COUNT(*) AS txncount FROM "Financial_Transactions_Snow_XL__dll" WHERE "transactiondate__c" >= TIMESTAMP '2024-06-01 00:00:00 UTC'
 
-   EXECUTION (one pass, no retries):
-   a) Pick a DMO VERBATIM from the DATA CLOUD CATALOG block in the system prompt — do NOT call any metadata tool, it has been filtered out of your tools this turn and returns "Unknown tool". If the catalog is absent, skip DC entirely.
-   b) Pick ONE DMO matching the triggered criterion (held-aways, unified engagement, cross-source transaction).
-   c) Verify every column verbatim in fields[] — case-sensitive, full prefix.
-   d) One narrow postDcQuerySql (LIMIT 20, OwnerId-qualified when the DMO exposes it).
-   e) If columns don't match, skip SQL — the breaker blocks retries anyway.
+   The cutoff is anchored to the most recent month of transaction data available in this org — do NOT use CURRENT_DATE; the demo-org transaction stream ends 2024-06-30 and a relative window returns zero rows.
+
+   Tile mapping when the call returns rows:
+   - label: "Recent flow"
+   - value: format totalflow as USD (e.g. "$440M")
+   - delta: "—" (no prior-window comparison this turn)
+   - direction: "flat"
+   - explanation: "<txncount> transactions across the book in the most recent 30-day data window"
+
+   SKIP data_360 ONLY IF: the DATA CLOUD CATALOG block is absent from the system prompt (cache miss), OR you already have 3 strong KPI tiles. If the call errors, do NOT retry — finish with the tiles you have.
 
 Derive 2-3 KPIs from these results. For each, pick a concrete direction by comparing against a prior window when you have one; otherwise mark direction "flat" and say "insufficient history" in the explanation.
 
