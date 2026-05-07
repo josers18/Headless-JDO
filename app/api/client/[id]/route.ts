@@ -43,7 +43,11 @@ export async function GET(
         },
       ],
       salesforceToken: token.access_token,
-      maxIterations: 14,
+      // 4 SOQL calls fan out in parallel on iteration 1; iteration 2 is
+      // the JSON synthesis. 3 is plenty of headroom for retry-after-error
+      // without bloating the budget.
+      maxIterations: 3,
+      forceFirstToolCall: true,
       routeHint: "client-detail",
       onEvent: (e) => {
         if (e.type === "text_delta" && e.text) {

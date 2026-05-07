@@ -32,14 +32,15 @@ export function clientDetailPrompt(a: ClientDetailArgs): string {
   return `Produce a 360° snapshot of Account '${cid}' for the authenticated banker.${nameHint}
 Use this User Id only inside SOQL filters, never in human-readable JSON fields: '${bid}'.
 
-Plan — one pass, no retries on errors, use getObjectSchema before any custom field (__c):
+Plan — emit ALL tool_calls below IN PARALLEL on iteration 1, then synthesize the JSON. Do NOT add follow-up tool calls; do NOT retry. The user is staring at a shimmer placeholder until the JSON streams, so latency-to-first-byte matters more than completeness.
+
 ${bankerStep}
 1. salesforce_crm.soqlQuery: SELECT Id, Name, Industry, AnnualRevenue, Type, LastActivityDate, OwnerId, Owner.Name FROM Account WHERE Id = '${cid}' LIMIT 1
-2. salesforce_crm.soqlQuery: SELECT Id, Name, StageName, Amount, CloseDate, Probability, LastActivityDate FROM Opportunity WHERE AccountId = '${cid}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 10
-3. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, ActivityDate, Priority, WhoId, Who.Name FROM Task WHERE AccountId = '${cid}' AND CreatedDate = LAST_N_DAYS:60 ORDER BY ActivityDate DESC NULLS LAST LIMIT 10
-4. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, Priority, CreatedDate FROM Case WHERE AccountId = '${cid}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 10
-5. (Optional) data_360: Use the DATA CLOUD CATALOG block in the system prompt to find a Profile or Engagement DMO; if one exists, ONE postDcQuerySql WHERE a client identifier matches '${cid}'. Skip on errors — do not guess.
-6. (Optional) tableau_next: the tableau_next models-list tool, then ONE the tableau_next analyze tool with target bound to a real model id from the list (not "Sales"/"Service"). Skip on errors or empty list.
+2. salesforce_crm.soqlQuery: SELECT Id, Name, StageName, Amount, CloseDate, Probability, LastActivityDate FROM Opportunity WHERE AccountId = '${cid}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 5
+3. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, ActivityDate, Priority, WhoId, Who.Name FROM Task WHERE AccountId = '${cid}' AND CreatedDate = LAST_N_DAYS:60 ORDER BY ActivityDate DESC NULLS LAST LIMIT 5
+4. salesforce_crm.soqlQuery: SELECT Id, Subject, Status, Priority, CreatedDate FROM Case WHERE AccountId = '${cid}' AND IsClosed = false ORDER BY CreatedDate DESC LIMIT 5
+
+DO NOT call data_360 on this turn. DO NOT call tableau_next on this turn. The Account-id namespace in this org's Data Cloud is decoupled from Salesforce Account.Id (verified — DC accountid__c values like 'a7kal000…' do not match SF Account.Id values like '001…'), so a CRM-id WHERE clause returns zero rows. Tableau analyze adds 10–25s of latency on the critical path. The 4 SOQL calls above are sufficient to populate every required JSON field; leave "signals" and "kpis" as empty arrays.
 
 Return JSON ONLY (no prose, no fences):
 {
