@@ -93,7 +93,12 @@ export function SectionRail() {
   return (
     <nav
       aria-label="Section navigation"
-      className="pointer-events-none fixed left-6 top-1/2 z-30 hidden -translate-y-1/2 xl:block"
+      // z-[60] keeps the rail above the ClientDetailSheet's backdrop
+      // (z-50) so the banker can still see (and click) the section
+      // dots while a sheet is open. The sheet panel itself is on the
+      // right (max-w-[600px] justify-end) so they never overlap
+      // visually.
+      className="pointer-events-none fixed left-6 top-1/2 z-[60] hidden -translate-y-1/2 xl:block"
     >
       <ol className="pointer-events-auto relative flex flex-col gap-5">
         {/* Connecting line — drawn as a single absolute element behind
