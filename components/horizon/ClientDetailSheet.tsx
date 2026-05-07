@@ -403,6 +403,7 @@ export function ClientDetailSheet({
 
   return (
     <div
+      data-horizon-overlay="client-detail"
       className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/60 backdrop-blur-[4px] animate-fade-in"
       onClick={onClose}
     >

@@ -20,17 +20,36 @@ type Section = {
   label: string;
 };
 
+// Live Signals lives in the xl right rail, not the main scroll column,
+// so the scroll-spy never lands on it. Excluded from the rail to avoid
+// a permanently-unreached dot.
 const SECTIONS: Section[] = [
   { id: "brief", label: "Morning brief" },
   { id: "arc", label: "Today's arc" },
   { id: "priority", label: "Priority queue" },
   { id: "pulse", label: "Portfolio pulse" },
   { id: "drafts", label: "Pre-drafted actions" },
-  { id: "signals", label: "Live signals" },
 ];
 
 export function SectionRail() {
   const [active, setActive] = useState<string>(SECTIONS[0]!.id);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+
+  // Hide the rail while any modal sheet is open. The sheets cover the
+  // full viewport with a dimmed backdrop and would otherwise truncate
+  // the rail's labels at the sheet's left edge. We watch the DOM for
+  // [data-horizon-overlay] elements rather than thread close handlers
+  // through every sheet mount-point.
+  useEffect(() => {
+    const update = () => {
+      const present = document.querySelector("[data-horizon-overlay]");
+      setOverlayOpen(Boolean(present));
+    };
+    update();
+    const mo = new MutationObserver(update);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
 
   useEffect(() => {
     const sections = SECTIONS.map((s) =>
@@ -93,12 +112,14 @@ export function SectionRail() {
   return (
     <nav
       aria-label="Section navigation"
-      // z-[60] keeps the rail above the ClientDetailSheet's backdrop
-      // (z-50) so the banker can still see (and click) the section
-      // dots while a sheet is open. The sheet panel itself is on the
-      // right (max-w-[600px] justify-end) so they never overlap
-      // visually.
-      className="pointer-events-none fixed left-6 top-1/2 z-[60] hidden -translate-y-1/2 xl:block"
+      // The rail is hidden while a modal sheet is open (overlayOpen)
+      // so its labels don't get truncated by the sheet's left edge —
+      // the sheet is the focused interaction at that moment, the rail
+      // would just be visual noise.
+      className={cn(
+        "pointer-events-none fixed left-6 top-1/2 z-30 hidden -translate-y-1/2 transition-opacity duration-med xl:block",
+        overlayOpen && "pointer-events-none opacity-0"
+      )}
     >
       <ol className="pointer-events-auto relative flex flex-col gap-5">
         {/* Connecting line — drawn as a single absolute element behind
