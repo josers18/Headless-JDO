@@ -31,7 +31,7 @@ export default async function HorizonHome() {
   const bankerMenu = signedIn ? await getBankerMenuProfile() : null;
 
   return (
-    <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56 xl:max-w-[1400px] xl:pl-16">
+    <main className="relative mx-auto w-full max-w-[960px] px-6 pb-56 xl:max-w-[1400px] xl:pl-[200px]">
       {!signedIn && (
         <>
           <header className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 pt-12 animate-fade-rise md:pt-16">
