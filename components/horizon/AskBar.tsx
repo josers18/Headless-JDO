@@ -364,7 +364,13 @@ export function AskBar() {
     <div className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4 bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))]">
       <div className="pointer-events-auto flex w-full max-w-[760px] flex-col gap-3">
         {showPanel && (
-          <div className="animate-fade-rise overflow-visible rounded-2xl border border-border bg-surface-raised/95 shadow-[0_28px_60px_-30px_rgba(0,0,0,0.7)] backdrop-blur-md">
+          <div
+            className="animate-fade-rise overflow-visible rounded-2xl border border-text/15 shadow-[0_28px_60px_-30px_rgba(0,0,0,0.75),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md"
+            style={{
+              backgroundColor:
+                "color-mix(in oklab, var(--hz-surface-raised) 92%, white 6%)",
+            }}
+          >
             <div className="flex items-start justify-between gap-3 border-b border-border-soft/80 bg-black/20 px-5 py-3">
               <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-text-muted">
                 <span
@@ -485,16 +491,20 @@ export function AskBar() {
           }}
           className={cn(
             // The Ask Bar must pop above the cards that share `--hz-surface`.
-            // `bg-surface-raised` mixes a touch of text color into surface so
-            // it reads a half-step brighter on dark themes and a half-step
-            // darker on light themes. The `shadow-ask-lift` + stronger
-            // `border-border` give it definition without adding chrome.
-            "group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-border bg-surface-raised/95 px-4 py-3 shadow-ask-lift backdrop-blur-md transition-all duration-med ease-out",
+            // We over-mix surface-raised with a touch of white via
+            // color-mix() and use a brighter border + inset top-line so
+            // the bar reads as a clearly elevated surface on dark themes
+            // without going chalky on light ones.
+            "group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-text/15 px-4 py-3 shadow-ask-lift backdrop-blur-md transition-all duration-med ease-out",
             focus
               ? "border-accent/50 shadow-glow"
-              : "hover:border-border",
+              : "hover:border-text/25",
             speech.listening && "border-accent/60 shadow-glow"
           )}
+          style={{
+            backgroundColor:
+              "color-mix(in oklab, var(--hz-surface-raised) 92%, white 6%)",
+          }}
         >
           {/* Ambient accent gradient on focus — sits underneath the input. */}
           <div
