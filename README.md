@@ -36,7 +36,7 @@
 
 ## What it does
 
-- **Home (Today)** (`/`) — **Morning brief** (life-event hierarchy + "Recent life events"), **priority queue**, **today's arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **section insight** banners, **Ask** bar (typed + voice + drafted actions), **Prep me** (per-client briefing via `/api/prep`).
+- **Home (Today)** (`/`) — **Morning brief** (life-event hierarchy + "Recent life events"), **priority queue**, **today's arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **section insight** banners, **Ask** bar (typed + voice + drafted actions), **Prep me** (per-client briefing via `/api/prep`), **left-edge section rail** (scroll-spy with click-to-jump at xl+), **session-cached Client 360° sheet** (first open ~10s for full depth, every reopen instant during the session).
 - **Ask My Data** (`/ask-data`) — multi-turn exploratory SQL agent over Data Cloud. Markdown-rendered responses, persisted thread history, reasoning trail, follow-up pill suggestions.
 - **Analyze** (`/analyze/[modelId]`) — governed analytics workbench over Tableau Next SDMs. 18 chart types with grounded MiniMax chart selection, per-model starter questions, multi-turn in-memory conversation, clickable metric chips, Business Preferences panel.
 - The LLM orchestrates three **Salesforce-hosted MCP** servers (CRM SObject, Data 360 SQL, Tableau Next) plus optional **Heroku toolkit** MCP. The UI streams tokens and a collapsible **reasoning trail** of tool calls (success + handled errors).

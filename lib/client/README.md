@@ -72,6 +72,12 @@ All three implement the same skeleton: `fetch` with `Accept: text/event-stream`,
 | `agentStartStagger.ts` | Per-section delays so Today doesn't fire 5 SSE streams in the same tick (avoids stacking 401 cascades pre-auth). |
 | `sfLabelsCache.ts` | In-memory cache of SF-ID → label resolutions across the page. Backed by `/api/sf/labels`. |
 
+### Session-scoped caches
+
+| File | Purpose |
+|------|---------|
+| `clientDetailCache.ts` | `sessionStorage`-backed cache for `/api/client/[id]` 360° sheets. Snapshots the final narrative (the 360° JSON), the reasoning-trail steps, and the inference badge keyed by `clientId` on stream completion. `ClientDetailSheet.tsx` checks the cache on mount; on hit it skips the network call and hydrates synchronously. Cleared on sign-out (`UserMenu.tsx` → `clearClientDetailCache()`). Trade-off: first open pays the full 6-tool fan-out (~10s) for depth, every reopen during the same browser session is instant. |
+
 ## Conventions
 
 - Every file is **client-only**. Importing them from a Server Component will fail at build time.

@@ -41,10 +41,11 @@ The five protected surfaces from the contest spec, plus shared chrome.
 
 | Component | Role |
 |-----------|------|
-| `AskBar.tsx` | Fixed-bottom Ask Horizon input — typed + voice + drafted-action picker. Posts to `/api/ask` (SSE). |
+| `AskBar.tsx` | Fixed-bottom Ask Horizon input — typed + voice + drafted-action picker. Posts to `/api/ask` (SSE). Background mixed +6% white via `color-mix(in oklab, …)` so the bar reads as elevated against the dark page. |
+| `SectionRail.tsx` | Left-edge scroll-spy at xl+. Connected dots + inline labels for the 5 main-column sections (Brief, Arc, Priority, Pulse, Drafts — Live Signals lives in the right-rail and is intentionally not on the rail). Active dot is full-bright with a halo, passed dots are mid-faint, upcoming dots are deeply faint. Click any dot to smooth-scroll. Watches the DOM for `[data-horizon-overlay]` via `MutationObserver` and fades out while a sheet is open. |
 | `PulseStrip.tsx` | Compact KPI strip in the sticky header (signed-in only). |
 | `HeaderClock.tsx` | Live wall-clock + day-of-week in header. |
-| `UserMenu.tsx` | Banker name / email dropdown; sign-out. |
+| `UserMenu.tsx` | Banker name / email dropdown; sign-out (also clears the Client Detail session cache). |
 | `ThemeSwitcher.tsx` | 42-theme palette switcher (`data-theme="…"`). |
 | `SectionInsight.tsx` | The narrow info banner that sits above each section (`InsightsBatchProvider` batches the agent calls). |
 | `ReasoningTrail.tsx` | Collapsible MCP-tool-call trace; rendered inside every agent section. |
@@ -54,7 +55,7 @@ The five protected surfaces from the contest spec, plus shared chrome.
 
 | Component | Role |
 |-----------|------|
-| `ClientDetailSheet.tsx` | Right-side slide-in 360° client view (Esc closes). Streams from `/api/client/[id]`. |
+| `ClientDetailSheet.tsx` | Right-side slide-in 360° client view (Esc closes). Streams from `/api/client/[id]` on first open; on reopen during the same session, hydrates synchronously from `lib/client/clientDetailCache.ts` (`sessionStorage`). Renders `data-horizon-overlay="client-detail"` on the backdrop so chrome like `SectionRail` can observe and fade out while it's open. |
 | `DraftActionCard.tsx` | One draft row with three-state status (idle / pending / executed). |
 | `PulseTile.tsx` | One KPI tile inside Portfolio Pulse, with delta + explanation popover. |
 | `ArcNode.tsx`, `ArcTimeline.tsx` | Timeline rendering for Today's Arc. |

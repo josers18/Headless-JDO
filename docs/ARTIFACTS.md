@@ -27,7 +27,7 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 | Pre-drafted actions | `components/horizon/PreDraftedActions.tsx` | `GET /api/drafts` (SSE); execute `POST /api/actions` |
 | Live signals | `components/horizon/SignalFeed.tsx` | `GET /api/signals` (JSON; client polls ~45s) |
 | Ask bar | `components/horizon/AskBar.tsx` | `POST /api/ask` (SSE); **Prep me** uses `POST /api/prep` (SSE) from embedded prep flow |
-| Client 360 sheet | `components/horizon/ClientDetailSheet.tsx` | `GET /api/client/[id]` (SSE) |
+| Client 360 sheet | `components/horizon/ClientDetailSheet.tsx` | `GET /api/client/[id]` (SSE) — first open streams the 6-tool fan-out (4 SOQL + DC SQL + Tableau analyze, ~10s); subsequent opens the same session render synchronously from `sessionStorage` via `lib/client/clientDetailCache.ts`. Cleared on sign-out. |
 | Section insights | `components/horizon/SectionInsight.tsx` + `InsightsBatchProvider` | `POST /api/insights` (SSE) |
 | **Ask My Data** (`/ask-data`) | `components/ask-data/Conversation.tsx` | `POST /api/ask-data` (SSE); threads via `GET/POST/DELETE /api/ask-threads`; follow-ups via `POST /api/analyze-followups` |
 | **Analyze** (`/analyze/[modelId]`) | `components/analyze/AnalyzeWorkbench.tsx` | `POST /api/analyze-ask` (SSE); model list via `GET /api/analyze-models`; follow-ups via `POST /api/analyze-followups` |
