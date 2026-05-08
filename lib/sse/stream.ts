@@ -4,6 +4,10 @@ import {
   modelIdFor,
   type InferenceBackend,
 } from "@/lib/llm/inferenceClients";
+import {
+  readCachedSection,
+  writeCachedSection,
+} from "@/lib/sse/sectionCache";
 
 export type SseEvent =
   | { type: "text_delta"; text: string }
@@ -68,6 +72,86 @@ export function makeSseStream(
         });
       } finally {
         controller.close();
+      }
+    },
+  });
+  return new Response(stream, { headers: sseHeaders() });
+}
+
+/**
+ * Cache-aware SSE stream wrapper. On a hit, replays the persisted
+ * event sequence without running the writer. On a miss (or bypass),
+ * runs the writer, captures every event, and persists on success.
+ *
+ * Caller supplies the cache key components (route, bankerUserId,
+ * localDay) so the cache rolls over at the banker's local midnight,
+ * not UTC. `bypass: true` (typically driven by ?refresh=1) skips the
+ * read so a banker-initiated refresh bypasses stale data.
+ *
+ * Failure mode: any cache read/write error degrades to live behavior.
+ * Errors thrown by the writer are NOT cached — the next load retries.
+ */
+export function makeCacheableSseStream(
+  cacheKey: {
+    route: string;
+    bankerUserId: string;
+    localDay: string;
+    bypass?: boolean;
+  },
+  writer: (send: (e: SseEvent) => void) => Promise<void>
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (e: SseEvent) =>
+        controller.enqueue(encoder.encode(sseEncode(e)));
+      const replayCached = async (): Promise<boolean> => {
+        if (cacheKey.bypass) return false;
+        const cached = await readCachedSection(
+          cacheKey.route,
+          cacheKey.bankerUserId,
+          cacheKey.localDay
+        );
+        if (!cached) return false;
+        for (const e of cached.events) send(e);
+        send({ type: "done" });
+        return true;
+      };
+
+      const captured: SseEvent[] = [];
+      let writerThrew = false;
+
+      try {
+        const replayed = await replayCached();
+        if (replayed) {
+          controller.close();
+          return;
+        }
+        const capturingSend = (e: SseEvent) => {
+          captured.push(e);
+          send(e);
+        };
+        await writer(capturingSend);
+        send({ type: "done" });
+      } catch (err) {
+        writerThrew = true;
+        send({
+          type: "error",
+          message: bankerFacingErrorMessage(err),
+        });
+      } finally {
+        controller.close();
+      }
+
+      // Persist asynchronously; do NOT block the response. Only
+      // cache successful runs — errors should re-fetch next time.
+      if (!writerThrew && captured.length > 0) {
+        void writeCachedSection(
+          cacheKey.route,
+          cacheKey.bankerUserId,
+          cacheKey.localDay,
+          captured
+        );
       }
     },
   });

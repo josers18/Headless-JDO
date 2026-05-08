@@ -209,7 +209,9 @@ export function MorningBrief() {
   useEffect(() => {
     const fn = () => {
       reset();
-      void start("/api/brief", {});
+      // ?refresh=1 bypasses the daily section cache so the agent
+      // re-runs and overwrites the snapshot.
+      void start("/api/brief?refresh=1", {});
     };
     window.addEventListener(HORIZON_REFRESH_BRIEF, fn);
     return () => window.removeEventListener(HORIZON_REFRESH_BRIEF, fn);

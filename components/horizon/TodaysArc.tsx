@@ -107,7 +107,8 @@ export function TodaysArc() {
   useEffect(() => {
     const fn = () => {
       reset();
-      void start("/api/arc", undefined, { method: "GET" });
+      // ?refresh=1 bypasses the daily section cache.
+      void start("/api/arc?refresh=1", undefined, { method: "GET" });
     };
     window.addEventListener(HORIZON_REFRESH_ARC, fn);
     return () => window.removeEventListener(HORIZON_REFRESH_ARC, fn);

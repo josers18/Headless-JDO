@@ -104,7 +104,10 @@ export function PriorityQueue() {
   useEffect(() => {
     const fn = () => {
       reset();
-      void start("/api/priority", undefined, { method: "GET" }).catch(() => {});
+      // ?refresh=1 bypasses the daily section cache.
+      void start("/api/priority?refresh=1", undefined, { method: "GET" }).catch(
+        () => {}
+      );
     };
     window.addEventListener(HORIZON_REFRESH_PRIORITY, fn);
     return () => window.removeEventListener(HORIZON_REFRESH_PRIORITY, fn);

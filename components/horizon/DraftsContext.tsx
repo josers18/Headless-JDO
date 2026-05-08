@@ -52,9 +52,13 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
     setPriorityIds(new Set(ids));
   }, []);
 
-  const runFetch = useCallback(() => {
-    void start("/api/drafts", undefined, { method: "GET" }).catch(() => {});
-  }, [start]);
+  const runFetch = useCallback(
+    (bypassCache = false) => {
+      const url = bypassCache ? "/api/drafts?refresh=1" : "/api/drafts";
+      void start(url, undefined, { method: "GET" }).catch(() => {});
+    },
+    [start]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -73,7 +77,8 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onRefresh = () => {
       reset();
-      runFetch();
+      // banker-initiated refresh → bypass the daily section cache.
+      runFetch(true);
     };
     window.addEventListener(HORIZON_REFRESH_DRAFTS, onRefresh);
     return () => window.removeEventListener(HORIZON_REFRESH_DRAFTS, onRefresh);

@@ -54,7 +54,10 @@ export function PortfolioPulse() {
   useEffect(() => {
     const fn = () => {
       reset();
-      void start("/api/pulse", undefined, { method: "GET" }).catch(() => {});
+      // ?refresh=1 bypasses the daily section cache.
+      void start("/api/pulse?refresh=1", undefined, { method: "GET" }).catch(
+        () => {}
+      );
     };
     window.addEventListener(HORIZON_REFRESH_PULSE, fn);
     return () => window.removeEventListener(HORIZON_REFRESH_PULSE, fn);

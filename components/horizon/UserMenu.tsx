@@ -3,7 +3,14 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { HORIZON_SIGN_OUT } from "@/lib/client/horizonEvents";
+import {
+  HORIZON_REFRESH_ARC,
+  HORIZON_REFRESH_BRIEF,
+  HORIZON_REFRESH_DRAFTS,
+  HORIZON_REFRESH_PRIORITY,
+  HORIZON_REFRESH_PULSE,
+  HORIZON_SIGN_OUT,
+} from "@/lib/client/horizonEvents";
 import { ASK_THREAD_STORAGE_KEY } from "@/types/ask-thread";
 import { clearClientDetailCache } from "@/lib/client/clientDetailCache";
 
@@ -73,6 +80,18 @@ export function UserMenu({
     window.location.href = "/api/auth/logout";
   };
 
+  // Banker-initiated refresh of every Today section. The section
+  // listeners pass ?refresh=1 so the server-side daily cache is
+  // bypassed and the agent runs fresh, then overwrites the snapshot.
+  const onRefreshAll = () => {
+    setOpen(false);
+    window.dispatchEvent(new Event(HORIZON_REFRESH_BRIEF));
+    window.dispatchEvent(new Event(HORIZON_REFRESH_ARC));
+    window.dispatchEvent(new Event(HORIZON_REFRESH_PULSE));
+    window.dispatchEvent(new Event(HORIZON_REFRESH_PRIORITY));
+    window.dispatchEvent(new Event(HORIZON_REFRESH_DRAFTS));
+  };
+
   const panel =
     open &&
     mounted &&
@@ -93,7 +112,14 @@ export function UserMenu({
           <div className="mx-2 border-t border-border-soft/80" />
           <button
             type="button"
-            className="mt-1 w-full px-3 py-2.5 text-left text-[13px] text-text transition hover:bg-danger/10 hover:text-danger"
+            className="mt-1 w-full px-3 py-2.5 text-left text-[13px] text-text transition hover:bg-surface2"
+            onClick={onRefreshAll}
+          >
+            Refresh today
+          </button>
+          <button
+            type="button"
+            className="w-full px-3 py-2.5 text-left text-[13px] text-text transition hover:bg-danger/10 hover:text-danger"
             onClick={onSignOut}
           >
             Sign out
