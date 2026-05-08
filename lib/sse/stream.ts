@@ -60,8 +60,28 @@ export function makeSseStream(
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (e: SseEvent) =>
-        controller.enqueue(encoder.encode(sseEncode(e)));
+      // See makeCacheableSseStream below for the rationale on guarding
+      // every controller op — once the client navigates away mid-stream
+      // controller.enqueue / .close throw "Invalid state" and the
+      // resulting unhandled rejection chain pollutes the logs.
+      let controllerClosed = false;
+      const send = (e: SseEvent): void => {
+        if (controllerClosed) return;
+        try {
+          controller.enqueue(encoder.encode(sseEncode(e)));
+        } catch {
+          controllerClosed = true;
+        }
+      };
+      const safeClose = (): void => {
+        if (controllerClosed) return;
+        controllerClosed = true;
+        try {
+          controller.close();
+        } catch {
+          /* already closed by Next when the client disconnected */
+        }
+      };
       try {
         await writer(send);
         send({ type: "done" });
@@ -71,7 +91,7 @@ export function makeSseStream(
           message: bankerFacingErrorMessage(err),
         });
       } finally {
-        controller.close();
+        safeClose();
       }
     },
   });
@@ -103,8 +123,39 @@ export function makeCacheableSseStream(
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (e: SseEvent) =>
-        controller.enqueue(encoder.encode(sseEncode(e)));
+      // Guarded send. Once the underlying response is canceled (client
+      // navigated away, network died, etc.) controller.enqueue throws
+      // "Invalid state: Controller is already closed". We swallow that
+      // here so the writer keeps running cleanly to completion AND so
+      // we can tell at write-cache-decision time whether the stream was
+      // healthy. closedDueToError is set when controller.enqueue throws
+      // for ANY reason (including cancellation) so we never persist a
+      // partial sequence to the daily cache.
+      let controllerClosed = false;
+      let closedDueToError = false;
+      const safeSend = (e: SseEvent): void => {
+        if (controllerClosed) return;
+        try {
+          controller.enqueue(encoder.encode(sseEncode(e)));
+        } catch {
+          // Most common: client disconnected and the underlying stream
+          // is canceled. Mark the controller as gone so we don't keep
+          // hammering it, and DON'T cache — the captured sequence is
+          // a partial agent run and replaying it would render broken.
+          controllerClosed = true;
+          closedDueToError = true;
+        }
+      };
+      const safeClose = (): void => {
+        if (controllerClosed) return;
+        controllerClosed = true;
+        try {
+          controller.close();
+        } catch {
+          /* already closed by Next when the client disconnected */
+        }
+      };
+
       const replayCached = async (): Promise<boolean> => {
         if (cacheKey.bypass) return false;
         const cached = await readCachedSection(
@@ -113,39 +164,53 @@ export function makeCacheableSseStream(
           cacheKey.localDay
         );
         if (!cached) return false;
-        for (const e of cached.events) send(e);
-        send({ type: "done" });
+        for (const e of cached.events) safeSend(e);
+        safeSend({ type: "done" });
         return true;
       };
 
       const captured: SseEvent[] = [];
+      let sawTextDelta = false;
       let writerThrew = false;
 
       try {
         const replayed = await replayCached();
         if (replayed) {
-          controller.close();
+          safeClose();
           return;
         }
         const capturingSend = (e: SseEvent) => {
+          if (e.type === "text_delta") sawTextDelta = true;
           captured.push(e);
-          send(e);
+          safeSend(e);
         };
         await writer(capturingSend);
-        send({ type: "done" });
+        safeSend({ type: "done" });
       } catch (err) {
         writerThrew = true;
-        send({
+        safeSend({
           type: "error",
           message: bankerFacingErrorMessage(err),
         });
       } finally {
-        controller.close();
+        safeClose();
       }
 
-      // Persist asynchronously; do NOT block the response. Only
-      // cache successful runs — errors should re-fetch next time.
-      if (!writerThrew && captured.length > 0) {
+      // Cache write contract — three guards must all hold:
+      //   1. writer didn't throw,
+      //   2. controller wasn't torn down mid-stream (client disconnect),
+      //   3. at least one text_delta event was emitted. The agent
+      //      sometimes finishes without producing prose (maxIterations
+      //      hit during a tool-call iteration, or an early-exit path).
+      //      Caching a sequence with only tool_use / tool_result events
+      //      replays as an empty narrative on the next load — broken
+      //      JSON parse on the client. Require text_delta presence.
+      const safeToPersist =
+        !writerThrew &&
+        !closedDueToError &&
+        sawTextDelta &&
+        captured.length > 0;
+      if (safeToPersist) {
         void writeCachedSection(
           cacheKey.route,
           cacheKey.bankerUserId,
