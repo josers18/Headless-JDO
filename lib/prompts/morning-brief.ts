@@ -160,14 +160,7 @@ LIMIT 25
 1. salesforce_crm (structured records): SELECT Id, Subject, Status, ActivityDate, WhoId, Who.Name, WhatId, What.Name, Priority FROM Task WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false AND ActivityDate <= TODAY ORDER BY Priority DESC LIMIT 15
 2. salesforce_crm (structured records): SELECT Id, Name, LastActivityDate, AnnualRevenue, Industry FROM Account WHERE OwnerId = '${a.bankerUserId}' AND (LastActivityDate = null OR LastActivityDate < LAST_N_DAYS:30) ORDER BY AnnualRevenue DESC NULLS LAST LIMIT 15
 3. salesforce_crm (structured records): SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name, Probability, LastActivityDate FROM Opportunity WHERE OwnerId = '${a.bankerUserId}' AND IsClosed = false ORDER BY CloseDate ASC LIMIT 15
-4. tableau_next (REQUIRED — always attempt, governed KPIs are a core differentiator). This is the only server that can produce period-over-period ratios, win-rate, and governed metric narratives — CRM counts alone cannot compute these and DC cannot bind them to the semantic layer.
-
-   EXECUTION (one pass, no retries):
-   a) Pick an apiName VERBATIM from the TABLEAU NEXT SEMANTIC MODELS catalog block in the system prompt. DO NOT call a models-list tool — it has been filtered out of your tools this turn. If the catalog block is absent, skip the analyze call entirely.
-   b) Pick ONE real model identifier from a returned row — copy verbatim.
-   c) Call the analytics tool (name contains "analyzeSemantic" or starts with "analyze") ONCE with a concrete question tied to this banker (pipeline change over 7 days, win rate, AUM delta, etc.).
-   d) Use the answer to ground ONE brief item with a tableau_next source.
-   e) If the analyze call errors: do NOT retry.
+4. tableau_next — DO NOT call. Tableau analyze is exclusive to Portfolio Pulse for this banker book; calling it here adds 10–40s of upstream latency and the governed-metric narrative duplicates Pulse anyway. The brief items grounded in CRM + Data Cloud below are sufficient.
 5. data_360 (PRESCRIPTIVE — call when ANY of the criteria below are met). This is the server that surfaces external, behavioral, and unified data that CRM alone cannot see — skipping it when a criterion applies is a defect, not a budget saving.
 
    CALL data_360 IF ANY OF:

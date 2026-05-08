@@ -42,14 +42,7 @@ TOOL PLAN — parallel where helpful:
    d) One narrow call on the data_360 SQL tool (LIMIT 10, filter by account ids from steps 1–3 when possible).
    e) If columns don't match, skip SQL — the breaker blocks retries anyway.
 
-5. tableau_next (REQUIRED — always attempt). Governed KPIs reveal period-over-period trends that a same-day arc can surface as context in a recommended_window ("book win-rate dropped 8% this week — block 30m for pipeline triage").
-
-   EXECUTION (one pass, no retries):
-   a) Pick an apiName VERBATIM from the TABLEAU NEXT SEMANTIC MODELS catalog block in the system prompt. DO NOT call a models-list tool — it has been filtered out of your tools this turn. If the catalog block is absent, skip the analyze call entirely.
-   b) Pick ONE real model identifier from a returned row — copy verbatim; NEVER use "Sales"/"Service" as the model id.
-   c) One analyze call asking a concrete same-day-relevant question (this-week pipeline change, AUM delta, win-rate trend).
-   d) Use the answer ONLY to ground a recommended_window's suggestion — do NOT invent an event or deadline from Tableau output.
-   e) If the analyze call errors: do NOT retry.
+5. tableau_next — DO NOT call. Tableau analyze is exclusive to Portfolio Pulse for this banker book; calling it here adds 10–40s of upstream latency and the same-day arc shape doesn't depend on governed KPIs.
 
 NODE TYPES (map each item to one):
 - event — calendar meeting from Event
