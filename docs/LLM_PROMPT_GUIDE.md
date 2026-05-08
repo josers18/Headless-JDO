@@ -6,9 +6,9 @@ This document is for **humans and coding agents** who change how Horizon talks t
 
 | File | Role |
 |------|------|
-| [`lib/prompts/system.ts`](../lib/prompts/system.ts) | Shared **MCP HYGIENE** block for Today: Data Cloud metadata gate, SOQL rules, Tableau semantic binding, universal tone rules. Export: `SYSTEM_PROMPT`, `SYSTEM_PROMPT_VERSION`. |
+| [`lib/prompts/system.ts`](../lib/prompts/system.ts) | Shared **MCP HYGIENE** block for Today: Data Cloud metadata gate, SOQL rules (incl. §B.8: no SQL-style functions like `NOW()` / `CURRENT_TIMESTAMP` / `GETDATE()` / `SYSDATE`), Tableau semantic binding, universal tone rules. Export: `SYSTEM_PROMPT`, `SYSTEM_PROMPT_VERSION`. |
 | [`lib/prompts/ask-anything.ts`](../lib/prompts/ask-anything.ts) | Ask bar (Today): schema discipline, org field allow-lists, output JSON contracts. |
-| [`lib/prompts/morning-brief.ts`](../lib/prompts/morning-brief.ts) | Morning brief structure, CRM + Data 360 + Tableau expectations. |
+| [`lib/prompts/morning-brief.ts`](../lib/prompts/morning-brief.ts) | Morning brief structure, CRM + Data 360 expectations. **As of 2026-05-08 the brief no longer calls `tableau_next`** — Tableau analyze is Pulse-only on Today (saves 10–40s of upstream latency per page load). |
 | [`lib/prompts/analyze.ts`](../lib/prompts/analyze.ts) | **Analyze surface** (Kimi + Tableau Next). Current: `ANALYZE_PROMPT_VERSION = v0.5.0`. Call budget (one `analyze_data` per turn), forbidden phrase list, visualization-complete phrasing rules, follow-up mandate. |
 | [`lib/prompts/ask-data.ts`](../lib/prompts/ask-data.ts) | **Ask My Data surface** (Kimi + Data 360). Current: `ASK_DATA_PROMPT_VERSION = v0.5.0`. Numbered-option resolution, catalog grounding, no-SQL-in-prose, no-raw-field-names, one-SQL-fix-then-stop, no cross-DMO JOINs, no tutorials. |
 | [`lib/prompts/ask-data-followups.ts`](../lib/prompts/ask-data-followups.ts) | MiniMax follow-up pills. Current: `ASK_DATA_FOLLOWUPS_PROMPT_VERSION = v0.3.0`. Returns `{"suggestions":[...]}` to match `response_format: json_object`. |
@@ -41,6 +41,7 @@ These patterns **actually appeared** in demo runs; `system.ts` §MCP HYGIENE enc
 |---------|--------|------------|
 | `INVALID_FIELD` on `ActivityDate` | Quoted date string, e.g. `ActivityDate < '2024-07-15'`. | **Date** fields: unquoted `YYYY-MM-DD` or date tokens (`TODAY`, `LAST_N_DAYS:30`). |
 | `MALFORMED_QUERY` / `unexpected token: 'NEXT_7_DAYS'` | Wrong rolling-window spelling. | Use **`NEXT_N_DAYS:7`**, **`LAST_N_DAYS:30`** (letter `N`, colon, integer). Never `NEXT_7_DAYS` / `LAST_30_DAYS`. |
+| `MALFORMED_QUERY` / `unexpected token: 'NOW'` | Model wrote `StartDateTime >= NOW()` or similar — SOQL is not SQL, none of `NOW()` / `CURRENT_TIMESTAMP` / `GETDATE()` / `SYSDATE` are valid tokens. | System prompt v1.6.1+ §B.8 explicitly forbids these. `preflightSalesforceSoql` in `lib/llm/heroku.ts` intercepts the function call before dispatch and returns a synthetic correction asking the model to use SOQL date tokens (`TODAY`, `LAST_N_DAYS:n`) or omit the comparison. The prompt fix that introduced this failure was `pulse-strip.ts` — bumped to v1.3.2. |
 | `INVALID_FIELD` / `Name` on Task | Task uses `Subject`, not `Name`. | See `system.ts` §B.0. |
 
 ### Tableau Next (`tableau_next`)

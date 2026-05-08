@@ -162,6 +162,31 @@ connections, eviction enabled) is recommended before broader rollout.
 The refresh scripts use `redisSetOnce` (short-lived TLS connection)
 for the final write to avoid idle-socket-severed failures.
 
+## Section-level snapshot cache (Today)
+
+The 5 expensive Today routes — `/api/brief`, `/api/priority`, `/api/pulse`, `/api/drafts`, `/api/arc` — wrap their SSE writers in `makeCacheableSseStream` from `lib/sse/stream.ts`. First hit per banker per local-day pays the agent loop; subsequent hits replay the captured SSE event sequence from Redis so reasoning trail + inference badge survive. Lives separately from the metadata cache (DC DMOs / Tableau SDMs) — different scope, different lifetime.
+
+| Aspect | Value |
+|--------|-------|
+| Redis key shape | `horizon:section:v1:<route>:<bankerUserId>:<localDay>` (e.g. `horizon:section:v1:brief:005am000003PbCLAA0:2026-05-08`) |
+| TTL | 36h (survives one fully missed local-day boundary) |
+| Local-day source | `localDayInTz()` in `lib/sse/sectionCache.ts`, fed by `DEMO_BANKER_TZ` env (default `America/New_York`) |
+| Bypass | append `?refresh=1` to any of the 5 routes; the section component listeners (e.g. `HORIZON_REFRESH_BRIEF`) already do this |
+| User-facing refresh | "Refresh today" entry in the `UserMenu` dropdown — fans out all 5 `HORIZON_REFRESH_*` events |
+| Pull-to-refresh on mobile | `PullToRefresh.tsx` dispatches the same 5 events |
+| Persistence guard | only writes when writer didn't throw AND controller wasn't canceled AND ≥1 `text_delta` event observed AND captured array non-empty |
+| Live signals | deliberately NOT cached — `/api/signals` polls every 45s independently |
+
+### Wiping the section cache (manual ops)
+
+If a captured event sequence is bad (e.g. an upstream timeout was preserved, or a prompt change makes existing sequences obsolete), wipe the keys via the Heroku Redis CLI from a one-off dyno:
+
+```bash
+heroku run --app headless-jdo --no-tty 'node -e "const Redis=require(\"ioredis\"); const c=new Redis(process.env.REDIS_URL,{tls:{rejectUnauthorized:false}}); (async()=>{const keys=await c.keys(\"horizon:section:v1:*\"); for(const k of keys) await c.del(k); console.log(\"deleted\",keys.length); await c.quit();})()"'
+```
+
+Next page load per section refills the cache cleanly.
+
 ## Reasoning trail: triage cheatsheet
 
 When the UI shows yellow “schema mismatch / handled” or red failures:
@@ -173,7 +198,7 @@ When the UI shows yellow “schema mismatch / handled” or red failures:
 | `Semantic model apiName "X" does not exist in this org` | Preflight caught a hallucinated SDM apiName before it hit the network. Real apiNames are listed in the rejection's `instruction` field. Tableau itself returns `INVALID_INPUT — you don't have access` for unknown apiNames, which is misleading; the runtime catches it locally. |
 | `INVALID_INPUT — don't have access to the semantic model` (rare, post-preflight) | Real org permission gap. Post-preflight, this means the cache and the banker's token disagree on visibility. Most often the cache was refreshed by an admin and the banker doesn't have the SDM. Trips the breaker on first occurrence (no retry storm). |
 | `Unknown tool` rejection on a filtered tool (e.g. `list_semantic_models`, `get_dc_metadata`) | Model tried to call a tool that the cache-aware filter has stripped. Expected behavior when a prompt still references the filtered tool — search `lib/prompts/` for the directive and rewrite to point at the catalog in the system prompt. |
-| `MALFORMED_QUERY` / `unexpected token` on `salesforce_crm.soqlQuery` | Bad SOQL date literal (e.g. `NEXT_7_DAYS` instead of `NEXT_N_DAYS:7`, or quoted `ActivityDate`). See [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md). |
+| `MALFORMED_QUERY` / `unexpected token` on `salesforce_crm.soqlQuery` | Bad SOQL date literal (e.g. `NEXT_7_DAYS` instead of `NEXT_N_DAYS:7`, or quoted `ActivityDate`), OR a SQL-style function like `NOW()` / `CURRENT_TIMESTAMP` / `GETDATE()` / `SYSDATE` (SOQL is not SQL). System prompt v1.6.1+ §B.8 forbids these explicitly; runtime `preflightSalesforceSoql` intercepts them before dispatch. See [LLM_PROMPT_GUIDE.md](./LLM_PROMPT_GUIDE.md). |
 | `504 Gateway Timeout — tableau_next.analyze_data exceeded 40000ms` | Today path's Tableau Q&A timeout (20s → 25s on 2026-05-06 → **40s on 2026-05-07**). Every Today route streams via SSE from first byte so Heroku's 30s H12 idle timer doesn't apply (bytes flow continuously while analyze is in flight). The 40s cap is purely so a wedged Tableau call eventually fails the breaker. Analyze surface uses a separate 45s cap (`firstPartyTableauNext.ts`) since it runs analyze_data as a single-tool turn. |
 | `504 Gateway Timeout — <other server>.<tool> exceeded Nms` | Per-tool client-side timeout fired. Legitimate upstream slowness — check if a specific DC DMO is consistently slow and consider narrowing the utterance or dropping the call. |
 | `blocked by schema-mismatch breaker` | Expected after a bad Data Cloud or SOQL shape — prevents tool-slot burn; narrative should degrade gracefully. |

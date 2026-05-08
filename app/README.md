@@ -42,15 +42,15 @@ Every API route runs on Node runtime (not Edge). Most stream Server-Sent Events 
 ### Today surface
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `brief/` | POST | Morning brief generator (SSE) |
-| `arc/` | GET | Today's arc timeline (SSE) |
+| `brief/` | POST | Morning brief generator (SSE; daily section cache via `lib/sse/sectionCache.ts` — first hit per banker per local-day pays the agent loop, rest replay the captured event sequence; `?refresh=1` bypasses) |
+| `arc/` | GET | Today's arc timeline (SSE; same daily section cache + `?refresh=1` bypass) |
 | `arc-drag/` | POST | Drag-to-reschedule intent capture |
-| `priority/` | GET | Priority queue ranking (SSE) |
-| `pulse/` | GET | Portfolio pulse KPIs (SSE) |
-| `pulse-strip/` | GET | Compact header pulse (SSE) |
-| `drafts/` | GET | Pre-drafted action queue (SSE) |
+| `priority/` | GET | Priority queue ranking (SSE; same daily section cache + `?refresh=1` bypass) |
+| `pulse/` | GET | Portfolio pulse KPIs (SSE; same daily section cache + `?refresh=1` bypass) |
+| `pulse-strip/` | GET | Compact header pulse (SSE; not cached — light query, runs each load) |
+| `drafts/` | GET | Pre-drafted action queue (SSE; same daily section cache + `?refresh=1` bypass) |
 | `actions/` | POST | Approve+execute a draft to Salesforce |
-| `signals/` | GET | Live signal feed (JSON; client polls ~45s) |
+| `signals/` | GET | Live signal feed (JSON; client polls ~45s; not cached — independent of the section cache) |
 | `insights/` | POST | Per-section insight banner (SSE) |
 | `ask/` | POST | Ask Anything — open-ended Today query (SSE) |
 | `prep/` | POST | "Prep me" per-client briefing (SSE) |

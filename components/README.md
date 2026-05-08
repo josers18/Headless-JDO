@@ -45,7 +45,7 @@ The five protected surfaces from the contest spec, plus shared chrome.
 | `SectionRail.tsx` | Left-edge scroll-spy at xl+. Connected dots + inline labels for the 5 main-column sections (Brief, Arc, Priority, Pulse, Drafts — Live Signals lives in the right-rail and is intentionally not on the rail). Active dot is full-bright with a halo, passed dots are mid-faint, upcoming dots are deeply faint. Click any dot to smooth-scroll. Watches the DOM for `[data-horizon-overlay]` via `MutationObserver` and fades out while a sheet is open. |
 | `PulseStrip.tsx` | Compact KPI strip in the sticky header (signed-in only). |
 | `HeaderClock.tsx` | Live wall-clock + day-of-week in header. |
-| `UserMenu.tsx` | Banker name / email dropdown; sign-out (also clears the Client Detail session cache). |
+| `UserMenu.tsx` | Banker name / email dropdown. **Refresh today** entry fans out all five `HORIZON_REFRESH_*` events so each section re-fetches with `?refresh=1` (bypasses the daily section cache in Redis). Sign-out clears the Client Detail session cache + Ask thread storage. |
 | `ThemeSwitcher.tsx` | 42-theme palette switcher (`data-theme="…"`). |
 | `SectionInsight.tsx` | The narrow info banner that sits above each section (`InsightsBatchProvider` batches the agent calls). |
 | `ReasoningTrail.tsx` | Collapsible MCP-tool-call trace; rendered inside every agent section. |
@@ -92,7 +92,7 @@ analyze/
 ├── AnalyzeWorkspace.tsx      3-column shell: model sidebar | main column | (no right rail)
 ├── AnalyzeWorkbench.tsx      Main column — model header + Ask bar + transcript
 ├── AnalyzeEntry.tsx          /analyze entry state ("Pick a model to explore")
-├── AnalyzeBar.tsx            Per-model Ask bar
+├── AnalyzeBar.tsx            Per-model Ask bar (Web Speech mic via useSpeechInput, mirrors AskBar / AskDataBar)
 ├── AnalyzeFollowUps.tsx      MiniMax-generated follow-up pills under the latest answer
 ├── AnalyzeTable.tsx          Tabular fallback when chart selection rejects the spec
 ├── BusinessPreferencesPanel.tsx   Collapsed-by-default SDM author hints

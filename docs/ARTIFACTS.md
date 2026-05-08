@@ -4,7 +4,8 @@ What ships in this codebase (high level). Prompt versions change over time — b
 
 | Constant (export) | File | Current |
 |-------------------|------|---------|
-| `SYSTEM_PROMPT_VERSION` | `lib/prompts/system.ts` | **v1.6.0-no-owner-pivot-on-dc-2026-05-06** |
+| `SYSTEM_PROMPT_VERSION` | `lib/prompts/system.ts` | **v1.6.1-no-now-fn-soql-2026-05-08** |
+| `PULSE_STRIP_PROMPT_VERSION` | `lib/prompts/pulse-strip.ts` | **v1.3.2-no-now-fn-2026-05-08** |
 | `MORNING_BRIEF_PROMPT_VERSION` | `lib/prompts/morning-brief.ts` | v1.x |
 | `PREP_PROMPT_VERSION` | `lib/prompts/prep.ts` | v1.x |
 | `ARC_PROMPT_VERSION` | `lib/prompts/arc.ts` | v1.x |
@@ -19,12 +20,12 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 
 | Surface | Client entry | Typical API |
 |---------|----------------|-------------|
-| Morning brief | `components/horizon/MorningBrief.tsx` | `POST /api/brief` (SSE) |
-| Today’s arc | `components/horizon/TodaysArc.tsx` | `GET /api/arc` (SSE) |
-| Priority queue | `components/horizon/PriorityQueue.tsx` | `GET /api/priority` (SSE) |
-| Portfolio pulse | `components/horizon/PortfolioPulse.tsx` | `GET /api/pulse` (SSE) |
-| Pulse strip (header) | `components/horizon/PulseStrip.tsx` | `GET /api/pulse-strip` (SSE) |
-| Pre-drafted actions | `components/horizon/PreDraftedActions.tsx` | `GET /api/drafts` (SSE); execute `POST /api/actions` |
+| Morning brief | `components/horizon/MorningBrief.tsx` | `POST /api/brief` (SSE; daily section cache via `lib/sse/sectionCache.ts` — first hit per banker per local-day pays the agent loop, rest replay; `?refresh=1` bypass) |
+| Today’s arc | `components/horizon/TodaysArc.tsx` | `GET /api/arc` (SSE; same daily section cache + `?refresh=1` bypass) |
+| Priority queue | `components/horizon/PriorityQueue.tsx` | `GET /api/priority` (SSE; same daily section cache + `?refresh=1` bypass) |
+| Portfolio pulse | `components/horizon/PortfolioPulse.tsx` | `GET /api/pulse` (SSE; same daily section cache + `?refresh=1` bypass) |
+| Pulse strip (header) | `components/horizon/PulseStrip.tsx` | `GET /api/pulse-strip` (SSE; not cached — light query, runs each load) |
+| Pre-drafted actions | `components/horizon/PreDraftedActions.tsx` | `GET /api/drafts` (SSE; same daily section cache + `?refresh=1` bypass); execute `POST /api/actions` |
 | Live signals | `components/horizon/SignalFeed.tsx` | `GET /api/signals` (JSON; client polls ~45s) |
 | Ask bar | `components/horizon/AskBar.tsx` | `POST /api/ask` (SSE); **Prep me** uses `POST /api/prep` (SSE) from embedded prep flow |
 | Client 360 sheet | `components/horizon/ClientDetailSheet.tsx` | `GET /api/client/[id]` (SSE) — first open streams the 6-tool fan-out (4 SOQL + DC SQL + Tableau analyze, ~10s); subsequent opens the same session render synchronously from `sessionStorage` via `lib/client/clientDetailCache.ts`. Cleared on sign-out. |
