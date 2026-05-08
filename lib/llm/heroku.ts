@@ -211,6 +211,28 @@ function preflightSalesforceSoql(
         ? args.query
         : "";
   if (!raw.trim()) return null;
+
+  // SOQL is not SQL: NOW() / CURRENT_TIMESTAMP / GETDATE() / SYSDATE
+  // are not valid tokens. Reject before dispatch with an actionable
+  // suggestion so the model can self-correct in one iteration instead
+  // of tripping the breaker on the upstream MALFORMED_QUERY error.
+  // Match function-call shape (NOW( ) etc.) AND bare-token comparisons
+  // (`StartDateTime >= NOW`).
+  const sqlFnMatch = raw.match(
+    /\b(NOW|CURRENT_TIMESTAMP|GETDATE|SYSDATE)\s*\(?/i
+  );
+  if (sqlFnMatch) {
+    const fn = sqlFnMatch[1]?.toUpperCase() ?? "NOW";
+    return JSON.stringify({
+      rejected: true,
+      server,
+      tool,
+      reason: `SOQL does not support the ${fn}() function — that yields MALFORMED_QUERY ("unexpected token: ${fn}"). SOQL is not SQL.`,
+      instruction:
+        "For 'right now' on a DateTime column, omit the comparison and ORDER BY the column instead, or use SOQL date tokens (TODAY, THIS_WEEK, LAST_N_DAYS:n, NEXT_N_DAYS:n). Re-emit the query without any SQL-style date functions.",
+    });
+  }
+
   if (!/\bFROM\s+Task\b/i.test(raw)) return null;
   const selMatch = raw.match(/\bSELECT\b([\s\S]+?)\bFROM\s+Task\b/i);
   const selPart = selMatch?.[1];

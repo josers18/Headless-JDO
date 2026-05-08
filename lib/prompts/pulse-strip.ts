@@ -3,7 +3,7 @@
 // F-5 rules: temperature label FIRST in ALL CAPS · positives over negatives ·
 // ≤ 4 segments · 2–4 words per segment · max 12 words total.
 
-export const PULSE_STRIP_PROMPT_VERSION = "v1.3.1-neutral-tool-names-2026-04-30";
+export const PULSE_STRIP_PROMPT_VERSION = "v1.3.2-no-now-fn-2026-05-08";
 
 export interface PulseStripPromptArgs {
   bankerUserId: string;
@@ -20,8 +20,8 @@ BANKER (pre-resolved — do NOT call salesforce_crm.getUserInfo just to resolve 
 TOOL PLAN — call MCP tools in parallel when the question spans sources:
 1. salesforce_crm: Today's calendar and workload for this owner only.
    - Tasks: ActivityDate = TODAY or overdue, Priority = High when relevant, Status != Completed
-   - Events: ActivityDate = TODAY, StartDateTime >= NOW() in org TZ (use the banker's day)
-   - Opportunities: IsClosed = false, OwnerId = banker, CloseDate = TODAY or NEXT 7 DAYS if they imply same-day urgency
+   - Events: ActivityDate = TODAY (do NOT use NOW() — it is not a valid SOQL token and yields MALFORMED_QUERY; ORDER BY StartDateTime ASC and let the client filter to upcoming if needed)
+   - Opportunities: IsClosed = false, OwnerId = banker, CloseDate = TODAY or NEXT_N_DAYS:7 if they imply same-day urgency
 2. data_360 (PRESCRIPTIVE — call when ANY criterion below is met). Pulse strip is the flight-deck temperature read: DC is where same-day anomalies and held-away events live, and those often drive the URGENT temperature that CRM alone would miss.
 
    CALL data_360 IF ANY OF:
