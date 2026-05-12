@@ -17,7 +17,7 @@ type FetchState =
   | { kind: "unauth" }
   | { kind: "unconfigured" };
 
-export function ThreadList() {
+export function ThreadList({ onSelect }: { onSelect?: () => void } = {}) {
   const router = useRouter();
   const params = useParams();
   const activeThreadId =
@@ -82,6 +82,7 @@ export function ThreadList() {
       if (!res.ok) return;
       const data = (await res.json()) as { thread: ThreadLike };
       router.push(`/ask/${data.thread.id}`);
+      onSelect?.();
       await load();
     } catch {
       /* surfaced via sidebar refresh */
@@ -168,6 +169,7 @@ export function ThreadList() {
                   >
                     <Link
                       href={`/ask/${t.id}`}
+                      onClick={() => onSelect?.()}
                       className={cn(
                         "min-w-0 flex-1 truncate rounded-md px-2 py-2 text-[13px] transition",
                         active

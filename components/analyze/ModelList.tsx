@@ -12,7 +12,7 @@ type FetchState =
   | { kind: "error"; message: string }
   | { kind: "unauth" };
 
-export function ModelList() {
+export function ModelList({ onSelect }: { onSelect?: () => void } = {}) {
   const params = useParams();
   const activeId =
     typeof params?.modelId === "string" ? params.modelId : null;
@@ -122,6 +122,7 @@ export function ModelList() {
                       feel instant even if an analyze turn is running. */}
                   <a
                     href={`/analyze/${m.id}`}
+                    onClick={() => onSelect?.()}
                     className={cn(
                       "flex flex-col gap-0.5 px-4 py-2.5 text-left transition",
                       active

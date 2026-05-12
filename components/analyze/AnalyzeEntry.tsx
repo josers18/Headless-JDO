@@ -1,7 +1,8 @@
 /**
  * Entry state for /analyze when no model is selected. Lives in the main
- * column of AnalyzeWorkspace; the sidebar (ModelList) carries the actual
- * picker. Kept copy-focused — everything useful happens on the left.
+ * column of AnalyzeWorkspace. On desktop the picker sits in a sticky
+ * sidebar; on mobile (<lg) it lives behind the "Browse models" trigger
+ * rendered by AnalyzeMobileSidebar.
  */
 export function AnalyzeEntry() {
   return (
@@ -13,13 +14,19 @@ export function AnalyzeEntry() {
         Pick a model to explore.
       </h1>
       <p className="mt-3 max-w-xl text-[14px] text-text-muted">
-        Select a semantic data model from the sidebar. You&rsquo;ll get the
-        model&rsquo;s profile, named metrics, and an Ask bar that runs
-        natural-language analysis through Tableau Next&rsquo;s Analytics Agent.
+        Choose a semantic data model to get its profile, named metrics, and
+        an Ask bar that runs natural-language analysis through Tableau
+        Next&rsquo;s Analytics Agent.
       </p>
       <p className="mt-2 max-w-xl text-[13px] text-text-muted/80">
-        All 16 models in this org&rsquo;s dataspace are listed. Search by
-        name, business domain, or description.
+        <span className="hidden lg:inline">
+          The full list lives in the sidebar.
+        </span>
+        <span className="lg:hidden">
+          Tap <strong className="font-medium text-text">Browse models</strong>{" "}
+          above to open the list.
+        </span>{" "}
+        Search by name, business domain, or description.
       </p>
     </section>
   );

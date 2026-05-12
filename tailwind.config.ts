@@ -120,6 +120,10 @@ const config: Config = {
           "0%": { transform: "translateX(100%)" },
           "100%": { transform: "translateX(0)" },
         },
+        "slide-in-left": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(0)" },
+        },
       },
       animation: {
         "fade-rise": "fade-rise 380ms cubic-bezier(0.16, 1, 0.3, 1) both",
@@ -133,6 +137,8 @@ const config: Config = {
           "theme-dot-cycle 12s ease-in-out infinite",
         "slide-in-right":
           "slide-in-right 280ms cubic-bezier(0.16, 1, 0.3, 1) both",
+        "slide-in-left":
+          "slide-in-left 280ms cubic-bezier(0.16, 1, 0.3, 1) both",
       },
     },
   },

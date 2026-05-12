@@ -1,10 +1,12 @@
 import { ModelList } from "./ModelList";
+import { AnalyzeMobileSidebar } from "./AnalyzeMobileSidebar";
 
 /**
  * 2-column shell for /analyze and /analyze/[modelId].
  *
  * - ≥1024px : 280px model sidebar + main column
- * - <1024px : main only (sidebar deferred to a future polish pass)
+ * - <1024px : main column only; the model picker lives in a slide-in
+ *             drawer triggered by AnalyzeMobileSidebar.
  *
  * Matches the spec's §T2-4 mock — narrower than Ask My Data's 3-column
  * because the right-rail surface in Analyze (governance trail) is a
@@ -19,7 +21,10 @@ export function AnalyzeWorkspace({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <div className="relative flex min-w-0 flex-col pb-40">{children}</div>
+      <div className="relative flex min-w-0 flex-col pb-40">
+        <AnalyzeMobileSidebar />
+        {children}
+      </div>
     </div>
   );
 }
