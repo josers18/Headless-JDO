@@ -28,6 +28,7 @@
 | **[docs/CURSOR_MCP_SETUP.md](docs/CURSOR_MCP_SETUP.md)** | Optional Cursor MCP wiring                             |
 | **[docs/SEED_DATA_SPEC.md](docs/SEED_DATA_SPEC.md)**     | CRM / FSC seed notes                                   |
 | **[CONTRIBUTING.md](CONTRIBUTING.md)**                   | Quality gates and contribution norms                   |
+| **[CHANGELOG.md](CHANGELOG.md)**                         | Date-anchored release log (Keep a Changelog format)    |
 
 
 **UI / film polish checklists** (iteration history in repo root): [UI_V3_FINAL.md](./UI_V3_FINAL.md), [UI_V3_POLISH.md](./UI_V3_POLISH.md), [FIX_PASS.md](./FIX_PASS.md) — see status banner in `FIX_PASS.md`; authoritative product constraints may also live in a **local** `CLAUDE.md` (listed in `.gitignore` in this clone). **Published** engineering docs live under `docs/`.
