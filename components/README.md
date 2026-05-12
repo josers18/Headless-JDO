@@ -65,7 +65,8 @@ The five protected surfaces from the contest spec, plus shared chrome.
 | `InferenceModelBadge.tsx` | "via Claude / Kimi / MiniMax" badge in section headers. |
 | `GhostPrompt.tsx` | Pre-fill suggestions that drop a question into the AskBar. |
 | `PrepBriefingPanel.tsx` | "Prep me" per-client briefing rendered inside the ClientDetailSheet. |
-| `mobile/MobileNav.tsx` | Bottom-nav for narrow viewports. |
+| `mobile/MobileNav.tsx` | Floating bottom-nav pill, `lg:hidden`. Three icons (Today / Ask / Analyze) mirroring `LeftRail`'s sections — replaces the desktop rail on phones + iPad portrait. Active state from `usePathname`; disabled when signed-out. |
+| `mobile/MobileDrawer.tsx` | Shared left-anchored mobile drawer primitive used by `/analyze` (model picker) and `/ask` (thread picker). Focus-trap, Esc, body scroll-lock, backdrop tap, returns focus to trigger on close. `lg:hidden` — desktop hosts the same content directly in a sticky `<aside>`. |
 
 ### Provider / context components
 
@@ -92,6 +93,7 @@ analyze/
 ├── AnalyzeWorkspace.tsx      3-column shell: model sidebar | main column | (no right rail)
 ├── AnalyzeWorkbench.tsx      Main column — model header + Ask bar + transcript
 ├── AnalyzeEntry.tsx          /analyze entry state ("Pick a model to explore")
+├── AnalyzeMobileSidebar.tsx  <lg "Browse models" trigger + MobileDrawer hosting <ModelList />
 ├── AnalyzeBar.tsx            Per-model Ask bar (Web Speech mic via useSpeechInput, mirrors AskBar / AskDataBar)
 ├── AnalyzeFollowUps.tsx      MiniMax-generated follow-up pills under the latest answer
 ├── AnalyzeTable.tsx          Tabular fallback when chart selection rejects the spec
@@ -119,6 +121,7 @@ The full agent loop lives in `lib/inference/analyzeAgent.ts`. The page shell str
 ask-data/
 ├── AskWorkspace.tsx          3-column responsive shell
 ├── AskDataEntry.tsx          /ask entry state with starter prompts
+├── AskMobileSidebar.tsx      <lg "Threads" trigger + MobileDrawer hosting <ThreadList />
 ├── AskDataBar.tsx            Visual-chrome-only pill (no Today event bus)
 ├── Conversation.tsx          Multi-turn message list with MarkdownView rendering
 ├── ContextRail.tsx           Right rail with live MiniMax follow-ups + memory cues
@@ -136,7 +139,7 @@ Agent loop in `lib/inference/askDataAgent.ts`; threads persist via `lib/db/askTh
 | Component | Role |
 |-----------|------|
 | `SectionTopBar.tsx` | Sticky header for `/ask` and `/analyze` — 3-col grid: HorizonMark / centered bold title / theme + clock + user menu. Same shape as Today's signed-in header. |
-| `LeftRail.tsx` | Vertical nav strip used in some larger viewports. |
+| `LeftRail.tsx` | 64px vertical nav strip pinned to the left edge at `lg+` (1024 px). Hidden below `lg` to reclaim viewport on phones — `MobileNav.tsx` (`horizon/mobile/`) takes over there. Hosts `⌘1`/`⌘2`/`⌘3` keyboard shortcuts (desktop only). |
 | `NavCircle.tsx` | Pill-style nav anchor used in the LeftRail and tablet layouts. |
 
 ## `brand/` — Tokens + logo

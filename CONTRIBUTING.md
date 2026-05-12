@@ -27,7 +27,7 @@ Prompts live in `lib/prompts/` — treat edits like code review.
 
 1. Read [**docs/LLM_PROMPT_GUIDE.md**](docs/LLM_PROMPT_GUIDE.md) first. It catalogs known failure modes per agent (Today / Analyze / Ask My Data) with their mitigations.
 2. Pick the right file for the scope of your change:
-   - **All agents**: extend `lib/prompts/system.ts` (SOQL hygiene, DC metadata gate, Tableau binding, owner-pivot guardrails). Currently **v1.6.0**.
+   - **All agents**: extend `lib/prompts/system.ts` (SOQL hygiene incl. §B.8 no SQL-style functions like `NOW()`, DC metadata gate, Tableau binding, owner-pivot guardrails). Currently **v1.6.1**.
    - **Today only**: feature-specific files under `lib/prompts/` (`morning-brief.ts`, `prep.ts`, `arc.ts`, `priority-queue.ts`, etc.).
    - **Analyze surface**: `lib/prompts/analyze.ts` (Kimi + Tableau Next). Currently v0.5.0.
    - **Ask My Data surface**: `lib/prompts/ask-data.ts` (Kimi + Data 360). Currently v0.5.0.
