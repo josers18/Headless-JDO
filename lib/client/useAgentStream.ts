@@ -34,6 +34,12 @@ export interface AgentStreamState {
     opts?: {
       method?: "GET" | "POST";
       onThreadSnapshot?: (messages: AskThreadMessage[]) => void;
+      onUsage?: (u: {
+        model: string;
+        inputTokens: number;
+        outputTokens: number;
+        exact: boolean;
+      }) => void;
     }
   ) => Promise<void>;
   cancel: () => void;
@@ -97,6 +103,15 @@ type IncomingEvent =
   | { type: "error"; message: string }
   | { type: "thread_snapshot"; messages: AskThreadMessage[] }
   | { type: "inference_meta"; backend: InferenceBackend; model: string }
+  | {
+      type: "usage_meta";
+      usage: {
+        model: string;
+        inputTokens: number;
+        outputTokens: number;
+        exact: boolean;
+      };
+    }
   | { type: "done" };
 
 export function useAgentStream(): AgentStreamState {
@@ -133,6 +148,12 @@ export function useAgentStream(): AgentStreamState {
       opts?: {
         method?: "GET" | "POST";
         onThreadSnapshot?: (messages: AskThreadMessage[]) => void;
+        onUsage?: (u: {
+          model: string;
+          inputTokens: number;
+          outputTokens: number;
+          exact: boolean;
+        }) => void;
       }
     ) => {
       abortRef.current?.abort();
@@ -283,6 +304,8 @@ export function useAgentStream(): AgentStreamState {
           opts?.onThreadSnapshot?.(msg.messages);
         } else if (msg.type === "inference_meta") {
           setInferenceMeta({ backend: msg.backend, model: msg.model });
+        } else if (msg.type === "usage_meta") {
+          opts?.onUsage?.(msg.usage);
         }
       };
 
