@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { LeftRail } from "@/components/nav/LeftRail";
 import { MobileNav } from "@/components/horizon/mobile/MobileNav";
 import { SessionUsageProvider } from "@/components/horizon/SessionUsageProvider";
-import { TokenSpendDock } from "@/components/horizon/TokenSpendDock";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +30,8 @@ export default async function BankerLayout({
   // SessionUsageProvider wraps every banker surface (Today / Ask / Analyze)
   // so the token-spend tally is one shared, cross-tab total — the panel reads
   // from a single hz_sid session in Postgres regardless of which tab spent the
-  // tokens. The dock renders the panel consistently on every tab.
+  // tokens. Each surface mounts the panel in-flow in its own right rail /
+  // sidebar (Today aside, Ask ContextRail, Analyze model sidebar).
   return (
     <SessionUsageProvider>
       <div className="flex min-h-dvh">
@@ -42,7 +42,6 @@ export default async function BankerLayout({
           <Suspense fallback={null}>{children}</Suspense>
         </div>
         <MobileNav signedIn={signedIn} />
-        {signedIn && <TokenSpendDock />}
       </div>
     </SessionUsageProvider>
   );

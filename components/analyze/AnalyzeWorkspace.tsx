@@ -1,5 +1,6 @@
 import { ModelList } from "./ModelList";
 import { AnalyzeMobileSidebar } from "./AnalyzeMobileSidebar";
+import { TokenSpendPanel } from "@/components/horizon/TokenSpendPanel";
 
 /**
  * 2-column shell for /analyze and /analyze/[modelId].
@@ -16,8 +17,14 @@ export function AnalyzeWorkspace({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-[calc(100vh-120px)] grid-cols-1 gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
       <aside className="hidden border-r border-border-soft/40 pt-4 lg:block">
-        <div className="sticky top-[96px] h-[calc(100vh-120px)]">
-          <ModelList />
+        <div className="sticky top-[96px] flex h-[calc(100vh-120px)] flex-col">
+          {/* Model list scrolls; spend panel pins to the foot of the rail. */}
+          <div className="min-h-0 flex-1">
+            <ModelList />
+          </div>
+          <div className="shrink-0 border-t border-border-soft/40 px-2 pb-2 pt-1">
+            <TokenSpendPanel />
+          </div>
         </div>
       </aside>
 

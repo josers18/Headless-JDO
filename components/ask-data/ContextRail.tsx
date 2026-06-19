@@ -2,6 +2,7 @@
 
 import { useFollowUps } from "./followUpsBus";
 import { ASK_DATA_FOLLOW_UP_PICK_EVENT } from "./askDataEvents";
+import { TokenSpendPanel } from "@/components/horizon/TokenSpendPanel";
 
 /**
  * Right rail on /ask. Per spec §T1-2: "Suggested follow-ups / Memory
@@ -57,6 +58,10 @@ export function ContextRail() {
       <ContextCard title="Related threads">
         Past conversations touching similar clients or segments.
       </ContextCard>
+
+      {/* Session token spend — in-flow at the foot of the rail, expands
+          downward. Renders null until there's spend to show. */}
+      <TokenSpendPanel />
     </aside>
   );
 }
