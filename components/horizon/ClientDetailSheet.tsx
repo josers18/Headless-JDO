@@ -299,6 +299,7 @@ export function ClientDetailSheet({
   const {
     narrative: liveNarrative,
     steps: liveSteps,
+    iterationUsage: liveIterationUsage,
     state: liveState,
     error,
     inferenceMeta: liveInferenceMeta,
@@ -363,6 +364,9 @@ export function ClientDetailSheet({
   // the live stream. The rest of the component reads only these values.
   const narrative = cached?.narrative ?? liveNarrative;
   const steps = cached ? cached.steps : liveSteps;
+  // Per-iteration usage isn't persisted in the client-detail cache, so it's
+  // only available on the live stream; cached re-opens render the trail flat.
+  const iterationUsage = cached ? [] : liveIterationUsage;
   const state = cached ? ("done" as const) : liveState;
   const inferenceMeta = cached
     ? cached.inferenceMeta
@@ -729,7 +733,11 @@ export function ClientDetailSheet({
 
           {steps.length > 0 && (
             <div className="mt-10">
-              <ReasoningTrail steps={steps} defaultOpen={false} />
+              <ReasoningTrail
+                steps={steps}
+                iterationUsage={iterationUsage}
+                defaultOpen={false}
+              />
             </div>
           )}
         </div>

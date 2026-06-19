@@ -66,8 +66,17 @@ function writeGroupOpen(next: Record<string, boolean>) {
 }
 
 export function PriorityQueue() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
-    useAgentStream();
+  const {
+    narrative,
+    steps,
+    iterationUsage,
+    state,
+    error,
+    inferenceMeta,
+    start,
+    reset,
+    cancel,
+  } = useAgentStream();
   /** True until the staggered first fetch is handed to `start` (skeleton vs idle). */
   const [awaitingKickoff, setAwaitingKickoff] = useState(true);
   const [selectedClient, setSelectedClient] = useState<PriorityClient | null>(
@@ -285,7 +294,11 @@ export function PriorityQueue() {
 
       {steps.length > 0 && (
         <div className="mt-6">
-          <ReasoningTrail steps={steps} defaultOpen={false} />
+          <ReasoningTrail
+            steps={steps}
+            iterationUsage={iterationUsage}
+            defaultOpen={false}
+          />
         </div>
       )}
 

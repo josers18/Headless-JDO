@@ -81,8 +81,17 @@ function titleShort(s: unknown): string {
 }
 
 export function TodaysArc() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
-    useAgentStream();
+  const {
+    narrative,
+    steps,
+    iterationUsage,
+    state,
+    error,
+    inferenceMeta,
+    start,
+    reset,
+    cancel,
+  } = useAgentStream();
   const [awaitingKickoff, setAwaitingKickoff] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<{
@@ -540,7 +549,11 @@ export function TodaysArc() {
 
       {steps.length > 0 && (
         <div className="mt-6">
-          <ReasoningTrail steps={steps} defaultOpen={false} />
+          <ReasoningTrail
+            steps={steps}
+            iterationUsage={iterationUsage}
+            defaultOpen={false}
+          />
         </div>
       )}
 

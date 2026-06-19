@@ -182,8 +182,17 @@ function resolveHeroIndex(brief: Brief): number {
 }
 
 export function MorningBrief() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
-    useAgentStream();
+  const {
+    narrative,
+    steps,
+    iterationUsage,
+    state,
+    error,
+    inferenceMeta,
+    start,
+    reset,
+    cancel,
+  } = useAgentStream();
   const { supported: voiceSupported, speaking, play, stop } =
     useSpokenNarration();
   const [snoozeTick, setSnoozeTick] = useState(0);
@@ -630,7 +639,11 @@ export function MorningBrief() {
 
       {steps.length > 0 && (
         <div id="morning-brief-trail" className="relative mt-10">
-          <ReasoningTrail steps={steps} defaultOpen={false} />
+          <ReasoningTrail
+            steps={steps}
+            iterationUsage={iterationUsage}
+            defaultOpen={false}
+          />
         </div>
       )}
 

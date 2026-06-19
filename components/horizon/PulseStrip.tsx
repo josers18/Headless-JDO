@@ -94,8 +94,17 @@ function temperatureStyles(t: PulseStripTemperature): {
  * UI v2 T0-1 — single-row flight-deck read; sticky wrapper lives in page.tsx.
  */
 export function PulseStrip() {
-  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
-    useAgentStream();
+  const {
+    narrative,
+    steps,
+    iterationUsage,
+    state,
+    error,
+    inferenceMeta,
+    start,
+    reset,
+    cancel,
+  } = useAgentStream();
   const [mobileOpen, setMobileOpen] = useState(false);
   const lastRefetchRef = useRef(0);
 
@@ -253,7 +262,11 @@ export function PulseStrip() {
 
       {showTrail && (
         <div className="mt-2 md:mt-3">
-          <ReasoningTrail steps={steps} defaultOpen={false} />
+          <ReasoningTrail
+            steps={steps}
+            iterationUsage={iterationUsage}
+            defaultOpen={false}
+          />
         </div>
       )}
     </div>

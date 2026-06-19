@@ -21,7 +21,10 @@ import {
   type DraftCardStatus,
   type StreamedDraft,
 } from "@/components/horizon/DraftActionCard";
-import type { Step } from "@/components/horizon/ReasoningTrail";
+import type {
+  Step,
+  IterationUsage,
+} from "@/components/horizon/ReasoningTrail";
 
 type DraftsContextValue = {
   inferenceMeta: InferenceMeta | null;
@@ -29,6 +32,7 @@ type DraftsContextValue = {
   /** Drafts whose `target_id` is not in the current priority queue client ids. */
   orphanDrafts: StreamedDraft[];
   steps: Step[];
+  iterationUsage: IterationUsage[];
   state: "idle" | "streaming" | "done" | "error";
   error: string | null;
   /** True until the staggered first `/api/drafts` fetch begins. */
@@ -42,8 +46,17 @@ type DraftsContextValue = {
 const DraftsContext = createContext<DraftsContextValue | null>(null);
 
 export function DraftsProvider({ children }: { children: ReactNode }) {
-  const { narrative, steps, state, error, inferenceMeta, start, reset, cancel } =
-    useAgentStream();
+  const {
+    narrative,
+    steps,
+    iterationUsage,
+    state,
+    error,
+    inferenceMeta,
+    start,
+    reset,
+    cancel,
+  } = useAgentStream();
   const [draftsKickoffPending, setDraftsKickoffPending] = useState(true);
   const [priorityIds, setPriorityIds] = useState<Set<string>>(new Set());
   const [statuses, setStatuses] = useState<Record<string, DraftCardStatus>>({});
@@ -142,6 +155,7 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
       drafts,
       orphanDrafts,
       steps,
+      iterationUsage,
       state,
       error,
       draftsKickoffPending,
@@ -162,6 +176,7 @@ export function DraftsProvider({ children }: { children: ReactNode }) {
       state,
       statuses,
       steps,
+      iterationUsage,
     ]
   );
 

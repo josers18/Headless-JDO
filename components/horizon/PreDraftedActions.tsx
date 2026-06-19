@@ -17,6 +17,7 @@ export function PreDraftedActions() {
     orphanDrafts,
     drafts,
     steps,
+    iterationUsage,
     state,
     error,
     draftsKickoffPending,
@@ -108,7 +109,11 @@ export function PreDraftedActions() {
 
       {steps.length > 0 && (
         <div className="mt-6">
-          <ReasoningTrail steps={steps} defaultOpen={false} />
+          <ReasoningTrail
+            steps={steps}
+            iterationUsage={iterationUsage}
+            defaultOpen={false}
+          />
         </div>
       )}
     </div>
