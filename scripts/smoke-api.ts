@@ -190,6 +190,24 @@ async function main() {
   if (strip.firstText)
     console.log(`                         snippet: "${strip.firstText.slice(0, 120)}..."`);
 
+  // /api/usage — session token-spend summary (JSON, not SSE).
+  try {
+    const r = await fetch(`${BASE}/api/usage`, {
+      headers: { Accept: "application/json", Cookie: cookie },
+    });
+    const j = (await r.json()) as {
+      models?: unknown[];
+      totals?: { inputTokens?: number; outputTokens?: number };
+    };
+    const ok =
+      r.status === 200 &&
+      Array.isArray(j.models) &&
+      typeof j.totals?.inputTokens === "number";
+    console.log(`${ok ? "PASS" : "FAIL"}  GET /api/usage (status ${r.status})`);
+  } catch (e) {
+    console.log(`FAIL  GET /api/usage — ${String(e)}`);
+  }
+
   const pass =
     h.status === 200 &&
     brief.status === 200 &&
