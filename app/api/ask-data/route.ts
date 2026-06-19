@@ -163,6 +163,20 @@ export async function POST(req: NextRequest) {
     let assistantContent: AskMessageContentBlock[] | null = null;
     let sawError: string | null = null;
 
+    // Per-turn token-spend accumulators. The agent re-yields a `usage` event
+    // once per streamHeroku call (i.e. per iteration), so we sum across
+    // iterations and write ONE token_usage row for the whole turn — matching
+    // the main stack's one-row-per-run model so "turns" and last-turn latency
+    // stay meaningful. tool_result events are the dispatched-tool count.
+    const usageAcc = {
+      model: "",
+      inputTokens: 0,
+      outputTokens: 0,
+      exact: true,
+      toolCalls: 0,
+    };
+    const turnStartedAt = Date.now();
+
     try {
       for await (const ev of runAskDataAgent({
         system: systemWithCatalog,
@@ -181,6 +195,7 @@ export async function POST(req: NextRequest) {
             input: ev.input,
           });
         } else if (ev.type === "tool_result") {
+          usageAcc.toolCalls += 1;
           send({
             type: "tool_result",
             callId: ev.callId,
@@ -195,19 +210,29 @@ export async function POST(req: NextRequest) {
           sawError = ev.message;
           send({ type: "error", message: ev.message });
         } else if (ev.type === "usage") {
-          void recordTokenUsage({
-            userId,
-            sessionId,
-            route: "ask-data",
-            model: ev.model,
-            inputTokens: ev.inputTokens,
-            outputTokens: ev.outputTokens,
-            exact: ev.exact,
-          }).catch(() => {});
+          usageAcc.model = ev.model;
+          usageAcc.inputTokens += ev.inputTokens;
+          usageAcc.outputTokens += ev.outputTokens;
+          usageAcc.exact = usageAcc.exact && ev.exact;
         }
       }
     } finally {
       await mcp.close();
+    }
+
+    // One row per turn — fire-and-forget; a DB failure must not break the SSE.
+    if (usageAcc.model) {
+      void recordTokenUsage({
+        userId,
+        sessionId,
+        route: "ask-data",
+        model: usageAcc.model,
+        inputTokens: usageAcc.inputTokens,
+        outputTokens: usageAcc.outputTokens,
+        exact: usageAcc.exact,
+        toolCalls: usageAcc.toolCalls,
+        durationMs: Date.now() - turnStartedAt,
+      }).catch(() => {});
     }
 
     // (4) Persist assistant message — always, even if the turn errored.

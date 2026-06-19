@@ -8,15 +8,38 @@ import {
   useRef,
   useState,
 } from "react";
+import { estimateCostUsd } from "@/lib/llm/modelPricing";
+
+// Mirrors lib/db/tokenUsage.ts#SessionUsageSummary. Redeclared client-side
+// (not imported) so this client component pulls in no server-only code.
+export interface SessionUsageModel {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  toolCalls: number;
+  exact: boolean;
+  costUsd: number;
+}
+
+export interface SessionUsageLastTurn {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  toolCalls: number;
+  durationMs: number;
+}
 
 export interface SessionUsageSummary {
-  models: Array<{
-    model: string;
+  models: SessionUsageModel[];
+  totals: {
     inputTokens: number;
     outputTokens: number;
     exact: boolean;
-  }>;
-  totals: { inputTokens: number; outputTokens: number; exact: boolean };
+    costUsd: number;
+  };
+  turns: number;
+  toolCalls: number;
+  lastTurn: SessionUsageLastTurn | null;
 }
 
 interface SessionUsageCtx {
@@ -30,6 +53,14 @@ interface SessionUsageCtx {
     exact: boolean;
   }) => void;
 }
+
+const EMPTY: SessionUsageSummary = {
+  models: [],
+  totals: { inputTokens: 0, outputTokens: 0, exact: true, costUsd: 0 },
+  turns: 0,
+  toolCalls: 0,
+  lastTurn: null,
+};
 
 const Ctx = createContext<SessionUsageCtx | null>(null);
 
@@ -60,6 +91,10 @@ export function SessionUsageProvider({
       });
   }, []);
 
+  // Optimistic merge of one run's token usage. The live usage_meta event only
+  // carries tokens (not tool_calls / duration), so we bump tokens + cost +
+  // turn count immediately; the DB refresh() that follows fills in the
+  // tool-call totals and last-turn latency.
   const bumpLive = useCallback(
     (u: {
       model: string;
@@ -68,22 +103,23 @@ export function SessionUsageProvider({
       exact: boolean;
     }) => {
       setData((prev) => {
-        const base: SessionUsageSummary = prev ?? {
-          models: [],
-          totals: { inputTokens: 0, outputTokens: 0, exact: true },
-        };
+        const base = prev ?? EMPTY;
         const models = base.models.map((m) => ({ ...m }));
+        const runCost = estimateCostUsd(u.model, u.inputTokens, u.outputTokens);
         const existing = models.find((m) => m.model === u.model);
         if (existing) {
           existing.inputTokens += u.inputTokens;
           existing.outputTokens += u.outputTokens;
           existing.exact = existing.exact && u.exact;
+          existing.costUsd += runCost;
         } else {
           models.push({
             model: u.model,
             inputTokens: u.inputTokens,
             outputTokens: u.outputTokens,
+            toolCalls: 0,
             exact: u.exact,
+            costUsd: runCost,
           });
         }
         return {
@@ -92,7 +128,11 @@ export function SessionUsageProvider({
             inputTokens: base.totals.inputTokens + u.inputTokens,
             outputTokens: base.totals.outputTokens + u.outputTokens,
             exact: base.totals.exact && u.exact,
+            costUsd: base.totals.costUsd + runCost,
           },
+          turns: base.turns + 1,
+          toolCalls: base.toolCalls,
+          lastTurn: base.lastTurn,
         };
       });
     },

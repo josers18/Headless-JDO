@@ -12,6 +12,7 @@ import {
   type AskDataTraceStep,
 } from "@/lib/client/useAskDataStream";
 import { useFollowUpsBus } from "./followUpsBus";
+import { useSessionUsage } from "@/components/horizon/SessionUsageProvider";
 import {
   ASK_DATA_FOLLOW_UP_PICK_EVENT,
   type AskDataFollowUpPickDetail,
@@ -47,6 +48,7 @@ export function Conversation({
   const barRef = useRef<AskDataBarRef | null>(null);
   const stream = useAskDataStream();
   const followUpsBus = useFollowUpsBus();
+  const { refresh: refreshUsage } = useSessionUsage();
   const scrollAnchor = useRef<HTMLDivElement>(null);
 
   const loadMessages = useCallback(async () => {
@@ -131,8 +133,12 @@ export function Conversation({
   useEffect(() => {
     if (stream.state === "done" || stream.state === "error") {
       void loadMessages();
+      // Reconcile the token-spend panel — this turn's row was written
+      // server-side; pull the fresh session total so the dock updates
+      // without waiting for a window-focus event.
+      refreshUsage();
     }
-  }, [stream.state, loadMessages]);
+  }, [stream.state, loadMessages, refreshUsage]);
 
   async function handleSubmit(question: string) {
     await stream.submit(threadId, question);

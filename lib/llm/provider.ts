@@ -166,7 +166,11 @@ export async function runAgentWithMcp(
       preloadedSdmApiNames: cachedSdms?.sdms.map((s) => s.apiName),
     });
 
+  // Wall-clock start for the run's duration metric (last-turn latency).
+  const startedAt = Date.now();
+
   const afterRun = (out: RunAgentOutput): RunAgentOutput => {
+    const durationMs = Date.now() - startedAt;
     // Live event for the main SSE stack (Ask Bar + sections) — instant
     // panel feedback before the DB refetch lands.
     input.onEvent?.({ type: "usage_meta", usage: out.usage });
@@ -179,6 +183,8 @@ export async function runAgentWithMcp(
       inputTokens: out.usage.inputTokens,
       outputTokens: out.usage.outputTokens,
       exact: out.usage.exact,
+      toolCalls: out.toolCalls.length,
+      durationMs,
     }).catch((e) =>
       log.warn("token_usage.write_failed", {
         route: input.route ?? input.routeHint ?? "unknown",

@@ -20,8 +20,6 @@ import { HorizonSignedIn } from "@/components/horizon/HorizonSignedIn";
 import { InsightsBatchProvider } from "@/components/horizon/InsightsBatchProvider";
 import { SectionContentPresenceProvider } from "@/components/horizon/SectionContentPresence";
 import { SectionRail } from "@/components/horizon/SectionRail";
-import { SessionUsageProvider } from "@/components/horizon/SessionUsageProvider";
-import { TokenSpendPanel } from "@/components/horizon/TokenSpendPanel";
 
 // Force dynamic — we read the Salesforce session cookie server-side to
 // decide whether to show the signed-out banner instead of kicking every
@@ -94,7 +92,7 @@ export default async function HorizonHome() {
       {signedIn && <SectionRail />}
 
       {signedIn && (
-        <SessionUsageProvider>
+        <>
           <HorizonSignedIn>
             <SectionContentPresenceProvider>
             <InsightsBatchProvider>
@@ -145,7 +143,6 @@ export default async function HorizonHome() {
                   <SectionInsight section="signals" label="Live signals" />
                   <SignalFeed />
                   <AgentLog />
-                  <TokenSpendPanel />
                 </div>
               </aside>
             </div>
@@ -154,14 +151,13 @@ export default async function HorizonHome() {
                 page; on >=1280px it lives in the right rail above. */}
             <div className="xl:hidden">
               <AgentLog />
-              <TokenSpendPanel />
             </div>
             </InsightsBatchProvider>
             </SectionContentPresenceProvider>
           </HorizonSignedIn>
 
           <AskBar />
-        </SessionUsageProvider>
+        </>
       )}
     </main>
   );

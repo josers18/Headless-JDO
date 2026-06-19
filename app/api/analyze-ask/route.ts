@@ -107,6 +107,17 @@ export async function POST(req: NextRequest) {
     let finalAssistantText = "";
     let assistantContent: AnalyzeContentBlock[] | null = null;
 
+    // Per-turn token-spend accumulators — one token_usage row per turn,
+    // matching the main stack (see ask-data/route.ts for the rationale).
+    const usageAcc = {
+      model: "",
+      inputTokens: 0,
+      outputTokens: 0,
+      exact: true,
+      toolCalls: 0,
+    };
+    const turnStartedAt = Date.now();
+
     try {
       for await (const ev of runAnalyzeAgent({
         system: systemPrompt,
@@ -126,6 +137,7 @@ export async function POST(req: NextRequest) {
             input: ev.input,
           });
         } else if (ev.type === "tool_result") {
+          usageAcc.toolCalls += 1;
           send({
             type: "tool_result",
             callId: ev.callId,
@@ -153,19 +165,29 @@ export async function POST(req: NextRequest) {
         } else if (ev.type === "error") {
           send({ type: "error", message: ev.message });
         } else if (ev.type === "usage") {
-          void recordTokenUsage({
-            userId,
-            sessionId,
-            route: "analyze",
-            model: ev.model,
-            inputTokens: ev.inputTokens,
-            outputTokens: ev.outputTokens,
-            exact: ev.exact,
-          }).catch(() => {});
+          usageAcc.model = ev.model;
+          usageAcc.inputTokens += ev.inputTokens;
+          usageAcc.outputTokens += ev.outputTokens;
+          usageAcc.exact = usageAcc.exact && ev.exact;
         }
       }
     } finally {
       await mcp.close();
+    }
+
+    // One row per turn — fire-and-forget; a DB failure must not break the SSE.
+    if (usageAcc.model) {
+      void recordTokenUsage({
+        userId,
+        sessionId,
+        route: "analyze",
+        model: usageAcc.model,
+        inputTokens: usageAcc.inputTokens,
+        outputTokens: usageAcc.outputTokens,
+        exact: usageAcc.exact,
+        toolCalls: usageAcc.toolCalls,
+        durationMs: Date.now() - turnStartedAt,
+      }).catch(() => {});
     }
 
     // Persist only when the DB is wired. Failure here is non-fatal for

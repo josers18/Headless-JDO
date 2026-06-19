@@ -114,3 +114,11 @@ create table if not exists token_usage (
 );
 create index if not exists token_usage_session_idx
   on token_usage (session_id, created_at);
+
+-- 2026-06-19 (panel v2): per-run tool-call count + wall-clock duration, for
+-- the panel's "tool calls" and "last turn latency" metrics. Added via
+-- idempotent ALTER so the release-phase runner can apply them to an existing
+-- token_usage table. Both default 0 so rows written before this migration
+-- read cleanly.
+alter table token_usage add column if not exists tool_calls integer not null default 0;
+alter table token_usage add column if not exists duration_ms integer not null default 0;

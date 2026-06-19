@@ -14,6 +14,7 @@ import {
 } from "./analyzeEvents";
 import { AskDataTrace } from "@/components/ask-data/AskDataTrace";
 import { MarkdownView } from "@/components/horizon/MarkdownView";
+import { useSessionUsage } from "@/components/horizon/SessionUsageProvider";
 import {
   useAnalyzeStream,
   type AnalyzeTable as AnalyzeTableType,
@@ -75,6 +76,7 @@ export function AnalyzeWorkbench({
 }: AnalyzeWorkbenchProps) {
   const barRef = useRef<AnalyzeBarRef | null>(null);
   const stream = useAnalyzeStream();
+  const { refresh: refreshUsage } = useSessionUsage();
   const scrollAnchor = useRef<HTMLDivElement>(null);
   const [activeQuestion, setActiveQuestion] = useState<string | null>(null);
   const [finishedTurns, setFinishedTurns] = useState<FinishedTurn[]>([]);
@@ -108,6 +110,15 @@ export function AnalyzeWorkbench({
     stream.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream.state]);
+
+  // Reconcile the token-spend panel when any analyze turn finishes — the
+  // row was written server-side; pull the fresh session total so the dock
+  // updates without waiting for a window-focus event. Separate from the
+  // snapshot effect above (which early-returns when there's no active
+  // question) so the refresh always fires.
+  useEffect(() => {
+    if (stream.state === "done" || stream.state === "error") refreshUsage();
+  }, [stream.state, refreshUsage]);
 
   useEffect(() => {
     scrollAnchor.current?.scrollIntoView({ behavior: "smooth", block: "end" });
