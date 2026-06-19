@@ -25,7 +25,6 @@ import { stripThinkTags } from "@/lib/analyze/sanitize";
 import { extractStructuredFromProse } from "@/lib/analyze/proseToData";
 import { sortRowsByDateLikeColumn } from "@/lib/analyze/sortByDate";
 import { log } from "@/lib/log";
-import { optionalEnv } from "@/lib/utils";
 
 /**
  * Tools Kimi is allowed to see on the Analyze surface. Doc-grounded
@@ -260,7 +259,7 @@ export async function* runAnalyzeAgent(
             inputTokens: ev.inputTokens,
             outputTokens: ev.outputTokens,
             exact: ev.exact,
-            model: optionalEnv("HEROKU_INFERENCE_ONYX_MODEL_ID") || "kimi-k2-thinking",
+            model: ev.model,
           };
         }
       }

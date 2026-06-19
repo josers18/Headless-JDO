@@ -51,6 +51,7 @@ export type HerokuInferenceEvent =
   | { type: "done"; stopReason: string | null }
   | {
       type: "usage";
+      model: string;
       inputTokens: number;
       outputTokens: number;
       exact: boolean;
@@ -297,15 +298,20 @@ export async function* streamHeroku(
     };
   }
 
+  // why: stamp the usage event with the tier's RESOLVED model id (from
+  // clientFor) rather than letting callers guess — otherwise a tier served
+  // by a non-Kimi backend would be mislabeled in the token-spend panel.
   yield usageAcc.exact
     ? {
         type: "usage" as const,
+        model: modelId,
         inputTokens: usageAcc.inputTokens,
         outputTokens: usageAcc.outputTokens,
         exact: true,
       }
     : {
         type: "usage" as const,
+        model: modelId,
         inputTokens: estimateTokens(
           messages
             .map((m) =>
@@ -320,9 +326,6 @@ export async function* streamHeroku(
       };
 
   yield { type: "done", stopReason };
-  // Avoid "modelId was defined but unused" false-negative — it's surfaced
-  // on the caller via inferHeroku's result, not through the stream.
-  void modelId;
 }
 
 function safeParseJson(s: string): unknown {

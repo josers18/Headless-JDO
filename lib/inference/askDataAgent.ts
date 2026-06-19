@@ -28,7 +28,6 @@ import type {
   FirstPartyDcToolDef,
 } from "@/lib/mcp/firstPartyDataCloud";
 import { stripThinkTags } from "@/lib/analyze/sanitize";
-import { optionalEnv } from "@/lib/utils";
 
 // Soft budget: if the agent hasn't answered after N tool-call iterations
 // we bail. Heroku router already stalls long requests — this keeps us well
@@ -223,7 +222,7 @@ export async function* runAskDataAgent(
             inputTokens: ev.inputTokens,
             outputTokens: ev.outputTokens,
             exact: ev.exact,
-            model: optionalEnv("HEROKU_INFERENCE_ONYX_MODEL_ID") || "kimi-k2-thinking",
+            model: ev.model,
           };
         }
       }
