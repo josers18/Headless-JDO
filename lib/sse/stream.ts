@@ -24,6 +24,15 @@ export type SseEvent =
       backend: InferenceBackend;
       model: string;
     }
+  | {
+      type: "usage_meta";
+      usage: {
+        model: string;
+        inputTokens: number;
+        outputTokens: number;
+        exact: boolean;
+      };
+    }
   | { type: "reasoning"; step: ReasoningStep }
   | { type: "thread_snapshot"; messages: AskThreadMessage[] }
   | { type: "done" }
@@ -39,6 +48,19 @@ export function sendInferenceMeta(
     backend,
     model: modelIdFor(backend),
   });
+}
+
+/** Emit this run's token usage so the panel can bump live. */
+export function sendUsageMeta(
+  send: (e: SseEvent) => void,
+  usage: {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    exact: boolean;
+  }
+): void {
+  send({ type: "usage_meta", usage });
 }
 
 export function sseEncode(event: SseEvent): string {
