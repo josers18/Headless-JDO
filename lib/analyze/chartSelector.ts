@@ -131,10 +131,27 @@ export async function selectChartSpec(input: {
       tier: "short",
       system: SELECTOR_PROMPT,
       messages: [{ role: "user", content: userMsg }],
-      maxTokens: 1600,
+      // why: tier "short" is MiniMax M2, a thinking model that burns
+      // completion-token budget on silent internal reasoning before any
+      // visible JSON (see proseToData.ts). This call also echoes a 40-row
+      // data preview back in props.data, so the visible output alone can be
+      // large. The old 1600 ceiling truncated mid-reasoning → empty text →
+      // table fallback / no chart. 8000 covers reasoning + a full spec;
+      // it's a ceiling, not a target. See charts bug, 2026-06-19.
+      maxTokens: 8000,
       temperature: 0.2,
       responseFormat: { type: "json_object" },
     });
+    if (res.stopReason === "length") {
+      // Truncated before a complete spec — fall through to validateChartSpec,
+      // which yields the table fallback, but log so we know the budget bit.
+      const result = validateChartSpec(null, input.data);
+      return {
+        spec: result.ok ? result.spec : result.fallback,
+        wasFallback: true,
+        fallbackReason: "selector truncated (finish_reason=length)",
+      };
+    }
     raw = parseJsonLoose(res.text);
   } catch (e) {
     // MiniMax failed — return a table.

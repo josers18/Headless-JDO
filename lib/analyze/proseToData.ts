@@ -66,9 +66,27 @@ export async function extractStructuredFromProse(input: {
         },
       ],
       temperature: 0.1,
-      maxTokens: 2500,
+      // why: tier "short" is MiniMax M2 — a *thinking* model. It spends
+      // completion-token budget on silent internal reasoning (no
+      // reasoning_content field) BEFORE emitting any visible JSON. A 41-
+      // month CSAT narrative burned the entire old 2500 budget on reasoning
+      // and finished with finish_reason="length" and zero content → null →
+      // no chart. Verified: 2500 truncates, 6000 completes. max_tokens is a
+      // ceiling not a target (the model stops at "stop" well before it), so
+      // a generous 8000 is essentially free except when it rescues a long
+      // extraction. See ReasoningTrail charts bug, 2026-06-19.
+      maxTokens: 8000,
       responseFormat: { type: "json_object" },
     });
+    if (res.stopReason === "length") {
+      // Truncated before visible JSON — MiniMax reasoning overran even the
+      // raised budget. Surface it so we can bump again rather than silently
+      // dropping the chart.
+      log.warn("prose_extract.truncated", {
+        proseLen: prose.length,
+        rawLen: res.text?.length ?? 0,
+      });
+    }
     const parsed = parseLoose(res.text);
     if (!parsed || typeof parsed !== "object") {
       log.warn("prose_extract.parse_empty", {
