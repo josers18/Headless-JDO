@@ -26,6 +26,7 @@ import {
   toSystemPromptSection as toSdmCatalogSection,
 } from "@/lib/llm/tableauSemanticCache";
 import { log } from "@/lib/log";
+import { recordTokenUsage } from "@/lib/db/tokenUsage";
 
 export type { InferenceBackend } from "./inferenceClients";
 
@@ -43,6 +44,12 @@ export interface RunAgentInput {
   routeHint?: string;
   /** Force `"onyx"` for Kimi-only runs (tests). Omit for Claude primary + optional Kimi fallback. */
   inferenceBackend?: InferenceBackend;
+  /** Banker user id for token-spend attribution. */
+  userId?: string;
+  /** Login-session id (hz_sid) for token-spend scoping. */
+  sessionId?: string;
+  /** Route label for token-spend rows (e.g. "ask", "brief"). */
+  route?: string;
 }
 
 export interface RunAgentOutput {
@@ -58,13 +65,28 @@ export interface RunAgentOutput {
   transcript: ChatCompletionMessageParam[];
   /** Inference stack that completed this run (usually `heroku`; `onyx` if Kimi fallback succeeded). */
   inferenceBackend: InferenceBackend;
+  usage: {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    exact: boolean;
+  };
 }
 
 function withInferenceBackend(
   result: AgentRunResult,
   inferenceBackend: InferenceBackend
 ): RunAgentOutput {
-  return { ...result, inferenceBackend };
+  return {
+    ...result,
+    inferenceBackend,
+    usage: {
+      model: modelIdFor(inferenceBackend),
+      inputTokens: result.usage.inputTokens,
+      outputTokens: result.usage.outputTokens,
+      exact: result.usage.exact,
+    },
+  };
 }
 
 /**
@@ -144,17 +166,39 @@ export async function runAgentWithMcp(
       preloadedSdmApiNames: cachedSdms?.sdms.map((s) => s.apiName),
     });
 
+  const afterRun = (out: RunAgentOutput): RunAgentOutput => {
+    // Live event for the main SSE stack (Ask Bar + sections) — instant
+    // panel feedback before the DB refetch lands.
+    input.onEvent?.({ type: "usage_meta", usage: out.usage });
+    // Fire-and-forget persistence. A DB failure must never break a run.
+    void recordTokenUsage({
+      userId: input.userId ?? "unknown",
+      sessionId: input.sessionId ?? "unknown",
+      route: input.route ?? input.routeHint ?? "unknown",
+      model: out.usage.model,
+      inputTokens: out.usage.inputTokens,
+      outputTokens: out.usage.outputTokens,
+      exact: out.usage.exact,
+    }).catch((e) =>
+      log.warn("token_usage.write_failed", {
+        route: input.route ?? input.routeHint ?? "unknown",
+        error: e instanceof Error ? e.message : String(e),
+      })
+    );
+    return out;
+  };
+
   try {
     if (requested === "onyx") {
       log.info("agent.inference.kimi_only", {
         routeHint: input.routeHint ?? "",
         model: modelIdFor("onyx"),
       });
-      return withInferenceBackend(await runOnce("onyx"), "onyx");
+      return afterRun(withInferenceBackend(await runOnce("onyx"), "onyx"));
     }
 
     try {
-      return withInferenceBackend(await runOnce("heroku"), "heroku");
+      return afterRun(withInferenceBackend(await runOnce("heroku"), "heroku"));
     } catch (primaryErr) {
       if (!isOnyxInferenceConfigured()) throw primaryErr;
       const reason =
@@ -163,7 +207,7 @@ export async function runAgentWithMcp(
         routeHint: input.routeHint ?? "",
         error: reason.slice(0, 500),
       });
-      return withInferenceBackend(await runOnce("onyx"), "onyx");
+      return afterRun(withInferenceBackend(await runOnce("onyx"), "onyx"));
     }
   } finally {
     await registry.close();
