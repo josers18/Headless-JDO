@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, getSessionId } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { priorityQueuePrompt } from "@/lib/prompts/priority-queue";
@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
 
   const bankerUserId =
     token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown");
+  const sessionId = await getSessionId();
   const tz = optionalEnv("DEMO_BANKER_TZ", "America/New_York");
 
   log.info("priority.start", { cid, bypass });
@@ -55,6 +56,9 @@ export async function GET(req: NextRequest) {
           },
         ],
         salesforceToken: token.access_token,
+        userId: bankerUserId,
+        sessionId,
+        route: "priority",
         maxIterations: 7,
         maxTokens: 2048,
         routeHint: "priority",
@@ -76,6 +80,8 @@ export async function GET(req: NextRequest) {
               is_error: e.is_error,
               preview: e.preview ?? "",
             });
+          } else if (e.type === "usage_meta" && e.usage) {
+            send({ type: "usage_meta", usage: e.usage });
           }
         },
       });

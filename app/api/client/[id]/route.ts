@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, getSessionId } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { clientDetailPrompt } from "@/lib/prompts/client-detail";
@@ -25,6 +25,9 @@ export async function GET(
   const { id } = await params;
   const clientId = decodeURIComponent(id);
   const clientName = req.nextUrl.searchParams.get("name") ?? undefined;
+  const bankerUserId =
+    token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown");
+  const sessionId = await getSessionId();
 
   log.info("client.start", { cid, clientId });
 
@@ -37,12 +40,14 @@ export async function GET(
           content: clientDetailPrompt({
             clientId,
             clientName,
-            bankerUserId:
-              token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown"),
+            bankerUserId,
           }),
         },
       ],
       salesforceToken: token.access_token,
+      userId: bankerUserId,
+      sessionId,
+      route: "client",
       // 6 tool calls (4 SOQL + 1 DC SQL + 1 Tableau analyze) fan out in
       // parallel on iteration 1; iteration 2 is the JSON synthesis. The
       // browser-side session cache (sessionStorage) makes the first open
@@ -69,6 +74,8 @@ export async function GET(
             is_error: e.is_error,
             preview: e.preview ?? "",
           });
+        } else if (e.type === "usage_meta" && e.usage) {
+          send({ type: "usage_meta", usage: e.usage });
         }
       },
     });

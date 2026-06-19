@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ensureFreshToken, resolveBankerDisplayName } from "@/lib/salesforce/token";
+import { ensureFreshToken, getSessionId, resolveBankerDisplayName } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import {
@@ -9,6 +9,7 @@ import {
 } from "@/lib/prompts/section-insight";
 import { makeSseStream, sendInferenceMeta } from "@/lib/sse/stream";
 import { log, correlationId } from "@/lib/log";
+import { optionalEnv } from "@/lib/utils";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ export async function POST(req: NextRequest) {
   const cid = correlationId();
   const token = await ensureFreshToken();
   if (!token) return new Response("unauthenticated", { status: 401 });
+  const bankerUserId = token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown");
+  const sessionId = await getSessionId();
 
   let body: unknown;
   try {
@@ -61,6 +64,9 @@ export async function POST(req: NextRequest) {
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: prompt }],
         salesforceToken: token.access_token,
+        userId: bankerUserId,
+        sessionId,
+        route: "insights",
         maxIterations: 6,
         maxTokens: 2048,
         routeHint: "insights",
@@ -82,6 +88,8 @@ export async function POST(req: NextRequest) {
               is_error: e.is_error,
               preview: e.preview ?? "",
             });
+          } else if (e.type === "usage_meta" && e.usage) {
+            send({ type: "usage_meta", usage: e.usage });
           }
         },
       });
@@ -112,6 +120,9 @@ export async function POST(req: NextRequest) {
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }],
       salesforceToken: token.access_token,
+      userId: bankerUserId,
+      sessionId,
+      route: "insights",
       maxIterations: 4,
       maxTokens: 1024,
       routeHint: "insights",
@@ -133,6 +144,8 @@ export async function POST(req: NextRequest) {
             is_error: e.is_error,
             preview: e.preview ?? "",
           });
+        } else if (e.type === "usage_meta" && e.usage) {
+          send({ type: "usage_meta", usage: e.usage });
         }
       },
     });

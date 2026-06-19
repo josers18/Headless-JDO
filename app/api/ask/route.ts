@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, getSessionId } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { askAnythingPrompt } from "@/lib/prompts/ask-anything";
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
 
   const bankerUserId =
     token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown");
+  const sessionId = await getSessionId();
 
   const last = seedMessages[seedMessages.length - 1];
   const rawUtterance =
@@ -87,6 +88,9 @@ export async function POST(req: NextRequest) {
       system: SYSTEM_PROMPT,
       messages: messagesForApi,
       salesforceToken: token.access_token,
+      userId: bankerUserId,
+      sessionId,
+      route: "ask",
       maxIterations: 12,
       forceFirstToolCall,
       routeHint: fromGhostClick ? "ghost-ask" : undefined,
@@ -108,6 +112,8 @@ export async function POST(req: NextRequest) {
             is_error: e.is_error,
             preview: e.preview ?? "",
           });
+        } else if (e.type === "usage_meta" && e.usage) {
+          send({ type: "usage_meta", usage: e.usage });
         }
       },
     });

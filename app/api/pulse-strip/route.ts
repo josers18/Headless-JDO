@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, getSessionId } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { pulseStripPrompt } from "@/lib/prompts/pulse-strip";
@@ -18,6 +18,7 @@ export async function GET(_req: NextRequest) {
 
   const bankerUserId =
     token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown");
+  const sessionId = await getSessionId();
   const bankerTz = optionalEnv("DEMO_BANKER_TZ", "America/New_York");
 
   log.info("pulse-strip.start", { cid, banker: bankerUserId });
@@ -32,6 +33,9 @@ export async function GET(_req: NextRequest) {
         },
       ],
       salesforceToken: token.access_token,
+      userId: bankerUserId,
+      sessionId,
+      route: "pulse-strip",
       maxIterations: 5,
       maxTokens: 1024,
       forceFirstToolCall: true,
@@ -54,6 +58,8 @@ export async function GET(_req: NextRequest) {
             is_error: e.is_error,
             preview: e.preview ?? "",
           });
+        } else if (e.type === "usage_meta" && e.usage) {
+          send({ type: "usage_meta", usage: e.usage });
         }
       },
     });

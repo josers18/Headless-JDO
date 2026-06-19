@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { ensureFreshToken, resolveBankerDisplayName } from "@/lib/salesforce/token";
+import { ensureFreshToken, getSessionId, resolveBankerDisplayName } from "@/lib/salesforce/token";
 import { runAgentWithMcp } from "@/lib/llm/provider";
 import { SYSTEM_PROMPT } from "@/lib/prompts/system";
 import { morningBriefPrompt } from "@/lib/prompts/morning-brief";
@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
   const localHour24 = hourInTimeZone(now, tz);
   const bankerUserId =
     token.user_id ?? optionalEnv("DEMO_BANKER_USER_ID", "unknown");
+  const sessionId = await getSessionId();
   const prompt = morningBriefPrompt({
     bankerName: resolveBankerDisplayName(token),
     bankerUserId,
@@ -64,6 +65,9 @@ export async function POST(req: NextRequest) {
         system: SYSTEM_PROMPT,
         messages: [{ role: "user", content: prompt }],
         salesforceToken: token.access_token,
+        userId: bankerUserId,
+        sessionId,
+        route: "brief",
         maxIterations: 6,
         maxTokens: 2048,
         routeHint: "morning-brief",
@@ -91,6 +95,8 @@ export async function POST(req: NextRequest) {
               is_error: e.is_error,
               preview: e.preview ?? "",
             });
+          } else if (e.type === "usage_meta" && e.usage) {
+            send({ type: "usage_meta", usage: e.usage });
           }
         },
       });
