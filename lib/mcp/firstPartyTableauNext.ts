@@ -125,7 +125,21 @@ export async function openFirstPartyTableauNext(options: {
           { timeout, signal: controller.signal }
         );
         const isError = Boolean(raw.isError);
-        const modelText = extractText(raw.content).slice(0, 8_000);
+        // why: analyze_data wraps a small `answer` + structured data in a
+        // payload alongside a large `troubleshootingInfo` blob (IR spec,
+        // raw SQL, full row dump) that nothing downstream reads. On a
+        // 41-month series that blob pushes the JSON well past 8KB, so the
+        // blind slice below used to cut mid-`troubleshootingInfo` —
+        // corrupting the JSON so `extractAnalyzeAnswer`/`extractTableFallback`
+        // (both do a whole-string JSON.parse) threw and returned null →
+        // no dominant answer → no table, no chart, only the model's prose.
+        // Strip the blob BEFORE the cap so the answer + data survive intact
+        // (and the model's tool_result context stays lean). See charts bug,
+        // 2026-06-19.
+        const modelText = slimAnalyzePayload(extractText(raw.content)).slice(
+          0,
+          8_000
+        );
         const textPreview = modelText.slice(0, 2_000);
         return { isError, content: raw.content, modelText, textPreview };
       } catch (err) {
@@ -149,6 +163,34 @@ export async function openFirstPartyTableauNext(options: {
       }
     },
   };
+}
+
+/**
+ * analyze_data responses carry a `troubleshootingInfo` object (IR spec,
+ * raw SQL query, and a full row dump) that no downstream consumer reads —
+ * it's pure debug noise. On large result sets it dominates the payload
+ * and, once the whole thing exceeds the 8KB model-context cap, a blind
+ * string slice corrupts the surrounding JSON (the `answer` + structured
+ * data live near the front, the blob near the back). Drop the blob while
+ * the JSON is still well-formed so the cap only ever trims content nobody
+ * needs. Best-effort: if the text isn't the expected JSON object, return
+ * it untouched — the cap still applies.
+ */
+function slimAnalyzePayload(text: string): string {
+  if (!text || !text.includes("troubleshootingInfo")) return text;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return text;
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (!("troubleshootingInfo" in obj)) return text;
+  delete obj.troubleshootingInfo;
+  return JSON.stringify(obj);
 }
 
 function extractText(content: unknown): string {
