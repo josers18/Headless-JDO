@@ -24,6 +24,7 @@ import type {
   ChatCompletionTool,
   ChatCompletionToolChoiceOption,
 } from "openai/resources/chat/completions";
+import { estimateTokens, foldUsageChunk } from "@/lib/llm/tokenUsageCapture";
 
 export type HerokuInferenceTier = "reasoning" | "short";
 
@@ -47,7 +48,13 @@ export type HerokuInferenceEvent =
       name: string;
       input: unknown;
     }
-  | { type: "done"; stopReason: string | null };
+  | { type: "done"; stopReason: string | null }
+  | {
+      type: "usage";
+      inputTokens: number;
+      outputTokens: number;
+      exact: boolean;
+    };
 
 export type HerokuInferenceParams = {
   tier: HerokuInferenceTier;
@@ -211,6 +218,7 @@ export async function* streamHeroku(
       model: modelId,
       messages,
       stream: true,
+      stream_options: { include_usage: true },
       ...(params.tools && params.tools.length > 0
         ? { tools: params.tools, tool_choice: params.toolChoice ?? "auto" }
         : {}),
@@ -235,6 +243,9 @@ export async function* streamHeroku(
   >();
   let stopReason: string | null = null;
 
+  const usageAcc = { inputTokens: 0, outputTokens: 0, exact: false };
+  let assistantText = "";
+
   for await (const chunk of stream) {
     const choice = chunk.choices[0];
     if (!choice) continue;
@@ -245,6 +256,7 @@ export async function* streamHeroku(
       typeof delta.content === "string" &&
       delta.content.length > 0
     ) {
+      assistantText += delta.content;
       yield { type: "token", text: delta.content };
     }
 
@@ -269,6 +281,8 @@ export async function* streamHeroku(
     if (choice.finish_reason) {
       stopReason = choice.finish_reason;
     }
+
+    foldUsageChunk(usageAcc, chunk.usage);
   }
 
   // On finish, emit a completion marker for each buffered tool call
@@ -283,6 +297,28 @@ export async function* streamHeroku(
       input: safeParseJson(v.argsJson),
     };
   }
+
+  yield usageAcc.exact
+    ? {
+        type: "usage" as const,
+        inputTokens: usageAcc.inputTokens,
+        outputTokens: usageAcc.outputTokens,
+        exact: true,
+      }
+    : {
+        type: "usage" as const,
+        inputTokens: estimateTokens(
+          messages
+            .map((m) =>
+              typeof m.content === "string"
+                ? m.content
+                : JSON.stringify(m.content ?? "")
+            )
+            .join("\n")
+        ),
+        outputTokens: estimateTokens(assistantText),
+        exact: false,
+      };
 
   yield { type: "done", stopReason };
   // Avoid "modelId was defined but unused" false-negative — it's surfaced

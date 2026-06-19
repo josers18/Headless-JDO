@@ -2,7 +2,8 @@ import type { NextRequest } from "next/server";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 import { currentBankerUserId } from "@/lib/ask/currentUser";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, getSessionId } from "@/lib/salesforce/token";
+import { recordTokenUsage } from "@/lib/db/tokenUsage";
 import { openFirstPartyTableauNext } from "@/lib/mcp/firstPartyTableauNext";
 import { getModelProfile } from "@/lib/analyze/getModelProfile";
 import { runAnalyzeAgent } from "@/lib/inference/analyzeAgent";
@@ -42,6 +43,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const userId = await currentBankerUserId();
   if (!userId) return jsonError("unauthenticated", 401);
+  const sessionId = await getSessionId();
   const sfToken = await ensureFreshToken();
   if (!sfToken?.access_token) {
     return jsonError("salesforce session expired", 401);
@@ -150,6 +152,16 @@ export async function POST(req: NextRequest) {
           assistantContent = ev.contentBlocks;
         } else if (ev.type === "error") {
           send({ type: "error", message: ev.message });
+        } else if (ev.type === "usage") {
+          void recordTokenUsage({
+            userId,
+            sessionId,
+            route: "analyze",
+            model: ev.model,
+            inputTokens: ev.inputTokens,
+            outputTokens: ev.outputTokens,
+            exact: ev.exact,
+          }).catch(() => {});
         }
       }
     } finally {

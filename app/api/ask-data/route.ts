@@ -23,7 +23,8 @@ import {
   makeAskDataStream,
 } from "@/lib/sse/askData";
 import { openFirstPartyDataCloud } from "@/lib/mcp/firstPartyDataCloud";
-import { ensureFreshToken } from "@/lib/salesforce/token";
+import { ensureFreshToken, getSessionId } from "@/lib/salesforce/token";
+import { recordTokenUsage } from "@/lib/db/tokenUsage";
 import {
   loadCachedDcMetadata,
   toSystemPromptSection as toDcCatalogSection,
@@ -49,6 +50,7 @@ export async function POST(req: NextRequest) {
   if (!userId) {
     return jsonError("unauthenticated", 401);
   }
+  const sessionId = await getSessionId();
 
   // Auth upgrade from T1-3 (self-hosted MCP) to Path C (first-party
   // Data 360 MCP): the Salesforce-hosted MCP authenticates with the
@@ -192,6 +194,16 @@ export async function POST(req: NextRequest) {
         } else if (ev.type === "error") {
           sawError = ev.message;
           send({ type: "error", message: ev.message });
+        } else if (ev.type === "usage") {
+          void recordTokenUsage({
+            userId,
+            sessionId,
+            route: "ask-data",
+            model: ev.model,
+            inputTokens: ev.inputTokens,
+            outputTokens: ev.outputTokens,
+            exact: ev.exact,
+          }).catch(() => {});
         }
       }
     } finally {

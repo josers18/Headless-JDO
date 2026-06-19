@@ -28,6 +28,7 @@ import type {
   FirstPartyDcToolDef,
 } from "@/lib/mcp/firstPartyDataCloud";
 import { stripThinkTags } from "@/lib/analyze/sanitize";
+import { optionalEnv } from "@/lib/utils";
 
 // Soft budget: if the agent hasn't answered after N tool-call iterations
 // we bail. Heroku router already stalls long requests — this keeps us well
@@ -76,7 +77,14 @@ export type AskDataAgentEvent =
        */
       contentBlocks: AskDataContentBlock[];
     }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | {
+      type: "usage";
+      inputTokens: number;
+      outputTokens: number;
+      exact: boolean;
+      model: string;
+    };
 
 export interface AskDataAgentOptions {
   /** System prompt. Kept tight (Q-T1-3-b = A). */
@@ -209,6 +217,14 @@ export async function* runAskDataAgent(
           });
         } else if (ev.type === "done") {
           stopReason = ev.stopReason;
+        } else if (ev.type === "usage") {
+          yield {
+            type: "usage",
+            inputTokens: ev.inputTokens,
+            outputTokens: ev.outputTokens,
+            exact: ev.exact,
+            model: optionalEnv("HEROKU_INFERENCE_ONYX_MODEL_ID") || "kimi-k2-thinking",
+          };
         }
       }
     } catch (err) {
