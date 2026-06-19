@@ -9,6 +9,7 @@ import { PreDraftedActions } from "@/components/horizon/PreDraftedActions";
 import { SignalFeed } from "@/components/horizon/SignalFeed";
 import { SectionInsight } from "@/components/horizon/SectionInsight";
 import { AgentLog } from "@/components/horizon/AgentLog";
+import { TokenSpendPanel } from "@/components/horizon/TokenSpendPanel";
 import { ThemeSwitcher } from "@/components/horizon/ThemeSwitcher";
 import { UserMenu } from "@/components/horizon/UserMenu";
 import { getBankerMenuProfile } from "@/lib/salesforce/token";
@@ -143,6 +144,7 @@ export default async function HorizonHome() {
                   <SectionInsight section="signals" label="Live signals" />
                   <SignalFeed />
                   <AgentLog />
+                  <TokenSpendPanel />
                 </div>
               </aside>
             </div>
@@ -151,6 +153,7 @@ export default async function HorizonHome() {
                 page; on >=1280px it lives in the right rail above. */}
             <div className="xl:hidden">
               <AgentLog />
+              <TokenSpendPanel />
             </div>
             </InsightsBatchProvider>
             </SectionContentPresenceProvider>
