@@ -202,6 +202,9 @@ export async function POST(req: NextRequest) {
             name: ev.name,
             isError: ev.isError,
             preview: ev.preview,
+            ...(typeof ev.resultTokens === "number"
+              ? { resultTokens: ev.resultTokens }
+              : {}),
           });
         } else if (ev.type === "turn_complete") {
           finalAssistantText = ev.text;
@@ -214,6 +217,14 @@ export async function POST(req: NextRequest) {
           usageAcc.inputTokens += ev.inputTokens;
           usageAcc.outputTokens += ev.outputTokens;
           usageAcc.exact = usageAcc.exact && ev.exact;
+          // Forward per-iteration usage to the trail.
+          send({
+            type: "iteration_usage",
+            iteration: ev.iteration,
+            inputTokens: ev.inputTokens,
+            outputTokens: ev.outputTokens,
+            exact: ev.exact,
+          });
         }
       }
     } finally {

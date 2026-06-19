@@ -13,6 +13,7 @@ import {
 } from "@/lib/client/useAskDataStream";
 import { useFollowUpsBus } from "./followUpsBus";
 import { useSessionUsage } from "@/components/horizon/SessionUsageProvider";
+import type { IterationUsage } from "@/components/horizon/ReasoningTrail";
 import {
   ASK_DATA_FOLLOW_UP_PICK_EVENT,
   type AskDataFollowUpPickDetail,
@@ -187,6 +188,7 @@ export function Conversation({
           <LiveAssistantTurn
             narrative={stream.narrative}
             trace={stream.trace}
+            iterationUsage={stream.iterationUsage}
           />
         )}
 
@@ -254,15 +256,21 @@ function MessageRow({ message }: { message: PersistedMessage }) {
 function LiveAssistantTurn({
   narrative,
   trace,
+  iterationUsage,
 }: {
   narrative: string;
   trace: AskDataTraceStep[];
+  iterationUsage: IterationUsage[];
 }) {
   return (
     <div className="max-w-full">
       {trace.length > 0 && (
         <div className="mb-3">
-          <AskDataTrace steps={trace} defaultOpen={false} />
+          <AskDataTrace
+            steps={trace}
+            iterationUsage={iterationUsage}
+            defaultOpen={false}
+          />
         </div>
       )}
       <div className="max-w-full text-[14px] leading-relaxed text-text">

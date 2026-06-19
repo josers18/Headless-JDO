@@ -18,6 +18,15 @@ export type SseEvent =
       tool: string;
       is_error?: boolean;
       preview: string;
+      /** Approx token size of the result the model ingested (estimate). */
+      resultTokens?: number;
+    }
+  | {
+      type: "iteration_usage";
+      iteration: number;
+      inputTokens: number;
+      outputTokens: number;
+      exact: boolean;
     }
   | {
       type: "inference_meta";
@@ -61,6 +70,54 @@ export function sendUsageMeta(
   }
 ): void {
   send({ type: "usage_meta", usage });
+}
+
+/**
+ * Forward a main-stack AgentEvent to the SSE stream. Replaces the identical
+ * inline `onEvent` branches that lived in every agent route — wire the agent's
+ * events to the client in ONE place. Pass it as the route's `onEvent`:
+ *
+ *   onEvent: (e) => forwardAgentEvent(send, e)
+ *
+ * Returns nothing; unknown / lifecycle-only event types (iteration_start,
+ * final) are intentionally not forwarded.
+ */
+export function forwardAgentEvent(
+  send: (e: SseEvent) => void,
+  e: import("@/lib/llm/heroku").AgentEvent
+): void {
+  if (e.type === "text_delta" && e.text) {
+    send({ type: "text_delta", text: e.text });
+  } else if (e.type === "tool_use" && e.server && e.tool) {
+    send({ type: "tool_use", server: e.server, tool: e.tool, input: e.input });
+  } else if (e.type === "tool_result" && e.server && e.tool) {
+    send({
+      type: "tool_result",
+      server: e.server,
+      tool: e.tool,
+      is_error: e.is_error,
+      preview: e.preview ?? "",
+      ...(typeof e.resultTokens === "number"
+        ? { resultTokens: e.resultTokens }
+        : {}),
+    });
+  } else if (e.type === "iteration_usage" && e.iterationUsage) {
+    send({
+      type: "iteration_usage",
+      iteration: e.iterationUsage.iteration,
+      inputTokens: e.iterationUsage.inputTokens,
+      outputTokens: e.iterationUsage.outputTokens,
+      exact: e.iterationUsage.exact,
+    });
+  } else if (e.type === "usage_meta" && e.usage) {
+    send({ type: "usage_meta", usage: e.usage });
+  } else if (
+    e.type === "error" &&
+    typeof e.message === "string" &&
+    e.message.length > 0
+  ) {
+    send({ type: "error", message: e.message });
+  }
 }
 
 export function sseEncode(event: SseEvent): string {

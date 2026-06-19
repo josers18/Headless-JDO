@@ -69,8 +69,17 @@ export function AskBar() {
   const [focusLine, setFocusLine] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { placeholder: scrollPlaceholder, contextLine } = useViewportSection();
-  const { narrative, steps, state, error, inferenceMeta, start, cancel, reset } =
-    useAgentStream();
+  const {
+    narrative,
+    steps,
+    iterationUsage,
+    state,
+    error,
+    inferenceMeta,
+    start,
+    cancel,
+    reset,
+  } = useAgentStream();
   const { bumpLive, refresh } = useSessionUsage();
   const speech = useSpeechInput();
 
@@ -482,7 +491,11 @@ export function AskBar() {
               {showFollowUps && <FollowUpPills suggestions={followUps} />}
               {steps.length > 0 && (
                 <div className="mt-4">
-                  <ReasoningTrail steps={steps} defaultOpen={false} />
+                  <ReasoningTrail
+                    steps={steps}
+                    iterationUsage={iterationUsage}
+                    defaultOpen={false}
+                  />
                 </div>
               )}
             </div>

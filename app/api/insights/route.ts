@@ -7,7 +7,7 @@ import {
   sectionInsightPrompt,
   type SectionKind,
 } from "@/lib/prompts/section-insight";
-import { makeSseStream, sendInferenceMeta } from "@/lib/sse/stream";
+import { makeSseStream, sendInferenceMeta, forwardAgentEvent } from "@/lib/sse/stream";
 import { log, correlationId } from "@/lib/log";
 import { optionalEnv } from "@/lib/utils";
 
@@ -70,28 +70,7 @@ export async function POST(req: NextRequest) {
         maxIterations: 6,
         maxTokens: 2048,
         routeHint: "insights",
-        onEvent: (e) => {
-          if (e.type === "text_delta" && e.text) {
-            send({ type: "text_delta", text: e.text });
-          } else if (e.type === "tool_use" && e.server && e.tool) {
-            send({
-              type: "tool_use",
-              server: e.server,
-              tool: e.tool,
-              input: e.input,
-            });
-          } else if (e.type === "tool_result" && e.server && e.tool) {
-            send({
-              type: "tool_result",
-              server: e.server,
-              tool: e.tool,
-              is_error: e.is_error,
-              preview: e.preview ?? "",
-            });
-          } else if (e.type === "usage_meta" && e.usage) {
-            send({ type: "usage_meta", usage: e.usage });
-          }
-        },
+        onEvent: (e) => forwardAgentEvent(send, e),
       });
       sendInferenceMeta(send, result.inferenceBackend);
       log.info("insight.batch.done", {
@@ -126,28 +105,7 @@ export async function POST(req: NextRequest) {
       maxIterations: 4,
       maxTokens: 1024,
       routeHint: "insights",
-      onEvent: (e) => {
-        if (e.type === "text_delta" && e.text) {
-          send({ type: "text_delta", text: e.text });
-        } else if (e.type === "tool_use" && e.server && e.tool) {
-          send({
-            type: "tool_use",
-            server: e.server,
-            tool: e.tool,
-            input: e.input,
-          });
-        } else if (e.type === "tool_result" && e.server && e.tool) {
-          send({
-            type: "tool_result",
-            server: e.server,
-            tool: e.tool,
-            is_error: e.is_error,
-            preview: e.preview ?? "",
-          });
-        } else if (e.type === "usage_meta" && e.usage) {
-          send({ type: "usage_meta", usage: e.usage });
-        }
-      },
+      onEvent: (e) => forwardAgentEvent(send, e),
     });
     sendInferenceMeta(send, result.inferenceBackend);
     log.info("insight.done", {

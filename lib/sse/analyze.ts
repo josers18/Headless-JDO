@@ -20,6 +20,15 @@ export type AnalyzeSseEvent =
       name: string;
       isError: boolean;
       preview: string;
+      /** Approx token size of the result the model ingested (estimate). */
+      resultTokens?: number;
+    }
+  | {
+      type: "iteration_usage";
+      iteration: number;
+      inputTokens: number;
+      outputTokens: number;
+      exact: boolean;
     }
   | {
       type: "table_fallback";

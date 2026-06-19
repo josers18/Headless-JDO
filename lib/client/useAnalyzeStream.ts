@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { AnalyzeSseEvent } from "@/lib/sse/analyze";
 import type { ChartSpec } from "@/lib/analyze/chartTypes";
+import type { IterationUsage } from "@/components/horizon/ReasoningTrail";
 
 export type AnalyzeState = "idle" | "streaming" | "done" | "error";
 
@@ -12,6 +13,8 @@ export type AnalyzeTraceStep = {
   input: unknown;
   status: "running" | "done" | "error";
   preview?: string;
+  iteration?: number;
+  resultTokens?: number;
 };
 
 export type AnalyzeTable = {
@@ -30,6 +33,7 @@ export interface AnalyzeStream {
   error: string | null;
   narrative: string;
   trace: AnalyzeTraceStep[];
+  iterationUsage: IterationUsage[];
   tables: AnalyzeTable[];
   charts: ChartSpec[];
   persisted: boolean;
@@ -47,6 +51,8 @@ export function useAnalyzeStream(): AnalyzeStream {
   const [error, setError] = useState<string | null>(null);
   const [narrative, setNarrative] = useState("");
   const [trace, setTrace] = useState<AnalyzeTraceStep[]>([]);
+  const [iterationUsage, setIterationUsage] = useState<IterationUsage[]>([]);
+  const currentIterationRef = useRef(0);
   const [tables, setTables] = useState<AnalyzeTable[]>([]);
   const [charts, setCharts] = useState<ChartSpec[]>([]);
   const [persisted, setPersisted] = useState(false);
@@ -57,6 +63,8 @@ export function useAnalyzeStream(): AnalyzeStream {
     setError(null);
     setNarrative("");
     setTrace([]);
+    setIterationUsage([]);
+    currentIterationRef.current = 0;
     setTables([]);
     setCharts([]);
     setPersisted(false);
@@ -140,6 +148,20 @@ export function useAnalyzeStream(): AnalyzeStream {
           case "token":
             setNarrative((n) => n + ev.text);
             return false;
+          case "iteration_usage":
+            currentIterationRef.current = ev.iteration;
+            setIterationUsage((prev) => {
+              const next = prev.filter((u) => u.iteration !== ev.iteration);
+              next.push({
+                iteration: ev.iteration,
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens,
+                exact: ev.exact,
+              });
+              next.sort((a, b) => a.iteration - b.iteration);
+              return next;
+            });
+            return false;
           case "tool_call":
             setTrace((t) => [
               ...t,
@@ -148,6 +170,7 @@ export function useAnalyzeStream(): AnalyzeStream {
                 name: ev.name,
                 input: ev.input,
                 status: "running",
+                iteration: currentIterationRef.current || undefined,
               },
             ]);
             return false;
@@ -159,6 +182,7 @@ export function useAnalyzeStream(): AnalyzeStream {
                       ...s,
                       status: ev.isError ? "error" : "done",
                       preview: ev.preview,
+                      resultTokens: ev.resultTokens,
                     }
                   : s
               )
@@ -197,6 +221,7 @@ export function useAnalyzeStream(): AnalyzeStream {
     error,
     narrative,
     trace,
+    iterationUsage,
     tables,
     charts,
     persisted,

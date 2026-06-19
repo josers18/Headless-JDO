@@ -283,6 +283,7 @@ function LiveTurn({
       {hasTrace && (
         <AskDataTrace
           steps={stream.trace as AnalyzeTraceStep[]}
+          iterationUsage={stream.iterationUsage}
           defaultOpen={false}
         />
       )}

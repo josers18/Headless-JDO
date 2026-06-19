@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { Step } from "@/components/horizon/ReasoningTrail";
+import type { Step, IterationUsage } from "@/components/horizon/ReasoningTrail";
 import type { AskThreadMessage } from "@/types/ask-thread";
 import type { InferenceBackend } from "@/lib/llm/inferenceClients";
 
@@ -24,6 +24,7 @@ export type InferenceMeta = { backend: InferenceBackend; model: string };
 export interface AgentStreamState {
   narrative: string;
   steps: Step[];
+  iterationUsage: IterationUsage[];
   state: "idle" | "streaming" | "done" | "error";
   error: string | null;
   inferenceMeta: InferenceMeta | null;
@@ -99,6 +100,14 @@ type IncomingEvent =
       tool: string;
       is_error?: boolean;
       preview: string;
+      resultTokens?: number;
+    }
+  | {
+      type: "iteration_usage";
+      iteration: number;
+      inputTokens: number;
+      outputTokens: number;
+      exact: boolean;
     }
   | { type: "error"; message: string }
   | { type: "thread_snapshot"; messages: AskThreadMessage[] }
@@ -117,18 +126,24 @@ type IncomingEvent =
 export function useAgentStream(): AgentStreamState {
   const [narrative, setNarrative] = useState("");
   const [steps, setSteps] = useState<Step[]>([]);
+  const [iterationUsage, setIterationUsage] = useState<IterationUsage[]>([]);
   const [state, setState] = useState<AgentStreamState["state"]>("idle");
   const [error, setError] = useState<string | null>(null);
   const [inferenceMeta, setInferenceMeta] = useState<InferenceMeta | null>(
     null
   );
   const abortRef = useRef<AbortController | null>(null);
+  // Which iteration the tool rows arriving now belong to. Set by each
+  // iteration_usage event (which precedes that iteration's tool rows).
+  const currentIterationRef = useRef(0);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setNarrative("");
     setSteps([]);
+    setIterationUsage([]);
+    currentIterationRef.current = 0;
     setError(null);
     setInferenceMeta(null);
     setState("idle");
@@ -161,6 +176,8 @@ export function useAgentStream(): AgentStreamState {
       abortRef.current = ctrl;
       setNarrative("");
       setSteps([]);
+      setIterationUsage([]);
+      currentIterationRef.current = 0;
       setError(null);
       setInferenceMeta(null);
       setState("streaming");
@@ -257,6 +274,21 @@ export function useAgentStream(): AgentStreamState {
       const applyEvent = (msg: IncomingEvent) => {
         if (msg.type === "text_delta") {
           setNarrative((prev) => prev + msg.text);
+        } else if (msg.type === "iteration_usage") {
+          // Marks the start of iteration N's tool rows; remember it so the
+          // tool_use rows that follow are tagged with this iteration.
+          currentIterationRef.current = msg.iteration;
+          setIterationUsage((prev) => {
+            const next = prev.filter((u) => u.iteration !== msg.iteration);
+            next.push({
+              iteration: msg.iteration,
+              inputTokens: msg.inputTokens,
+              outputTokens: msg.outputTokens,
+              exact: msg.exact,
+            });
+            next.sort((a, b) => a.iteration - b.iteration);
+            return next;
+          });
         } else if (msg.type === "tool_use") {
           setSteps((prev) => [
             ...prev,
@@ -265,6 +297,7 @@ export function useAgentStream(): AgentStreamState {
               tool: msg.tool,
               input: msg.input,
               status: "running",
+              iteration: currentIterationRef.current || undefined,
             },
           ]);
         } else if (msg.type === "tool_result") {
@@ -282,6 +315,7 @@ export function useAgentStream(): AgentStreamState {
                   ...s,
                   status: msg.is_error ? "error" : "ok",
                   preview: msg.preview,
+                  resultTokens: msg.resultTokens,
                 };
                 return next;
               }
@@ -293,6 +327,8 @@ export function useAgentStream(): AgentStreamState {
                 tool: msg.tool,
                 status: msg.is_error ? "error" : "ok",
                 preview: msg.preview,
+                resultTokens: msg.resultTokens,
+                iteration: currentIterationRef.current || undefined,
               },
             ];
           });
@@ -364,6 +400,7 @@ export function useAgentStream(): AgentStreamState {
   return {
     narrative,
     steps,
+    iterationUsage,
     state,
     error,
     inferenceMeta,

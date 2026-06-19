@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { AskDataSseEvent } from "@/lib/sse/askData";
+import type { IterationUsage } from "@/components/horizon/ReasoningTrail";
 
 export type AskDataState = "idle" | "streaming" | "done" | "error";
 
@@ -11,6 +12,10 @@ export type AskDataTraceStep = {
   input: unknown;
   status: "running" | "done" | "error";
   preview?: string;
+  /** 1-based iteration this call belonged to (for grouping). */
+  iteration?: number;
+  /** Approx token size of this result the model ingested (estimate). */
+  resultTokens?: number;
 };
 
 export interface AskDataStream {
@@ -18,6 +23,7 @@ export interface AskDataStream {
   error: string | null;
   narrative: string;
   trace: AskDataTraceStep[];
+  iterationUsage: IterationUsage[];
   threadTitle: string | null;
   followUps: string[];
   userMessageId: string | null;
@@ -36,6 +42,8 @@ export function useAskDataStream(): AskDataStream {
   const [error, setError] = useState<string | null>(null);
   const [narrative, setNarrative] = useState("");
   const [trace, setTrace] = useState<AskDataTraceStep[]>([]);
+  const [iterationUsage, setIterationUsage] = useState<IterationUsage[]>([]);
+  const currentIterationRef = useRef(0);
   const [threadTitle, setThreadTitle] = useState<string | null>(null);
   const [followUps, setFollowUps] = useState<string[]>([]);
   const [userMessageId, setUserMessageId] = useState<string | null>(null);
@@ -49,6 +57,8 @@ export function useAskDataStream(): AskDataStream {
     setError(null);
     setNarrative("");
     setTrace([]);
+    setIterationUsage([]);
+    currentIterationRef.current = 0;
     setThreadTitle(null);
     setFollowUps([]);
     setUserMessageId(null);
@@ -118,6 +128,20 @@ export function useAskDataStream(): AskDataStream {
           case "token":
             setNarrative((n) => n + ev.text);
             break;
+          case "iteration_usage":
+            currentIterationRef.current = ev.iteration;
+            setIterationUsage((prev) => {
+              const next = prev.filter((u) => u.iteration !== ev.iteration);
+              next.push({
+                iteration: ev.iteration,
+                inputTokens: ev.inputTokens,
+                outputTokens: ev.outputTokens,
+                exact: ev.exact,
+              });
+              next.sort((a, b) => a.iteration - b.iteration);
+              return next;
+            });
+            break;
           case "tool_call":
             setTrace((t) => [
               ...t,
@@ -126,6 +150,7 @@ export function useAskDataStream(): AskDataStream {
                 name: ev.name,
                 input: ev.input,
                 status: "running",
+                iteration: currentIterationRef.current || undefined,
               },
             ]);
             break;
@@ -137,6 +162,7 @@ export function useAskDataStream(): AskDataStream {
                       ...s,
                       status: ev.isError ? "error" : "done",
                       preview: ev.preview,
+                      resultTokens: ev.resultTokens,
                     }
                   : s
               )
@@ -174,6 +200,7 @@ export function useAskDataStream(): AskDataStream {
     error,
     narrative,
     trace,
+    iterationUsage,
     threadTitle,
     followUps,
     userMessageId,

@@ -51,6 +51,7 @@ export interface AgentEvent {
     | "tool_use"
     | "tool_result"
     | "iteration_start"
+    | "iteration_usage"
     | "final"
     | "error"
     | "usage_meta";
@@ -68,6 +69,25 @@ export interface AgentEvent {
     outputTokens: number;
     exact: boolean;
   };
+  /**
+   * Per-iteration token usage (on `iteration_usage` events): the exact in/out
+   * the model billed for THIS iteration's completion call. Emitted once after
+   * each iteration's stream drains, before that iteration's tool rows. `exact`
+   * is false when the iteration's counts were estimated (upstream omitted the
+   * usage chunk). The reasoning trail groups tool rows under these.
+   */
+  iterationUsage?: {
+    iteration: number;
+    inputTokens: number;
+    outputTokens: number;
+    exact: boolean;
+  };
+  /**
+   * Approximate token size of a tool result (on `tool_result` events) — the
+   * result text divided by ~4 chars/token. This is "how much this result
+   * pulled into context", an estimate of result size, not billed LLM spend.
+   */
+  resultTokens?: number;
 }
 
 export interface AgentRunArgs {
@@ -763,6 +783,15 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
   for (iteration = 1; iteration <= maxIterations; iteration++) {
     onEvent({ type: "iteration_start", iteration });
 
+    // Snapshot cumulative usage before this iteration's completion so we can
+    // emit the per-iteration delta once the stream drains. exact-before lets
+    // us tell whether THIS iteration reported real usage or got estimated.
+    const usageBefore = {
+      inputTokens: usageAcc.inputTokens,
+      outputTokens: usageAcc.outputTokens,
+      exact: usageAcc.exact,
+    };
+
     // why: stream=true gives us text deltas AND lets us watch tool_calls build
     // up incrementally. We still need to fully drain before executing, so we
     // accumulate into a single assistant message.
@@ -828,6 +857,32 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     }
 
     lastAssistantText = assistantContent;
+
+    // Emit this iteration's token delta. If the upstream reported exact usage
+    // this iteration (usageAcc.exact flipped true, or stayed true), the delta
+    // is exact; otherwise we fall back to estimating output from the prose we
+    // streamed (input deltas aren't separable without per-call counts, so we
+    // leave input at 0 on the estimate path and flag it inexact).
+    {
+      const inDelta = usageAcc.inputTokens - usageBefore.inputTokens;
+      const outDelta = usageAcc.outputTokens - usageBefore.outputTokens;
+      // Exact only when the upstream reported usage AND this iteration
+      // actually contributed a non-zero delta (guards the sticky-exact case
+      // where usageAcc.exact is already true but no fresh chunk arrived).
+      const iterExact = usageAcc.exact && (inDelta > 0 || outDelta > 0);
+      onEvent({
+        type: "iteration_usage",
+        iteration,
+        iterationUsage: {
+          iteration,
+          inputTokens: iterExact ? inDelta : 0,
+          outputTokens: iterExact
+            ? outDelta
+            : estimateTokens(assistantContent),
+          exact: iterExact,
+        },
+      });
+    }
 
     const calls = [...pendingCalls.entries()]
       .sort(([a], [b]) => a - b)
@@ -1079,6 +1134,8 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           tool: result.tool,
           preview: result.textPreview,
           is_error: result.isError,
+          // Size of the result the model ingested into context (estimate).
+          resultTokens: estimateTokens(result.modelText ?? ""),
         });
 
         // Cache successful results for the rest of this turn (failures are

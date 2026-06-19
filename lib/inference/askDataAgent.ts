@@ -28,6 +28,7 @@ import type {
   FirstPartyDcToolDef,
 } from "@/lib/mcp/firstPartyDataCloud";
 import { stripThinkTags } from "@/lib/analyze/sanitize";
+import { estimateTokens } from "@/lib/llm/tokenUsageCapture";
 
 // Soft budget: if the agent hasn't answered after N tool-call iterations
 // we bail. Heroku router already stalls long requests — this keeps us well
@@ -65,6 +66,8 @@ export type AskDataAgentEvent =
       name: string;
       isError: boolean;
       preview: string;
+      /** Approx token size of the result the model ingested (estimate). */
+      resultTokens?: number;
     }
   | {
       type: "turn_complete";
@@ -79,6 +82,7 @@ export type AskDataAgentEvent =
   | { type: "error"; message: string }
   | {
       type: "usage";
+      iteration: number;
       inputTokens: number;
       outputTokens: number;
       exact: boolean;
@@ -219,6 +223,7 @@ export async function* runAskDataAgent(
         } else if (ev.type === "usage") {
           yield {
             type: "usage",
+            iteration,
             inputTokens: ev.inputTokens,
             outputTokens: ev.outputTokens,
             exact: ev.exact,
@@ -403,6 +408,7 @@ export async function* runAskDataAgent(
         name: r.name,
         isError: r.isError,
         preview: r.preview,
+        resultTokens: estimateTokens(r.modelText ?? ""),
       };
       contentBlocks.push({
         type: "tool_result",

@@ -10,6 +10,18 @@ export interface Step {
   input?: unknown;
   status?: "running" | "ok" | "error";
   preview?: string;
+  /** 1-based inference iteration this tool call belonged to (for grouping). */
+  iteration?: number;
+  /** Approx token size of this result the model ingested (estimate). */
+  resultTokens?: number;
+}
+
+/** Per-iteration exact model usage, keyed by iteration number. */
+export interface IterationUsage {
+  iteration: number;
+  inputTokens: number;
+  outputTokens: number;
+  exact: boolean;
 }
 
 // "Group" is how we render steps — consecutive identical-signature errors
@@ -35,12 +47,25 @@ type Group =
 // tool-call log on expand.
 export function ReasoningTrail({
   steps,
+  iterationUsage = [],
   defaultOpen = false,
 }: {
   steps: Step[];
+  iterationUsage?: IterationUsage[];
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+
+  // Usage lookup by iteration for the per-iteration group headers.
+  const usageByIteration = useMemo(() => {
+    const m = new Map<number, IterationUsage>();
+    for (const u of iterationUsage) m.set(u.iteration, u);
+    return m;
+  }, [iterationUsage]);
+
+  // Do we have any per-iteration usage to show? If not (e.g. an old cached
+  // section without iteration_usage events), fall back to the flat layout.
+  const showIterationGroups = iterationUsage.length > 0;
 
   const counts = useMemo(() => {
     let running = 0;
@@ -64,6 +89,20 @@ export function ReasoningTrail({
   // schema mismatches" instead of three indistinguishable red rows.
   const groups = useMemo(() => collapseGroups(steps), [steps]);
 
+  // Exact total tokens the model billed this turn (sum of per-iteration
+  // usage). Shown as a header badge when we have iteration usage.
+  const totalTokens = useMemo(() => {
+    let inTok = 0;
+    let outTok = 0;
+    let exact = true;
+    for (const u of iterationUsage) {
+      inTok += u.inputTokens;
+      outTok += u.outputTokens;
+      exact = exact && u.exact;
+    }
+    return { inTok, outTok, total: inTok + outTok, exact };
+  }, [iterationUsage]);
+
   if (steps.length === 0) return null;
 
   return (
@@ -84,6 +123,15 @@ export function ReasoningTrail({
         <span className="ml-2 font-mono text-[10px] normal-case tracking-normal text-text-muted/80">
           {steps.length} {steps.length === 1 ? "call" : "calls"}
         </span>
+        {showIterationGroups && totalTokens.total > 0 && (
+          <span
+            className="ml-2 rounded-full border border-border-soft px-2 py-0.5 font-mono text-[9px] normal-case tracking-normal text-text-muted/80"
+            title={`${totalTokens.inTok.toLocaleString()} in / ${totalTokens.outTok.toLocaleString()} out${totalTokens.exact ? "" : " (includes estimates)"}`}
+          >
+            {totalTokens.exact ? "" : "≈"}
+            {fmtTok(totalTokens.total)} tok
+          </span>
+        )}
         <span className="ml-3 flex items-center gap-2 normal-case tracking-normal">
           {counts.ok > 0 && (
             <span className="flex items-center gap-1 text-[10px] text-emerald-300/90">
@@ -116,21 +164,55 @@ export function ReasoningTrail({
       </button>
 
       {open && (
-        <ul className="animate-fade-in space-y-1.5 border-t border-border-soft bg-black/20 p-3">
-          {groups.map((g, i) =>
-            g.kind === "single" ? (
-              <TrailRow key={`s-${g.originalIndex}-${i}`} step={g.step} />
-            ) : (
-              <AggregateRow
-                key={`a-${g.originalIndex}-${i}`}
-                server={g.server}
-                tool={g.tool}
-                count={g.count}
-                firstPreview={g.firstPreview}
-              />
-            )
-          )}
-        </ul>
+        <div className="animate-fade-in space-y-1.5 border-t border-border-soft bg-black/20 p-3">
+          {(() => {
+            // Track the last DEFINED iteration as we walk groups, so an
+            // aggregate group (which carries no iteration) between two
+            // same-iteration single groups doesn't trigger a duplicate
+            // "turn N" header on the second one.
+            let lastIter: number | undefined;
+            return groups.map((g, i) => {
+              const iter = groupIteration(g);
+              // Emit an iteration header when this group opens a new
+              // iteration and we have usage to show for it.
+              const header =
+                showIterationGroups && iter !== undefined && iter !== lastIter
+                  ? usageByIteration.get(iter)
+                  : undefined;
+              if (iter !== undefined) lastIter = iter;
+            return (
+              <div
+                key={`grp-${g.originalIndex}-${i}`}
+                className="space-y-1.5"
+              >
+                {header && (
+                  <div className="flex items-center gap-2 pt-1.5 first:pt-0">
+                    <span className="text-[9px] uppercase tracking-[0.18em] text-text-muted/60">
+                      turn {header.iteration}
+                    </span>
+                    <span className="h-px flex-1 bg-border-soft/40" />
+                    <span className="font-mono text-[9px] tabular-nums text-text-muted/70">
+                      {header.exact ? "" : "≈"}
+                      {fmtTok(header.inputTokens)} in /{" "}
+                      {fmtTok(header.outputTokens)} out
+                    </span>
+                  </div>
+                )}
+                {g.kind === "single" ? (
+                  <TrailRow step={g.step} />
+                ) : (
+                  <AggregateRow
+                    server={g.server}
+                    tool={g.tool}
+                    count={g.count}
+                    firstPreview={g.firstPreview}
+                  />
+                )}
+              </div>
+            );
+            });
+          })()}
+        </div>
       )}
     </div>
   );
@@ -156,7 +238,7 @@ function AggregateRow({
   const isBlocked = /blocked by schema-mismatch breaker/i.test(firstPreview);
 
   return (
-    <li className="group relative rounded-md border border-amber-400/15 bg-amber-400/5 px-3 py-2 transition-colors">
+    <div className="group relative rounded-md border border-amber-400/15 bg-amber-400/5 px-3 py-2 transition-colors">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
@@ -192,7 +274,7 @@ function AggregateRow({
           {formatted}
         </pre>
       )}
-    </li>
+    </div>
   );
 }
 
@@ -283,8 +365,11 @@ function TrailRow({ step }: { step: Step }) {
   const handled = step.status === "error" && isHandledError(step);
   const hardError = step.status === "error" && !handled;
 
+  const showResultTok =
+    typeof step.resultTokens === "number" && step.resultTokens > 0;
+
   return (
-    <li
+    <div
       className={cn(
         "group relative rounded-md border border-transparent bg-surface/60 px-3 py-2 transition-colors",
         hardError && "bg-danger/5",
@@ -309,11 +394,19 @@ function TrailRow({ step }: { step: Step }) {
               ? truncJson(step.input)
               : ""}
         </span>
+        {showResultTok && (
+          <span
+            className="shrink-0 rounded border border-border-soft/60 px-1.5 py-[1px] text-[9px] tabular-nums text-text-muted/70"
+            title="Approx. token size of this result pulled into context (estimate)"
+          >
+            ~{fmtTok(step.resultTokens as number)} tok
+          </span>
+        )}
         {canExpand && (
           <ChevronRight
             size={11}
             className={cn(
-              "ml-2 shrink-0 text-text-muted/50 transition-transform duration-fast",
+              "ml-1 shrink-0 text-text-muted/50 transition-transform duration-fast",
               expanded && "rotate-90"
             )}
           />
@@ -330,7 +423,7 @@ function TrailRow({ step }: { step: Step }) {
           {formatted}
         </pre>
       )}
-    </li>
+    </div>
   );
 }
 
@@ -391,6 +484,18 @@ function isHandledError(step: Step): boolean {
     /forbidden/.test(p) ||
     /unauthorized/.test(p)
   );
+}
+
+/** The iteration a render group belongs to (from its first/only step). */
+function groupIteration(g: Group): number | undefined {
+  return g.kind === "single" ? g.step.iteration : undefined;
+}
+
+/** Humanize a token count: 940 → "940", 6100 → "6.1k", 1.2M → "1.2M". */
+function fmtTok(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(1)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
 function truncJson(v: unknown): string {

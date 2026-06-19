@@ -22,6 +22,7 @@ import type {
 import { selectChartSpec } from "@/lib/analyze/chartSelector";
 import type { ChartSpec } from "@/lib/analyze/chartTypes";
 import { stripThinkTags } from "@/lib/analyze/sanitize";
+import { estimateTokens } from "@/lib/llm/tokenUsageCapture";
 import { extractStructuredFromProse } from "@/lib/analyze/proseToData";
 import { sortRowsByDateLikeColumn } from "@/lib/analyze/sortByDate";
 import { log } from "@/lib/log";
@@ -65,6 +66,8 @@ export type AnalyzeAgentEvent =
       name: string;
       isError: boolean;
       preview: string;
+      /** Approx token size of the result the model ingested (estimate). */
+      resultTokens?: number;
     }
   | {
       type: "table_fallback";
@@ -88,6 +91,7 @@ export type AnalyzeAgentEvent =
   | { type: "error"; message: string }
   | {
       type: "usage";
+      iteration: number;
       inputTokens: number;
       outputTokens: number;
       exact: boolean;
@@ -256,6 +260,7 @@ export async function* runAnalyzeAgent(
         } else if (ev.type === "usage") {
           yield {
             type: "usage",
+            iteration,
             inputTokens: ev.inputTokens,
             outputTokens: ev.outputTokens,
             exact: ev.exact,
@@ -481,6 +486,7 @@ export async function* runAnalyzeAgent(
         name: r.name,
         isError: r.isError,
         preview: cleanPreview(r.name, r.preview, r.analyzeAnswer),
+        resultTokens: estimateTokens(r.modelText ?? ""),
       };
       contentBlocks.push({
         type: "tool_result",

@@ -19,6 +19,15 @@ export type AskDataSseEvent =
       name: string;
       isError: boolean;
       preview: string;
+      /** Approx token size of the result the model ingested (estimate). */
+      resultTokens?: number;
+    }
+  | {
+      type: "iteration_usage";
+      iteration: number;
+      inputTokens: number;
+      outputTokens: number;
+      exact: boolean;
     }
   | {
       type: "user_persisted";
