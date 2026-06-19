@@ -96,3 +96,21 @@ create table if not exists scheduler_credentials (
   updated_at     timestamptz not null default now(),
   constraint scheduler_credentials_singleton check (id = 1)
 );
+
+-- 2026-06-19: per-run token spend, summed per login session for the
+-- right-rail Token Spend panel. session_id = hz_sid cookie. One row per
+-- agent run; exact=false when counts were estimated (upstream omitted
+-- usage). Fire-and-forget writes from the agent loop — never blocks a run.
+create table if not exists token_usage (
+  id            uuid primary key default gen_random_uuid(),
+  user_id       text not null,
+  session_id    text not null,
+  route         text not null,
+  model         text not null,
+  input_tokens  integer not null,
+  output_tokens integer not null,
+  exact         boolean not null default true,
+  created_at    timestamptz not null default now()
+);
+create index if not exists token_usage_session_idx
+  on token_usage (session_id, created_at);
