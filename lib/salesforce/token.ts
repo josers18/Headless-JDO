@@ -3,6 +3,7 @@ import { refreshAccessToken, type SfTokenResponse } from "./oauth";
 import { optionalEnv } from "@/lib/utils";
 
 const COOKIE_NAME = "hz_sf";
+const SID_COOKIE_NAME = "hz_sid";
 const COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours, matches typical SF token lifetime
 
 export interface StoredToken {
@@ -86,6 +87,21 @@ export async function persistTokenFromOAuthResponse(
     path: "/",
     maxAge: COOKIE_MAX_AGE,
   });
+  // Session id for token-spend accounting. Mint once per login; a refresh
+  // (previous != null with an existing hz_sid) keeps the same id so the
+  // tally is continuous across the 8h token lifetime.
+  if (!jar.get(SID_COOKIE_NAME)?.value) {
+    const sid =
+      (globalThis as { crypto?: { randomUUID?: () => string } }).crypto?.randomUUID?.() ??
+      `sid_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    jar.set(SID_COOKIE_NAME, sid, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: COOKIE_MAX_AGE,
+    });
+  }
 }
 
 export async function getTokenCookie(): Promise<StoredToken | null> {
@@ -98,8 +114,31 @@ export async function getTokenCookie(): Promise<StoredToken | null> {
   }
 }
 
+/**
+ * Stable id for the current login session, used to scope token-spend
+ * accounting. Falls back to a per-user "legacy:" id for sessions that
+ * predate the hz_sid cookie so their spend still accumulates.
+ */
+export async function getSessionId(): Promise<string> {
+  const jar = await cookies();
+  const sid = jar.get(SID_COOKIE_NAME)?.value;
+  if (sid) return sid;
+  const raw = jar.get(COOKIE_NAME)?.value;
+  if (raw) {
+    try {
+      const t = JSON.parse(raw) as StoredToken;
+      if (t.user_id) return `legacy:${t.user_id}`;
+    } catch {
+      /* fall through */
+    }
+  }
+  return "legacy:unknown";
+}
+
 export async function clearTokenCookie(): Promise<void> {
-  (await cookies()).delete(COOKIE_NAME);
+  const jar = await cookies();
+  jar.delete(COOKIE_NAME);
+  jar.delete(SID_COOKIE_NAME);
 }
 
 /**
