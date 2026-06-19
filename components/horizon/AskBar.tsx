@@ -39,6 +39,7 @@ import { stripDraftDisplayNoise } from "@/lib/client/stripSalesforceIds";
 import { MarkdownView } from "./MarkdownView";
 import { PrepBriefingPanel } from "./PrepBriefingPanel";
 import { tryParseJson } from "@/lib/client/jsonStream";
+import { useSessionUsage } from "@/components/horizon/SessionUsageProvider";
 import {
   isValidPrepPayload,
   type PrepBriefingPayload,
@@ -70,6 +71,7 @@ export function AskBar() {
   const { placeholder: scrollPlaceholder, contextLine } = useViewportSection();
   const { narrative, steps, state, error, inferenceMeta, start, cancel, reset } =
     useAgentStream();
+  const { bumpLive, refresh } = useSessionUsage();
   const speech = useSpeechInput();
 
   const askContext = useMemo(() => {
@@ -201,9 +203,10 @@ export function AskBar() {
         fromGhost === true ? { ...base, source: "ghost" as const } : base;
       await start("/api/ask", body, {
         onThreadSnapshot: persistThreadFromServer,
+        onUsage: bumpLive,
       });
     },
-    [askContext, persistThreadFromServer, speech, start, state, thread]
+    [askContext, bumpLive, persistThreadFromServer, speech, start, state, thread]
   );
 
   const submitPrep = useCallback(
@@ -218,13 +221,17 @@ export function AskBar() {
       );
       setValue("");
       setActionStatus({});
-      await start("/api/prep", {
-        clientId: id,
-        clientName: detail.clientName,
-        reason: detail.reason,
-      });
+      await start(
+        "/api/prep",
+        {
+          clientId: id,
+          clientName: detail.clientName,
+          reason: detail.reason,
+        },
+        { onUsage: bumpLive }
+      );
     },
-    [speech, start, state]
+    [bumpLive, speech, start, state]
   );
 
   useEffect(() => {
@@ -253,6 +260,10 @@ export function AskBar() {
     return () =>
       window.removeEventListener(HORIZON_PREP_SUBMIT, onPrep as EventListener);
   }, [submitPrep]);
+
+  useEffect(() => {
+    if (state === "done") refresh();
+  }, [state, refresh]);
 
   async function submit() {
     await submitWithQuestion(value, undefined);
