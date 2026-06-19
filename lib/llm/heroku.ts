@@ -39,6 +39,11 @@ import {
   openAiClientFor,
 } from "@/lib/llm/inferenceClients";
 import { log } from "@/lib/log";
+import {
+  estimateTokens,
+  foldUsageChunk,
+  type RunUsage,
+} from "@/lib/llm/tokenUsageCapture";
 
 export interface AgentEvent {
   type:
@@ -47,7 +52,8 @@ export interface AgentEvent {
     | "tool_result"
     | "iteration_start"
     | "final"
-    | "error";
+    | "error"
+    | "usage_meta";
   text?: string;
   server?: McpServerName;
   tool?: string;
@@ -56,6 +62,12 @@ export interface AgentEvent {
   is_error?: boolean;
   iteration?: number;
   message?: string;
+  usage?: {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    exact: boolean;
+  };
 }
 
 export interface AgentRunArgs {
@@ -128,6 +140,7 @@ export interface AgentRunResult {
   iterations: number;
   /** Full thread as seen by the model, excluding the system message. */
   transcript: ChatCompletionMessageParam[];
+  usage: RunUsage;
 }
 
 /** @deprecated use modelIdFor("heroku") — kept for scripts that grep this name */
@@ -721,6 +734,32 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     }
   >();
 
+  // Per-run token accounting. Real counts come from the upstream usage
+  // chunk (stream_options.include_usage); when absent we estimate.
+  const usageAcc = { inputTokens: 0, outputTokens: 0, exact: false };
+
+  // Finalized usage for a return: if no exact chunk ever arrived, estimate
+  // from the transcript (sum of message contents) + final prose.
+  const finalizeUsage = (assistantText: string): RunUsage => {
+    if (usageAcc.exact) {
+      return {
+        inputTokens: usageAcc.inputTokens,
+        outputTokens: usageAcc.outputTokens,
+        exact: true,
+      };
+    }
+    const inputText = messages
+      .map((m) =>
+        typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "")
+      )
+      .join("\n");
+    return {
+      inputTokens: estimateTokens(inputText),
+      outputTokens: estimateTokens(assistantText),
+      exact: false,
+    };
+  };
+
   for (iteration = 1; iteration <= maxIterations; iteration++) {
     onEvent({ type: "iteration_start", iteration });
 
@@ -748,6 +787,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
       temperature,
       max_tokens: maxTokens,
       stream: true,
+      stream_options: { include_usage: true },
     });
 
     let assistantContent = "";
@@ -781,6 +821,10 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           pendingCalls.set(idx, prev);
         }
       }
+      // why: the usage chunk typically has an empty choices array, so it
+      // arrives after content/tool deltas. include_usage gives exact
+      // counts when the upstream supports it.
+      foldUsageChunk(usageAcc, chunk.usage);
     }
 
     lastAssistantText = assistantContent;
@@ -803,6 +847,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         toolCalls: collectedCalls,
         iterations: iteration,
         transcript: messages.slice(1),
+        usage: finalizeUsage(finalText),
       };
     }
 
@@ -1133,6 +1178,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
         temperature,
         max_tokens: maxTokens,
         stream: true,
+        stream_options: { include_usage: true },
       });
       let forced = "";
       for await (const chunk of finalize) {
@@ -1142,6 +1188,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           forced += piece;
           onEvent({ type: "text_delta", text: piece });
         }
+        foldUsageChunk(usageAcc, chunk.usage);
       }
       lastAssistantText = forced;
       messages.push({
@@ -1172,6 +1219,7 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     toolCalls: collectedCalls,
     iterations: iteration - 1,
     transcript: messages.slice(1),
+    usage: finalizeUsage(finalText || lastAssistantText),
   };
 }
 
