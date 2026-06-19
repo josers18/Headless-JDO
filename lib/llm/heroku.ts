@@ -801,6 +801,10 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
     >();
 
     for await (const chunk of stream) {
+      // why: the usage chunk has an empty choices array, so it arrives after
+      // content/tool deltas. Folding first ensures exact counts aren't skipped
+      // when the choices guard below fires a continue on that trailing chunk.
+      foldUsageChunk(usageAcc, chunk.usage);
       const delta = chunk.choices[0]?.delta;
       if (!delta) continue;
       if (typeof delta.content === "string" && delta.content.length > 0) {
@@ -821,10 +825,6 @@ export async function runAgent(args: AgentRunArgs): Promise<AgentRunResult> {
           pendingCalls.set(idx, prev);
         }
       }
-      // why: the usage chunk typically has an empty choices array, so it
-      // arrives after content/tool deltas. include_usage gives exact
-      // counts when the upstream supports it.
-      foldUsageChunk(usageAcc, chunk.usage);
     }
 
     lastAssistantText = assistantContent;

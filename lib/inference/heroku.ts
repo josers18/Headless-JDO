@@ -247,6 +247,7 @@ export async function* streamHeroku(
   let assistantText = "";
 
   for await (const chunk of stream) {
+    foldUsageChunk(usageAcc, chunk.usage);
     const choice = chunk.choices[0];
     if (!choice) continue;
     const delta = choice.delta;
@@ -281,8 +282,6 @@ export async function* streamHeroku(
     if (choice.finish_reason) {
       stopReason = choice.finish_reason;
     }
-
-    foldUsageChunk(usageAcc, chunk.usage);
   }
 
   // On finish, emit a completion marker for each buffered tool call
