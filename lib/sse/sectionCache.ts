@@ -26,7 +26,13 @@ import { getRedis } from "@/lib/redis";
 import type { SseEvent } from "@/lib/sse/stream";
 import { log } from "@/lib/log";
 
-const KEY_PREFIX = "horizon:section:v1";
+// Cache schema version. Bump whenever the captured SSE event protocol
+// changes in a way that older cached sequences can't satisfy — a bump
+// invalidates every stale daily entry on deploy (old keys simply go
+// unread and TTL out) instead of waiting for local-midnight rollover.
+// v2 (2026-06-19): events now carry iteration_usage + resultTokens for
+// the per-step reasoning-trail token counts; v1 captures lack them.
+const KEY_PREFIX = "horizon:section:v2";
 /** 36h. Survives one missed local-day boundary so morning loads stay warm. */
 const DEFAULT_TTL_SECONDS = 36 * 3600;
 
