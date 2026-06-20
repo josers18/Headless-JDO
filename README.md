@@ -9,7 +9,7 @@
 [![Deployed on Heroku](https://img.shields.io/badge/Heroku-deployed-430098?logo=heroku&logoColor=white)](https://headless-jdo-002d2a119b15.herokuapp.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-**Headless home page for the relationship banker** — one scrollable surface, no nav rails, MCP-backed agent. Built for the Salesforce / DAX *So You Think You Can AI?* Innovation Contest track (2026).
+**Headless home page for the relationship banker** — one scrollable surface, no nav rails, MCP-backed agent. 
 
 **Production (reference deploy):** [Horizon on Heroku](https://headless-jdo-002d2a119b15.herokuapp.com/) (`headless-jdo`)
 
