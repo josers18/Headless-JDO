@@ -470,8 +470,28 @@ export async function* runAnalyzeAgent(
     // for the remainder of this turn. Errors don't burn the budget —
     // Kimi should be allowed to retry a genuinely failed call on the
     // next iteration.
+    //
+    // A transport-successful `analyze_data` is NOT always a useful
+    // answer: Analytics Agent returns HTTP-200 narratives like "I
+    // couldn't find any field or metric for CSAT … please specify which
+    // field" when the question names a metric by a label Concierge can't
+    // resolve. Those are genuine failures wearing an `isError: false`
+    // coat — burning the once-budget on them suppressed the model's
+    // CORRECT self-correction (look up `list_semantic_model_metrics`,
+    // discover the real metric "CSAT Trends", re-call `analyze_data`
+    // with it) as a "duplicate". So a not-found analyze answer leaves
+    // the budget intact and the corrective retry reaches Tableau. A
+    // genuinely useful first answer still burns the budget, so the
+    // anti-hedging guard (one chart per question) is unaffected. See
+    // CSAT analyze bug, 2026-06-20.
     for (const r of results) {
       if (!r.isError && turnWideOnceTools.has(r.name)) {
+        if (
+          r.name === "analyze_data" &&
+          isUnsatisfyingAnalyzeAnswer(r.analyzeAnswer)
+        ) {
+          continue;
+        }
         consumedTools.add(r.name);
       }
     }
@@ -709,6 +729,40 @@ function extractAnalyzeAnswer(text: string): string | null {
   if (typeof obj.message === "string") return cleanAnswer(obj.message);
 
   return null;
+}
+
+/**
+ * True when a transport-successful `analyze_data` answer is actually a
+ * "couldn't find the field/metric" non-answer rather than data. Analytics
+ * Agent returns these as HTTP-200 narratives (e.g. "I couldn't find any
+ * field or metric for CSAT … please specify which field represents CSAT")
+ * when the banker's phrasing names a metric by a label Concierge can't
+ * resolve. The agent loop uses this to AVOID burning the one-analyze_data-
+ * per-turn budget on a dead-end call, so the model's self-correction
+ * (look up the real metric name via `list_semantic_model_metrics`, then
+ * re-call `analyze_data`) isn't suppressed as a duplicate.
+ *
+ * Patterns are deliberately discriminative — they require a not-found verb
+ * ("couldn't find", "don't have", "not available", "please specify which")
+ * adjacent to a schema noun (field/metric/column/measure/dimension/data/
+ * kpi). A real answer that merely contains a clause like "no data for
+ * March" is NOT flagged, because that phrasing lacks the schema-noun
+ * pairing the patterns key on.
+ */
+function isUnsatisfyingAnalyzeAnswer(
+  answer: string | null | undefined
+): boolean {
+  if (!answer) return false;
+  const a = answer.toLowerCase();
+  const NOT_FOUND_PATTERNS: RegExp[] = [
+    /\b(could ?n'?t|can ?not|can'?t|could not|unable to) find\b[^.]{0,40}\b(field|metric|column|measure|dimension|data|kpi)\b/,
+    /\bno (such |matching |relevant )?(field|metric|column|measure|dimension|kpi)\b[^.]{0,30}\b(for|named|called|matching|representing|that)\b/,
+    /\b(do ?n'?t|do not) have (a |an |any )?(field|metric|column|measure|dimension|data|kpi)\b/,
+    /\bplease specify which (field|metric|column|measure|value)\b/,
+    /\b(field|metric|column|measure|dimension) (is |are )?not available\b/,
+    /\bno data (is )?available\b/,
+  ];
+  return NOT_FOUND_PATTERNS.some((re) => re.test(a));
 }
 
 /**
