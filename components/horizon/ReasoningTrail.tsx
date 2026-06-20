@@ -38,6 +38,8 @@ type Group =
       firstPreview: string;
       status: "error";
       originalIndex: number;
+      /** Iteration the collapsed run belongs to (from its first step). */
+      iteration?: number;
     };
 
 // The reasoning trail is where the curious banker can see what Horizon
@@ -55,13 +57,6 @@ export function ReasoningTrail({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-
-  // Usage lookup by iteration for the per-iteration group headers.
-  const usageByIteration = useMemo(() => {
-    const m = new Map<number, IterationUsage>();
-    for (const u of iterationUsage) m.set(u.iteration, u);
-    return m;
-  }, [iterationUsage]);
 
   // Do we have any per-iteration usage to show? If not (e.g. an old cached
   // section without iteration_usage events), fall back to the flat layout.
@@ -165,56 +160,135 @@ export function ReasoningTrail({
 
       {open && (
         <div className="animate-fade-in space-y-1.5 border-t border-border-soft bg-black/20 p-3">
-          {(() => {
-            // Track the last DEFINED iteration as we walk groups, so an
-            // aggregate group (which carries no iteration) between two
-            // same-iteration single groups doesn't trigger a duplicate
-            // "turn N" header on the second one.
-            let lastIter: number | undefined;
-            return groups.map((g, i) => {
-              const iter = groupIteration(g);
-              // Emit an iteration header when this group opens a new
-              // iteration and we have usage to show for it.
-              const header =
-                showIterationGroups && iter !== undefined && iter !== lastIter
-                  ? usageByIteration.get(iter)
-                  : undefined;
-              if (iter !== undefined) lastIter = iter;
-            return (
-              <div
-                key={`grp-${g.originalIndex}-${i}`}
-                className="space-y-1.5"
-              >
-                {header && (
-                  <div className="flex items-center gap-2 pt-1.5 first:pt-0">
-                    <span className="text-[9px] uppercase tracking-[0.18em] text-text-muted/60">
-                      turn {header.iteration}
-                    </span>
-                    <span className="h-px flex-1 bg-border-soft/40" />
-                    <span className="font-mono text-[9px] tabular-nums text-text-muted/70">
-                      {header.exact ? "" : "≈"}
-                      {fmtTok(header.inputTokens)} in /{" "}
-                      {fmtTok(header.outputTokens)} out
-                    </span>
-                  </div>
-                )}
-                {g.kind === "single" ? (
-                  <TrailRow step={g.step} />
-                ) : (
-                  <AggregateRow
-                    server={g.server}
-                    tool={g.tool}
-                    count={g.count}
-                    firstPreview={g.firstPreview}
-                  />
-                )}
-              </div>
-            );
-            });
-          })()}
+          {showIterationGroups ? (
+            // Iteration-grouped layout. The sorted iterationUsage list is the
+            // SPINE — we walk turns in numeric order and render each turn's
+            // groups under it. This is deliberate:
+            //   - Gap fix: a turn that emitted zero tool calls (e.g. the final
+            //     synthesis turn) still gets a header, instead of silently
+            //     vanishing because no step carried its iteration to anchor on.
+            //   - Order fix: headers render strictly 1,2,3… by walking the
+            //     sorted spine, never in step-arrival order.
+            // Any groups whose iteration isn't in the usage map (old cached
+            // trails predating iteration tagging, or untagged rows) fall into
+            // an "untagged" bucket rendered last with no header.
+            <IterationGroupedTrail
+              groups={groups}
+              iterationUsage={iterationUsage}
+            />
+          ) : (
+            // Flat fallback: no per-iteration usage (e.g. a v1 cached section
+            // captured before iteration_usage events existed). Render groups
+            // in order with no turn headers.
+            groups.map((g, i) => (
+              <GroupBody key={`grp-${g.originalIndex}-${i}`} group={g} />
+            ))
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// Renders the body of one render group (a single tool row or a collapsed
+// aggregate). Header rendering is the caller's responsibility.
+function GroupBody({ group }: { group: Group }) {
+  return (
+    <div className="space-y-1.5">
+      {group.kind === "single" ? (
+        <TrailRow step={group.step} />
+      ) : (
+        <AggregateRow
+          server={group.server}
+          tool={group.tool}
+          count={group.count}
+          firstPreview={group.firstPreview}
+        />
+      )}
+    </div>
+  );
+}
+
+// One turn header + its groups. A turn with no groups (the model thought /
+// answered without calling any tool) still renders its header so the turn
+// sequence reads 1,2,3… with no gaps.
+function TurnSection({
+  usage,
+  groups,
+}: {
+  usage: IterationUsage;
+  groups: Group[];
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2 pt-1.5 first:pt-0">
+        <span className="text-[9px] uppercase tracking-[0.18em] text-text-muted/60">
+          turn {usage.iteration}
+        </span>
+        <span className="h-px flex-1 bg-border-soft/40" />
+        <span className="font-mono text-[9px] tabular-nums text-text-muted/70">
+          {usage.exact ? "" : "≈"}
+          {fmtTok(usage.inputTokens)} in / {fmtTok(usage.outputTokens)} out
+        </span>
+      </div>
+      {groups.map((g, i) => (
+        <GroupBody key={`grp-${g.originalIndex}-${i}`} group={g} />
+      ))}
+    </div>
+  );
+}
+
+// Iteration-grouped trail body. Walks the sorted usage list as the spine so
+// turns render in numeric order and every turn gets a header — including
+// turns that emitted no tool calls. Groups are bucketed by their tagged
+// iteration; any group whose iteration has no usage record (legacy/untagged)
+// renders last under no header.
+function IterationGroupedTrail({
+  groups,
+  iterationUsage,
+}: {
+  groups: Group[];
+  iterationUsage: IterationUsage[];
+}) {
+  const sortedUsage = useMemo(
+    () => [...iterationUsage].sort((a, b) => a.iteration - b.iteration),
+    [iterationUsage]
+  );
+  const known = useMemo(
+    () => new Set(iterationUsage.map((u) => u.iteration)),
+    [iterationUsage]
+  );
+
+  // Bucket groups by iteration, preserving arrival order within a bucket.
+  const byIteration = useMemo(() => {
+    const m = new Map<number, Group[]>();
+    const untagged: Group[] = [];
+    for (const g of groups) {
+      const iter = groupIteration(g);
+      if (iter !== undefined && known.has(iter)) {
+        const bucket = m.get(iter);
+        if (bucket) bucket.push(g);
+        else m.set(iter, [g]);
+      } else {
+        untagged.push(g);
+      }
+    }
+    return { m, untagged };
+  }, [groups, known]);
+
+  return (
+    <>
+      {sortedUsage.map((usage) => (
+        <TurnSection
+          key={`turn-${usage.iteration}`}
+          usage={usage}
+          groups={byIteration.m.get(usage.iteration) ?? []}
+        />
+      ))}
+      {byIteration.untagged.map((g, i) => (
+        <GroupBody key={`untagged-${g.originalIndex}-${i}`} group={g} />
+      ))}
+    </>
   );
 }
 
@@ -315,6 +389,7 @@ function collapseGroups(steps: Step[]): Group[] {
         firstPreview: s.preview ?? "",
         status: "error",
         originalIndex: i,
+        iteration: s.iteration,
       });
     } else {
       out.push({ kind: "single", step: s, originalIndex: i });
@@ -488,7 +563,7 @@ function isHandledError(step: Step): boolean {
 
 /** The iteration a render group belongs to (from its first/only step). */
 function groupIteration(g: Group): number | undefined {
-  return g.kind === "single" ? g.step.iteration : undefined;
+  return g.kind === "single" ? g.step.iteration : g.iteration;
 }
 
 /** Humanize a token count: 940 → "940", 6100 → "6.1k", 1.2M → "1.2M". */
