@@ -14,6 +14,37 @@ Nothing pending — `main` is what's deployed.
 
 ---
 
+## [2026-06-20] — Analyze once-budget: not-found answers no longer suppress retries
+
+### Fixed
+- **`analyze_data` once-budget gate** (`lib/inference/analyzeAgent.ts`) — a transport-successful but *unsatisfying* Tableau answer ("I couldn't find any field or metric for CSAT…") was marking the turn-wide `analyze_data` budget as consumed, so the model's correct self-correction (look up `list_semantic_model_metrics` → find the real "CSAT Trends" metric → re-call `analyze_data`) was killed as a "Duplicate analyze_data suppressed" — leaving the banker a not-found message and no chart. The consumed-budget gate now skips not-found / unsatisfying answers (new `isUnsatisfyingAnalyzeAnswer` detector) so the corrective retry reaches Tableau. Hard transport errors still never burn the budget; genuine answers still do (anti-hedge).
+
+### Added
+- **`test:analyze-budget`** — `scripts/test-analyze-budget-notfound.ts`. Inlines the `isUnsatisfyingAnalyzeAnswer` detector + the consumed-budget gate; 13 checks across real not-found answers (incl. the exact CSAT answer), false-positive guards ("no data for March" must NOT flag), and the end-to-end budget scenarios.
+
+---
+
+## [2026-06-19] — Session token-spend panel + analyze/trail hardening
+
+### Added
+- **Session token-spend tracking.** New `token_usage` Postgres table + index (auto-created by the release migration), `lib/db/tokenUsage.ts` (`recordTokenUsage`, `summarizeSessionUsage`), and an `hz_sid` login-session cookie (`getSessionId()` in `lib/salesforce/token.ts`, with a `legacy:<userId>` fallback for pre-cookie sessions). Token usage is captured at **both** OpenAI-compatible agent loops (`lib/llm/heroku.ts` for Today/Ask, `lib/inference/heroku.ts` for Analyze + Ask My Data) via `stream_options.include_usage`, with a char/4 estimate fallback when the provider omits exact counts.
+- **`GET /api/usage`** — JSON session-summary endpoint (`app/api/usage/route.ts`); sums the current session's rows grouped by model. Read-only, not an agent call.
+- **`TokenSpendPanel`** (`components/horizon/TokenSpendPanel.tsx`) fed by `SessionUsageProvider` (`useSessionUsage`) — right-rail panel on Today (in-flow, collapsed by default), cross-tab dock (top-right) on `/ask` + `/analyze`. Shows per-model input/output token subtotals, grand total, estimated cost (`lib/llm/modelPricing.ts`), turns, tool calls, and latency. Refreshes from the DB on mount/focus/after-run; the Ask Bar also live-bumps it from a `usage_meta` SSE event for instant feedback.
+- **Per-step token counts in reasoning trails** (both stacks) — `iterationUsage` is now threaded to every reasoning trail, not just the Ask Bar.
+- **`usage_meta` SSE event** + `sendUsageMeta` helper (`lib/sse/stream.ts`); `useAgentStream` surfaces it via `onUsage`.
+- **Design + implementation specs** — [`docs/superpowers/specs/2026-06-19-session-token-spend-design.md`](docs/superpowers/specs/2026-06-19-session-token-spend-design.md) and [`docs/superpowers/plans/2026-06-19-session-token-spend.md`](docs/superpowers/plans/2026-06-19-session-token-spend.md).
+
+### Changed
+- **Section cache key bumped v1 → v2** (`12be525`) so cached Today trails pick up the new per-step token events instead of replaying pre-token-capture snapshots.
+- **MiniMax extract budgets raised** in Analyze — charts/tables were intermittently missing because the extract step ran out of output budget.
+
+### Fixed
+- **Charts/table missing on Analyze** — `troubleshootingInfo` is now stripped from the analyze payload before the 8 KB cap, so the chart/table data isn't truncated out of the response.
+- **Reasoning-trail turn headers** (`041fc6e`) — headers showed gaps ("turn 1, 3 — no 2", from tool-less synthesis turns that had no render group to anchor on) and out-of-order sequences in multi-turn threads. Headers now render off the sorted `iterationUsage` spine (every turn gets one) and groups bucket under their tagged iteration. New `test:trail` regression script (`scripts/test-reasoning-trail-grouping.ts`).
+- **Second-stack usage attribution** (`a256526`) — the resolved model id is now stamped on Analyze / Ask My Data usage events so spend is attributed to the right model rather than left blank.
+
+---
+
 ## [2026-05-12] — Mobile responsive Phase 0 + Next 15.5.18
 
 ### Added

@@ -37,7 +37,7 @@
 
 ## What it does
 
-- **Home (Today)** (`/`) — **Morning brief** (life-event hierarchy + "Recent life events"), **priority queue**, **today's arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **section insight** banners, **Ask** bar (typed + voice + drafted actions), **Prep me** (per-client briefing via `/api/prep`), **left-edge section rail** (scroll-spy with click-to-jump at xl+), **session-cached Client 360° sheet** (first open ~10s for full depth, every reopen instant during the session), **daily section snapshot cache** for the 5 expensive routes (`/api/{brief,priority,pulse,drafts,arc}`) keyed by banker × local-day — first load pays the agent cost, every subsequent load that day replays the captured SSE event sequence. **Refresh today** in the user menu bypasses the cache.
+- **Home (Today)** (`/`) — **Morning brief** (life-event hierarchy + "Recent life events"), **priority queue**, **today's arc**, **portfolio pulse**, **pulse strip**, **pre-drafted actions**, **live signals**, **section insight** banners, **Ask** bar (typed + voice + drafted actions), **Prep me** (per-client briefing via `/api/prep`), **left-edge section rail** (scroll-spy with click-to-jump at xl+), **session-cached Client 360° sheet** (first open ~10s for full depth, every reopen instant during the session), **daily section snapshot cache** for the 5 expensive routes (`/api/{brief,priority,pulse,drafts,arc}`) keyed by banker × local-day — first load pays the agent cost, every subsequent load that day replays the captured SSE event sequence. **Refresh today** in the user menu bypasses the cache. **Token Spend panel** in the right rail (collapsed by default) — per-model input/output token totals for the current login session, plus estimated cost, turns, tool calls, and latency; backed by `GET /api/usage` and live-bumped from agent runs.
 - **Ask My Data** (`/ask-data`) — multi-turn exploratory SQL agent over Data Cloud. Markdown-rendered responses, persisted thread history, reasoning trail, follow-up pill suggestions.
 - **Analyze** (`/analyze/[modelId]`) — governed analytics workbench over Tableau Next SDMs. 18 chart types with grounded MiniMax chart selection, per-model starter questions, multi-turn in-memory conversation, clickable metric chips, Business Preferences panel.
 - The LLM orchestrates three **Salesforce-hosted MCP** servers (CRM SObject, Data 360 SQL, Tableau Next) plus optional **Heroku toolkit** MCP. The UI streams tokens and a collapsible **reasoning trail** of tool calls (success + handled errors).
@@ -55,7 +55,7 @@
 | ------ | ------------------------------------------------------------------------------------ |
 | App    | Next.js 15 (App Router), React 18, TypeScript strict, Tailwind, shadcn-style UI      |
 | Deploy | Heroku `web` dyno (`Procfile`: `npm start`) + `release` phase that applies `lib/db/schema.sql` |
-| Data   | Heroku Postgres (sessions, briefings, threads, **scheduler_credentials**), Redis (streaming, TTS cache, **DMO + SDM catalog caches** refreshed by Heroku Scheduler) |
+| Data   | Heroku Postgres (sessions, briefings, threads, **scheduler_credentials**, **token_usage**), Redis (streaming, TTS cache, **DMO + SDM catalog caches** refreshed by Heroku Scheduler) |
 | Auth   | Salesforce OAuth 2.1 + PKCE (ECA, `mcp_api` + `cdp_api` + `refresh_token` scopes)    |
 | Voice  | Web Speech API (TTS / STT); optional ElevenLabs via `/api/tts` when configured       |
 
@@ -72,6 +72,7 @@
 | `app/api/`*                | SSE / JSON routes: `ask`, `brief`, `priority`, `pulse`, `drafts`, `signals`, OAuth, etc. |
 | `app/api/admin/refresh-dc-cache/` | Diagnostic GET + trigger POST — returns DC + Tableau SDM cache freshness, or with `?run=1&tool=dc\|tableau\|both&force=1` spawns the refresh script using the banker's live session token |
 | `app/api/analyze-ask/`, `app/api/ask-data/` | SSE agent routes for Analyze + Ask My Data (separate loops in `lib/inference/`) |
+| `app/api/usage/`           | `GET` session token-spend summary (JSON) — sums the `token_usage` table for the current `hz_sid` session |
 | `app/callback/route.ts`    | OAuth return leg — also upserts `scheduler_credentials` row for unattended refreshes      |
 | `lib/llm/heroku.ts`        | Today agent loop: model → tool calls → parallel MCP → repeat; tool-filter + hallucination-reject + DC/SDM preflight |
 | `lib/llm/provider.ts`      | `runAgentWithMcp` wrapper — loads both caches, injects catalogs + apiName allowlist        |
@@ -125,6 +126,9 @@ Sign in via Salesforce from the app; the callback URL must match your External C
 | `npm run mcp:check`                  | Fast MCP `initialize` probe              |
 | `npm run refresh:dc-metadata`        | Rebuild DC DMO catalog cache in Redis (Heroku Scheduler job). In dev, prefer `GET /api/admin/refresh-dc-cache?run=1&force=1` from an authenticated browser tab — no `SF_ACCESS_TOKEN` plumbing needed. |
 | `npm run refresh:tableau-sdms`       | Rebuild Tableau Next SDM catalog cache in Redis (Heroku Scheduler job). Dev path: `?run=1&tool=tableau&force=1` on the admin route. |
+| `npm run test:signoff`               | Regression — sign-off policy logic        |
+| `npm run test:trail`                 | Regression — reasoning-trail turn-header grouping/ordering |
+| `npm run test:analyze-budget`        | Regression — `analyze_data` once-budget not-found gate |
 
 
 ---

@@ -32,6 +32,7 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 | Section insights | `components/horizon/SectionInsight.tsx` + `InsightsBatchProvider` | `POST /api/insights` (SSE) |
 | **Ask My Data** (`/ask-data`) | `components/ask-data/Conversation.tsx` | `POST /api/ask-data` (SSE); threads via `GET/POST/DELETE /api/ask-threads`; follow-ups via `POST /api/analyze-followups` |
 | **Analyze** (`/analyze/[modelId]`) | `components/analyze/AnalyzeWorkbench.tsx` | `POST /api/analyze-ask` (SSE); model list via `GET /api/analyze-models`; follow-ups via `POST /api/analyze-followups` |
+| **Token Spend panel** | `components/horizon/TokenSpendPanel.tsx` (fed by `SessionUsageProvider` / `useSessionUsage`) | `GET /api/usage` (JSON) — per-model input/output token subtotals + grand total for the current login session (`hz_sid` cookie). In-flow right-rail on Today (collapsed by default); cross-tab dock on `/ask` + `/analyze`. The Ask Bar also live-bumps it from the `usage_meta` SSE event. |
 
 ## Scripts (developer)
 
@@ -45,6 +46,12 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 | `npm run refresh:dc-metadata` | Scheduled job — rebuilds the DC DMO catalog cache in Redis. Resolves SF token via `SF_ACCESS_TOKEN` env / `SF_REFRESH_TOKEN` config / `scheduler_credentials` row (`scripts/lib/resolveSfToken.ts`). See [OPERATIONS.md](./OPERATIONS.md#scheduled-jobs). |
 | `npm run refresh:tableau-sdms` | Scheduled job — rebuilds the Tableau Next SDM catalog cache in Redis. Same token-resolution path. |
 | `npm run seed:dc` | Populate synthetic Data Cloud seed records |
+| `npm run seed:ask-data` | Seed the Ask My Data thread + sample records |
+| `npm run smoke:heroku-inference` | Smoke-test the Heroku Managed Inference endpoint directly |
+| `npm run verify:p01` / `npm run verify:p02` | Phase-specific verification probes |
+| `npm run test:signoff` | Regression — sign-off policy logic (`scripts/test-signoff-policy.ts`) |
+| `npm run test:trail` | Regression — reasoning-trail turn-header grouping/ordering (`scripts/test-reasoning-trail-grouping.ts`) |
+| `npm run test:analyze-budget` | Regression — `analyze_data` once-budget not-found gate, the CSAT fix (`scripts/test-analyze-budget-notfound.ts`) |
 
 **Note:** all `tsx`-driven npm scripts now use `--env-file-if-exists=.env` so they work both with a local `.env` and on Heroku where env vars are injected natively. `tsx` itself moved to `dependencies` (was `devDependencies`) so post-build slugs include it for scheduler dynos.
 
@@ -57,6 +64,7 @@ See [**LLM_PROMPT_GUIDE.md**](./LLM_PROMPT_GUIDE.md) for editing rules and a fai
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/health` | GET | Liveness probe — used by Heroku + smoke tests |
+| `/api/usage` | GET | Session token-spend summary (JSON) — sums `token_usage` rows for the current `hz_sid` session, grouped by model. Read-only; feeds the Token Spend panel. |
 | `/api/admin/refresh-dc-cache` | GET | Diagnostic: returns current DC cache freshness (`generatedAt`, `ageHours`, `survivingDmos`, top 10 DMOs by row count) **and** Tableau SDM slice (`tableau.cached`, `tableau.survivingSdms`, `tableau.apiNames` — full list of valid SDM apiNames). Use when triaging hallucinated SDM rejections. |
 | `/api/admin/refresh-dc-cache?run=1&tool=dc\|tableau\|both&force=1` | GET or POST | Dev trigger: spawns the refresh script as a child process using the banker's live session token. Auth-required (reads the session cookie to mint `SF_ACCESS_TOKEN`). |
 
